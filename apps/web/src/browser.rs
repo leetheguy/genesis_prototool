@@ -5,7 +5,7 @@ use genesis_ui::{Host, app_view};
 use leptos::leptos_dom::helpers::set_interval;
 use leptos::prelude::*;
 use serde_json::{Value, json};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -24,20 +24,28 @@ pub fn start() {
         Ok(source) => source,
         Err(e) => return show_problems(&format!("can't reach serve: {e:?}")),
     };
-    let drawn = Rc::new(Cell::new(false));
-    // A config is drawn once; drawing a newer one live is hot reload (spec 060), not this milestone.
-    let on_config = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
-        if drawn.replace(true) {
-            return;
-        }
-        let text = event.data().as_string().unwrap_or_default();
-        match serde_json::from_str::<App>(&text) {
-            Ok(app) => run(app, name.clone()),
-            Err(e) => show_problems(&format!("the config serve sent didn't read: {e}")),
-        }
-    });
+    // The running app, once the first good config has drawn it. Later configs swap in live
+    // (spec 060), and later problems show over the last good screen.
+    let running: Rc<RefCell<Option<Host>>> = Rc::new(RefCell::new(None));
+    let on_config = {
+        let running = running.clone();
+        Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+            let text = event.data().as_string().unwrap_or_default();
+            let app = match serde_json::from_str::<App>(&text) {
+                Ok(app) => app,
+                Err(e) => {
+                    return problems(&running, &format!("the config serve sent didn't read: {e}"));
+                }
+            };
+            let host = running.borrow().clone();
+            match host {
+                Some(host) => host.reload(app),
+                None => *running.borrow_mut() = Some(run(app, name.clone())),
+            }
+        })
+    };
     let on_problems = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
-        show_problems(&event.data().as_string().unwrap_or_default());
+        problems(&running, &event.data().as_string().unwrap_or_default());
     });
     let _ = source.add_event_listener_with_callback("config", on_config.as_ref().unchecked_ref());
     let _ =
@@ -47,14 +55,23 @@ pub fn start() {
     on_problems.forget();
 }
 
+/// Problems over the running app's last good screen, or, before there's one, on a screen of their own.
+fn problems(running: &Rc<RefCell<Option<Host>>>, text: &str) {
+    match running.borrow().as_ref() {
+        Some(host) => host.show_problems(text),
+        None => show_problems(text),
+    }
+}
+
 /// Draws the app and starts its clock and mirror.
-fn run(app: App, name: String) {
+fn run(app: App, name: String) -> Host {
     let host = Host::new(app);
     let drawn = host.clone();
     leptos::mount::mount_to_body(move || app_view(drawn.clone()));
     host.open();
     clock(host.clone());
-    mirror(host, name);
+    mirror(host.clone(), name);
+    host
 }
 
 /// Moves the machine's clock on with real time.

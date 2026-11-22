@@ -129,3 +129,41 @@ fn advancing_the_clock_runs_timers_and_redraws() {
     });
     assert!(out.contains("n=2"), "{out}");
 }
+
+#[test]
+fn a_new_config_redraws_the_screen_and_keeps_the_state() {
+    let out = html(HELLO, |host| {
+        host.fire("hello_btn.click", json!({}));
+        let changed = HELLO.replace("text = \"Hello\"", "text = \"Hello again\"");
+        host.reload(App::from_toml(&changed).unwrap());
+    });
+    assert!(out.contains(">Hello again</h2>"), "{out}");
+    assert!(
+        out.contains("Clicked 1 times"),
+        "the state carried over: {out}"
+    );
+}
+
+#[test]
+fn a_bad_config_shows_its_problems_over_the_last_good_screen() {
+    let out = html(HELLO, |host| {
+        host.show_problems("app.toml:3:1: unknown field `colour`")
+    });
+    assert!(
+        out.contains("app.toml:3:1: unknown field `colour`"),
+        "{out}"
+    );
+    assert!(
+        out.contains("Click me"),
+        "the last good screen stays: {out}"
+    );
+}
+
+#[test]
+fn a_good_config_clears_the_problems() {
+    let out = html(HELLO, |host| {
+        host.show_problems("app.toml:3:1: unknown field `colour`");
+        host.reload(App::from_toml(HELLO).unwrap());
+    });
+    assert!(!out.contains("unknown field"), "{out}");
+}

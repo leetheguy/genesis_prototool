@@ -35,6 +35,10 @@ pub struct Host {
     changes: RwSignal<()>,
     /// Toasts waiting to be seen, oldest first.
     toasts: RwSignal<Vec<String>>,
+    /// Notified when a new config is swapped in, so the screen redraws from it.
+    config: RwSignal<()>,
+    /// The latest bad config's problems, shown over the last good screen.
+    problems: RwSignal<Option<String>>,
     /// Whether the first mirror has been taken.
     mirrored: Arc<AtomicBool>,
 }
@@ -48,6 +52,8 @@ impl Host {
             machine: Arc::new(Mutex::new(machine)),
             changes: RwSignal::new(()),
             toasts: RwSignal::new(Vec::new()),
+            config: RwSignal::new(()),
+            problems: RwSignal::new(None),
             mirrored: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -61,6 +67,21 @@ impl Host {
         let first = !self.mirrored.swap(true, Ordering::Relaxed);
         (first || !events.is_empty())
             .then(|| json!({ "state": machine.snapshot(), "events": events }))
+    }
+
+    /// Swaps in a new config, keeping the state ([`Machine::reload`]), clears any problems
+    /// banner, and redraws the screen from the new config.
+    pub fn reload(&self, app: App) {
+        let effects = self.machine().reload(app);
+        self.problems.set(None);
+        self.config.notify();
+        self.after(effects);
+    }
+
+    /// Shows a config's problems in a banner over the screen, which keeps running the last good
+    /// config ([spec 060](../../../specs/060_hot_reload.md)). The next good config clears it.
+    pub fn show_problems(&self, problems: &str) {
+        self.problems.set(Some(problems.to_string()));
     }
 
     /// Fires `app.opened`.
@@ -163,13 +184,18 @@ fn draw(node: &Node, place: String, host: &Host) -> AnyView {
 
 /// The whole screen: the app's nodes, wearing its theme, with toasts on top.
 pub fn app_view(host: Host) -> AnyView {
-    let app = host.machine().app().clone();
-    let nodes: Vec<AnyView> = app
-        .body
-        .iter()
-        .enumerate()
-        .map(|(i, node)| draw(node, body_place(i), &host))
-        .collect();
+    let nodes = {
+        let host = host.clone();
+        // Redrawn whenever a new config is swapped in; the state behind it carries over.
+        move || {
+            host.config.track();
+            let body = host.machine().app().body.clone();
+            body.iter()
+                .enumerate()
+                .map(|(i, node)| draw(node, body_place(i), &host))
+                .collect_view()
+        }
+    };
     let theme = {
         let host = host.clone();
         move || {
@@ -178,9 +204,17 @@ pub fn app_view(host: Host) -> AnyView {
                 .unwrap_or_default()
         }
     };
-    let toasts = host.toasts;
+    let (toasts, problems) = (host.toasts, host.problems);
     view! {
         <div data-theme=theme class="min-h-screen bg-base-100 text-base-content p-6">
+            {move || problems.get().map(|text| view! {
+                <div role="alert" class="alert alert-warning mb-4 items-start">
+                    <div>
+                        <p class="font-bold">"This app's config has problems; the screen keeps the last good one."</p>
+                        <pre class="whitespace-pre-wrap text-sm">{text}</pre>
+                    </div>
+                </div>
+            })}
             {nodes}
             <div class="toast toast-end">
                 {move || toasts.get().into_iter().map(|text| view! { <div class="alert alert-error">{text}</div> }).collect_view()}

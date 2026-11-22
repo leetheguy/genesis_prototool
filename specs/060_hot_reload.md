@@ -53,5 +53,5 @@ Milestone two ([999](999_todo.md)):
 
 - [x] `serve`: watch the configs folder, debounced, and push each app's new config (or its problems) on its open streams
 - [x] core: carry the state across a new config (kept, new, and removed variables; [050](050_state.md), "Across a config reload")
-- [ ] the renderer: swap in a good config live; show a bad one's problems in a banner over the last good screen
-- [ ] deployed check: edit the hello app while the browser is open, and watch it change
+- [x] the renderer: swap in a good config live; show a bad one's problems in a banner over the last good screen
+- [x] deployed check: edit the hello app while the browser is open, and watch it change (`tests/deployed/reload.mjs`)
