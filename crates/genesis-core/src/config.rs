@@ -40,6 +40,9 @@ pub struct App {
     /// `[actions.NAME]`: custom actions, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub actions: BTreeMap<String, Action>,
+    /// `[sources.NAME]`: app variables an API fills ([spec 050](../../../specs/050_state.md), "Sources").
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sources: BTreeMap<String, Source>,
     /// `[connections.NAME]`: the APIs the app calls ([spec 030](../../../specs/030_connections.md)).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub connections: BTreeMap<String, Connection>,
@@ -260,6 +263,11 @@ pub enum Step {
         /// The `id`.
         cancel: String,
     },
+    /// Calls these sources again: `app.NAME`, each a `[sources.NAME]`.
+    Reload {
+        /// The sources' variables.
+        reload: Vec<String>,
+    },
     /// Calls an operation and waits for the reply ([spec 030](../../../specs/030_connections.md)).
     Call {
         /// The operation: `connection.op` or `connection.resource.action`.
@@ -285,6 +293,25 @@ pub struct ConfigError {
     pub line: Option<usize>,
     /// The column, counting from 1.
     pub column: Option<usize>,
+}
+
+/// `[sources.NAME]`: the variable `app.NAME`, filled by calling an operation. It calls when the app
+/// opens (or on `load_on`'s events instead), again whenever a variable in its params changes, and
+/// on a `reload` naming it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Source {
+    /// The operation.
+    pub call: String,
+    /// Its params; values may be templates.
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub params: Map<String, Value>,
+    /// A JSON Pointer to the value in the reply. Default `""`, the whole body.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub select: String,
+    /// The events to call on instead of `app.opened`; `[]` calls only on a `reload`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_on: Option<Vec<String>>,
 }
 
 /// `[connections.NAME]`: an HTTP API ([spec 030](../../../specs/030_connections.md)).
@@ -488,7 +515,7 @@ impl App {
     ///
     /// Fails with every problem found, each with its line and column when the TOML reader knows them.
     pub fn from_toml(text: &str) -> Result<App, Vec<ConfigError>> {
-        toml::from_str(text).map_err(|e| {
+        let app: App = toml::from_str(text).map_err(|e| {
             let message = e.message().to_string();
             let at = e
                 .span()
@@ -499,7 +526,22 @@ impl App {
                 line,
                 column,
             }]
-        })
+        })?;
+        let clashes: Vec<ConfigError> = app
+            .sources
+            .keys()
+            .filter(|name| app.state.contains_key(*name))
+            .map(|name| ConfigError {
+                message: format!("app.{name} is both a [state] variable and a [sources.{name}]; give one another name"),
+                line: None,
+                column: None,
+            })
+            .collect();
+        if clashes.is_empty() {
+            Ok(app)
+        } else {
+            Err(clashes)
+        }
     }
 }
 
@@ -572,8 +614,8 @@ fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
 
 /// The step kinds, keyed by the TOML key that names each one. `every` comes before `fire`
 /// because an `every` step has a `fire` key too.
-const STEP_KINDS: [&str; 10] = [
-    "call", "every", "set", "step", "toggle", "go", "fire", "log", "delay", "cancel",
+const STEP_KINDS: [&str; 11] = [
+    "call", "reload", "every", "set", "step", "toggle", "go", "fire", "log", "delay", "cancel",
 ];
 
 impl<'de> Deserialize<'de> for Step {
@@ -653,6 +695,11 @@ impl<'de> Deserialize<'de> for Step {
                     with: s.with,
                 }
             }
+            "reload" => Step::Reload {
+                reload: serde_json::from_value::<steps::Reload>(fields)
+                    .map_err(wrong)?
+                    .reload,
+            },
             "call" => {
                 let s: steps::Call = serde_json::from_value(fields).map_err(wrong)?;
                 Step::Call {
@@ -734,6 +781,12 @@ mod steps {
         pub id: Option<String>,
         #[serde(default)]
         pub with: Map<String, Value>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Reload {
+        pub reload: Vec<String>,
     }
 
     #[derive(Deserialize)]

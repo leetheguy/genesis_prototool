@@ -50,8 +50,10 @@ A source is a shortcut for handlers ([100](100_events.md)), Rails-style: the con
   text, which suits a streamed AI answer, and anything else is pushed onto a list. A stream reconnects
   when its params change, and stops on a `cancel` naming the source.
 
-Every source has a status: `idle`, `loading`, `ok`, or `failed`. A node showing a source shows
-loading and failure in its own place on its own ([040](040_catalog.md)). Conditions can test it with `status`.
+Every source has a status, `sys.sources.NAME`: `idle`, `loading`, `ok`, or `failed`. A node showing a source
+shows loading and failure in its own place on its own ([040](040_catalog.md)). Conditions can test it with
+`status`. A source and a `[state]` variable can't share a name. `{ reload = ["app.NAME"] }` fires
+`app.NAME.reload`, which the source listens on; reloading anything that isn't a source is a failure.
 
 ## Persisting
 
@@ -149,5 +151,5 @@ start at their starting values. Removed variables are dropped. A source whose `c
 
 Milestone two ([999](999_todo.md)):
 
-- [ ] core: `[sources.NAME]` as handlers: a call on `app.opened` (or `load_on`) and on its params' `.changed`, filling `app.NAME`; the `reload` action
+- [x] core: `[sources.NAME]` as handlers: a call on `app.opened` (or `load_on`) and on its params' `.changed`, filling `app.NAME`; the `reload` action
 - [ ] core and the browser: persisting: what the user did kept in local storage and restored on open; sources and `into` results never kept; `[app] forget`

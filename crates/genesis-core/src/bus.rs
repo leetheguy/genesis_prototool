@@ -23,7 +23,7 @@
 //! assert_eq!(machine.get("sys.events").unwrap()[0]["log"], "hello");
 //! ```
 
-use crate::config::{App, Handler, Node, Step, body_place, child_place};
+use crate::config::{App, Handler, Node, Source, Step, body_place, child_place};
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, VecDeque};
@@ -74,6 +74,8 @@ pub enum Reply {
 /// A run waiting on a call.
 struct Waiting {
     run: Run,
+    /// The source this call loads, if it's one.
+    source: Option<String>,
     op: String,
     into: BTreeMap<String, String>,
     event: Option<String>,
@@ -91,6 +93,8 @@ struct Run {
     frames: Vec<Frame>,
     /// The event that started it, which its templates read as `event.*`.
     event: Queued,
+    /// The source whose handler started it, if one did: its calls set the source's status.
+    source: Option<String>,
 }
 
 /// One list of steps, and how far through it a run has got.
@@ -125,6 +129,8 @@ pub struct Machine {
     app: App,
     /// Every handler: nodes' `on_*` shortcuts first (in tree order), then `[on]` (in file order).
     handlers: Vec<Handler>,
+    /// Which source each handler belongs to, if any, in step with `handlers`.
+    handler_sources: Vec<Option<String>>,
     /// Every event name the config can fire, for `sys.bus`.
     fires: Vec<String>,
     state: State,
@@ -155,6 +161,8 @@ struct State {
     events: VecDeque<Value>,
     /// `sys.errors`, newest first.
     errors: VecDeque<Value>,
+    /// `sys.sources`: each source's status: `idle`, `loading`, `ok`, or `failed`.
+    sources: BTreeMap<String, &'static str>,
 }
 
 /// An event waiting its turn.
@@ -169,9 +177,19 @@ struct Queued {
 impl Machine {
     /// A machine for `app`, at its starting state. Nothing has fired yet; see [`Machine::open`].
     pub fn new(app: App) -> Machine {
-        let (handlers, fires) = wiring(&app);
+        let Wiring {
+            handlers,
+            sources: handler_sources,
+            fires,
+        } = wiring(&app);
+        let sources = app
+            .sources
+            .keys()
+            .map(|name| (name.clone(), "idle"))
+            .collect();
         let state = State {
-            app: app.state.clone(),
+            app: starting(&app),
+            sources,
             view: app.app.start.clone(),
             theme: app.app.theme.clone(),
             events: VecDeque::new(),
@@ -180,6 +198,7 @@ impl Machine {
         Machine {
             app,
             handlers,
+            handler_sources,
             fires,
             state,
             queue: VecDeque::new(),
@@ -202,14 +221,27 @@ impl Machine {
     /// their starting values, and removed ones are dropped. The view, theme, trail, errors, and
     /// timers carry over. Then it fires `config.loaded`, and returns what the host must do.
     pub fn reload(&mut self, app: App) -> Vec<Effect> {
-        let (handlers, fires) = wiring(&app);
+        let Wiring {
+            handlers,
+            sources,
+            fires,
+        } = wiring(&app);
         let old = std::mem::take(&mut self.state.app);
-        self.state.app = app
-            .state
-            .iter()
-            .map(|(k, start)| (k.clone(), old.get(k).unwrap_or(start).clone()))
+        self.state.app = starting(&app)
+            .into_iter()
+            .map(|(k, start)| {
+                let kept = old.get(&k).cloned().unwrap_or(start);
+                (k, kept)
+            })
             .collect();
-        (self.app, self.handlers, self.fires) = (app, handlers, fires);
+        let statuses = std::mem::take(&mut self.state.sources);
+        self.state.sources = app
+            .sources
+            .keys()
+            .map(|name| (name.clone(), statuses.get(name).copied().unwrap_or("idle")))
+            .collect();
+        (self.app, self.handlers, self.handler_sources, self.fires) =
+            (app, handlers, sources, fires);
         self.fire("config.loaded", json!({}))
     }
 
@@ -224,13 +256,22 @@ impl Machine {
             }
             Some(Waiting {
                 run,
+                source,
                 op,
                 into,
                 event,
-            }) => match self.settle(&run.event, &op, &into, event.as_deref(), reply) {
-                Ok(()) => self.execute(run),
-                Err(failed) => self.unwind(run, None, failed.message, failed.reported),
-            },
+            }) => {
+                let settled = self.settle(&run.event, &op, &into, event.as_deref(), reply);
+                if let Some(name) = source {
+                    self.state
+                        .sources
+                        .insert(name, if settled.is_ok() { "ok" } else { "failed" });
+                }
+                match settled {
+                    Ok(()) => self.execute(run),
+                    Err(failed) => self.unwind(run, None, failed.message, failed.reported),
+                }
+            }
         }
         self.drain();
         std::mem::take(&mut self.effects)
@@ -373,9 +414,11 @@ impl Machine {
                 next: 0,
                 action: None,
             };
+            let source = self.handler_sources[i].clone();
             self.execute(Run {
                 frames: vec![frame],
                 event: event.clone(),
+                source,
             });
         }
     }
@@ -421,10 +464,15 @@ impl Machine {
                             else {
                                 unreachable!()
                             };
+                            let source = run.source.clone();
+                            if let Some(name) = &source {
+                                self.state.sources.insert(name.clone(), "loading");
+                            }
                             self.waiting.insert(
                                 call.id,
                                 Waiting {
                                     run,
+                                    source,
                                     op,
                                     into,
                                     event,
@@ -435,6 +483,17 @@ impl Machine {
                         }
                         Err(message) => Err(message),
                     }
+                }
+                Step::Reload { reload } => {
+                    reload
+                        .iter()
+                        .try_for_each(|var| match var.strip_prefix("app.") {
+                            Some(name) if self.app.sources.contains_key(name) => {
+                                self.enqueue(&format!("app.{name}.reload"), json!({}), &run.event);
+                                Ok(())
+                            }
+                            _ => Err(format!("{var} isn't a source")),
+                        })
                 }
                 Step::Cancel { cancel } => {
                     self.timers
@@ -755,6 +814,7 @@ impl Machine {
             ("sys", Some("theme")) => json!(self.state.theme),
             ("sys", Some("events")) => json!(self.state.events),
             ("sys", Some("errors")) => json!(self.state.errors),
+            ("sys", Some("sources")) => json!(self.state.sources),
             ("sys", Some("bus")) => self.bus(),
             _ => return None,
         };
@@ -782,15 +842,69 @@ impl Machine {
 
 /// Every handler an app has (nodes' `on_*` shortcuts first, in tree order, then `[on]`), and every
 /// event name it can fire.
-fn wiring(app: &App) -> (Vec<Handler>, Vec<String>) {
+fn wiring(app: &App) -> Wiring {
     let mut handlers = Vec::new();
     let mut node_events = Vec::new();
     for (i, node) in app.body.iter().enumerate() {
         wire_node(node, &body_place(i), &mut handlers, &mut node_events);
     }
     handlers.extend(app.on.iter().cloned());
+    let mut sources = vec![None; handlers.len()];
+    for (name, source) in &app.sources {
+        for pattern in source_patterns(name, source) {
+            let into = BTreeMap::from([(format!("app.{name}"), source.select.clone())]);
+            let load = Step::Call {
+                call: source.call.clone(),
+                params: source.params.clone(),
+                into,
+                event: None,
+            };
+            handlers.push(Handler {
+                pattern,
+                steps: vec![load],
+            });
+            sources.push(Some(name.clone()));
+        }
+    }
     let fires = fires(app, &handlers, node_events);
-    (handlers, fires)
+    Wiring {
+        handlers,
+        sources,
+        fires,
+    }
+}
+
+/// An app's handlers, which source (if any) each belongs to, and every event it can fire.
+struct Wiring {
+    handlers: Vec<Handler>,
+    sources: Vec<Option<String>>,
+    fires: Vec<String>,
+}
+
+/// The events a source calls on: `app.opened` (or its `load_on`), the `.changed` of every
+/// variable in its params, and `app.NAME.reload`.
+fn source_patterns(name: &str, source: &Source) -> Vec<String> {
+    let mut patterns = source
+        .load_on
+        .clone()
+        .unwrap_or_else(|| vec!["app.opened".into()]);
+    let texts = source.params.values().filter_map(Value::as_str);
+    for path in texts.flat_map(template::paths) {
+        let mut keys = path.split('.');
+        if let (Some(root @ ("app" | "sys")), Some(key)) = (keys.next(), keys.next()) {
+            patterns.push(format!("{root}.{key}.changed"));
+        }
+    }
+    patterns.push(format!("app.{name}.reload"));
+    patterns.dedup();
+    patterns
+}
+
+/// An app's variables at their starting values: `[state]`, and each source, empty.
+fn starting(app: &App) -> Map<String, Value> {
+    let mut vars = app.state.clone();
+    vars.extend(app.sources.keys().map(|name| (name.clone(), Value::Null)));
+    vars
 }
 
 /// Turns a node's `on_*` shortcuts into handlers, and notes the events it fires, for it and its
@@ -827,6 +941,9 @@ fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<Strin
         "sys.view.changed".to_string(),
         "sys.theme.changed".to_string(),
     ]);
+    for name in app.sources.keys() {
+        names.extend([format!("app.{name}.changed"), format!("app.{name}.reload")]);
+    }
     for name in app.actions.keys() {
         names.extend([format!("{name}.done"), format!("{name}.failed")]);
     }

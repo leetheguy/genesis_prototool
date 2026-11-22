@@ -61,6 +61,17 @@ pub fn value(
     }
 }
 
+/// The path of every template in `text`, in order: `"{{ app.page }} of {{ app.pages }}"` has
+/// `app.page` and `app.pages`.
+pub fn paths(text: &str) -> Vec<&str> {
+    pieces(text)
+        .filter_map(|piece| match piece {
+            Piece::Lookup(path) => Some(path),
+            Piece::Text(_) => None,
+        })
+        .collect()
+}
+
 /// Whether every `{{ ... }}` in `text` is a plain lookup: dot-separated names of letters, digits,
 /// and `_`. Fails naming the first one that isn't.
 pub fn check(text: &str) -> Result<(), String> {
