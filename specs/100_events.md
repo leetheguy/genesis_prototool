@@ -85,7 +85,9 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 | `"wipe_state"` | clears kept state back to the starting values | `state.wiped` |
 | `{ sign_in = {...} }`, `"sign_out"` | as in [050](050_state.md) | `auth.in` / `auth.out` |
 
-A custom action fires `NAME.done` when its list finishes, or `NAME.failed` when a step fails.
+A custom action fires `NAME.done` when its list finishes, or `NAME.failed` (with `error`) when a step fails, and
+its failure stops the list that ran it. Actions can run actions, up to `max_chain` deep; deeper is a failure, so an
+action that runs itself stops instead of running forever.
 
 ## The bus
 
@@ -129,7 +131,8 @@ with its handlers and any state changes, and then the final state. Tests drive t
 
 - a node with an `id` fires its events; one without fires nothing; an `on_*` shortcut wires its node
 - a call fires `.ok` or `.failed` and `.{status}`; with `event`, also the reply's named event
-- a custom action fires `.done`, or `.failed` when a step fails, and stops at that step
+- a custom action fires `.done`, or `.failed` when a step fails, and stops at that step; its failure stops the list that ran it
+- actions nested past `max_chain` fail instead of recursing forever
 - `.changed` fires on a real change only, with `value` and `was`
 - `*` and `?` match as in the examples; every matching handler runs, in file order
 - a plain-string step runs that action
@@ -150,7 +153,7 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: event names and `*`/`?` patterns
 - [x] core: the bus: queue, matching handlers in file order, `sys.events`, `sys.bus`, with `fire` and `log`
 - [x] core: `set`, `step`, `toggle`, `go`, and `.changed` events
-- [ ] core: custom actions with `.done` and `.failed`; stop at the first failure
+- [x] core: custom actions with `.done` and `.failed`; stop at the first failure
 - [ ] core: chain depth and `max_chain`; failures always logged
 - [ ] core: `delay`, `every`, and `cancel` on a clock tests control
 - [ ] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)

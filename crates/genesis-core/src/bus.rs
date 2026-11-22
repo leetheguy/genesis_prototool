@@ -129,23 +129,47 @@ impl Machine {
         }));
         for i in matched {
             let steps = self.handlers[i].steps.clone();
-            self.run_steps(&steps, &event);
+            // A failed step stops its handler's list. Recording and showing the failure is
+            // spec 100's "failures always logged" task.
+            let _ = self.run_steps(&steps, &event, 0);
         }
     }
 
-    fn run_steps(&mut self, steps: &[Step], event: &Queued) {
-        for step in steps {
-            // A failed step stops its list. Recording and showing the failure is spec 100's
-            // "failures always logged" task.
-            if self.run_step(step, event).is_err() {
-                return;
+    /// Runs a list of steps in order, stopping at the first that fails. `nest` is how many
+    /// custom actions deep the list is.
+    fn run_steps(&mut self, steps: &[Step], event: &Queued, nest: u32) -> Result<(), String> {
+        steps
+            .iter()
+            .try_for_each(|step| self.run_step(step, event, nest))
+    }
+
+    /// Runs a custom action, then fires `NAME.done`, or `NAME.failed` with the error.
+    fn run_action(&mut self, name: &str, event: &Queued, nest: u32) -> Result<(), String> {
+        let result = if nest >= self.app.app.max_chain {
+            Err(format!(
+                "actions nested more than max_chain ({}) deep",
+                self.app.app.max_chain
+            ))
+        } else {
+            match self.app.actions.get(name) {
+                Some(action) => {
+                    let steps = action.steps.clone();
+                    self.run_steps(&steps, event, nest + 1)
+                }
+                None => Err(format!("there's no action named {name}")),
             }
+        };
+        match &result {
+            Ok(()) => self.enqueue(&format!("{name}.done"), json!({}), event),
+            Err(error) => self.enqueue(&format!("{name}.failed"), json!({ "error": error }), event),
         }
+        result
     }
 
-    fn run_step(&mut self, step: &Step, event: &Queued) -> Result<(), String> {
+    fn run_step(&mut self, step: &Step, event: &Queued, nest: u32) -> Result<(), String> {
         let fill = |value: &Value| template::value(value, |path| self.look(path, Some(event)));
         match step {
+            Step::Run(name) => self.run_action(name, event, nest)?,
             Step::Log { log } => {
                 let line = template::text(log, |path| self.look(path, Some(event)));
                 self.record(json!({ "at": self.now, "log": line }));
