@@ -1,0 +1,20 @@
+[package]
+name = "genesis-ui"
+version = "0.1.0"
+description = "Genesis's renderer: draws an app's nodes from its state machine, with Leptos and daisyUI."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+genesis-core.workspace = true
+leptos.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Tests render to HTML natively, which is Leptos's server-side mode. The browser build turns on
+# its client-side mode instead, in apps/web.
+leptos = { workspace = true, features = ["ssr"] }
+
+[lints]
+workspace = true

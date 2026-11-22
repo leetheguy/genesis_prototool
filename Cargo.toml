@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/genesis-core", "apps/bench"]
+members = ["crates/genesis-core", "crates/genesis-ui", "apps/bench"]
 
 [workspace.package]
 edition = "2024"
@@ -9,6 +9,7 @@ publish = false
 
 [workspace.dependencies]
 genesis-core = { path = "crates/genesis-core" }
+leptos = "0.8.23"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 toml = { version = "1.2.2", features = ["preserve_order"] }

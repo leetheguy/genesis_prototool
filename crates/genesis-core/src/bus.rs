@@ -145,6 +145,11 @@ impl Machine {
         }
     }
 
+    /// The app this machine runs, as loaded.
+    pub fn app(&self) -> &App {
+        &self.app
+    }
+
     /// Fires `app.opened`, and handles everything that follows from it.
     pub fn open(&mut self) -> Vec<Effect> {
         self.fire("app.opened", json!({}))

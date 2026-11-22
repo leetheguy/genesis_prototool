@@ -123,5 +123,5 @@ rebuild), not through dufs. Runtime reuse is TOML partials ([090](090_components
 The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)):
 
 - [ ] genesis-ui: a Leptos app that draws a config from the state machine, with daisyUI 5 built ahead of time
-- [ ] genesis-ui: the `Component` trait and the `Wired` wrapper (`id`, `show`, firing events)
-- [ ] components: `stack`, `heading`, `text` (with templates), and `button`
+- [x] genesis-ui: the `Component` trait and the `Wired` wrapper (naming by `id` or place, reading state, firing events; `show` comes with conditions, [080](080_display_logic.md))
+- [x] components: `stack`, `heading`, `text` (with templates), and `button`
