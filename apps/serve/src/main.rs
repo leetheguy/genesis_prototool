@@ -1,8 +1,9 @@
-//! `genesis-serve [--configs DIR] [--state DIR] [--dist DIR] [--listen ADDRESS]`.
+//! `genesis-serve [--configs DIR] [--state DIR] [--dist DIR] [--listen ADDRESS] [--debounce MS]`.
 //!
-//! See the library's docs for the routes. It listens on `127.0.0.1:8080` unless told otherwise.
+//! See the library's docs for the routes. It listens on `127.0.0.1:8080` unless told otherwise,
+//! and reloads apps live as their files change (`--debounce MS`, default 150).
 
-use genesis_serve::{Settings, router};
+use genesis_serve::{Settings, live_router};
 use std::process::ExitCode;
 
 #[tokio::main]
@@ -12,6 +13,13 @@ async fn main() -> ExitCode {
         Err(why) => {
             eprintln!("{why}");
             return ExitCode::from(2);
+        }
+    };
+    let (router, _watching) = match live_router(settings.clone()) {
+        Ok(live) => live,
+        Err(why) => {
+            eprintln!("{why}");
+            return ExitCode::from(1);
         }
     };
     let listener = match tokio::net::TcpListener::bind(&settings.listen).await {
@@ -26,7 +34,7 @@ async fn main() -> ExitCode {
         settings.listen,
         settings.configs.display()
     );
-    if let Err(e) = axum::serve(listener, router(settings)).await {
+    if let Err(e) = axum::serve(listener, router).await {
         eprintln!("serve stopped: {e}");
         return ExitCode::from(1);
     }

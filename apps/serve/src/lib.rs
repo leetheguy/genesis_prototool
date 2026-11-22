@@ -25,13 +25,20 @@ use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use futures_util::stream::{self, Stream, StreamExt};
+use futures_util::stream::{self, StreamExt};
 use genesis_core::config::App;
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::broadcast;
+use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::ServeDir;
+
+/// The configs folder's shared components folder (spec 090); a change in it reaches every app.
+pub const SHARED_COMPONENTS: &str = "components";
 
 /// How many events a client's `.events.ndjson` keeps, newest last.
 pub const EVENTS_KEPT: usize = 10_000;
@@ -47,6 +54,8 @@ pub struct Settings {
     pub dist: PathBuf,
     /// The address to listen on.
     pub listen: String,
+    /// How long the configs folder must be quiet after a change before apps reload.
+    pub debounce: Duration,
 }
 
 impl Default for Settings {
@@ -56,12 +65,14 @@ impl Default for Settings {
             state: "state".into(),
             dist: "apps/web/dist".into(),
             listen: "127.0.0.1:8080".into(),
+            debounce: Duration::from_millis(150),
         }
     }
 }
 
 impl Settings {
-    /// Reads `--configs DIR`, `--state DIR`, `--dist DIR`, and `--listen ADDRESS`, each optional.
+    /// Reads `--configs DIR`, `--state DIR`, `--dist DIR`, `--listen ADDRESS`, and `--debounce MS`,
+    /// each optional.
     /// It listens on `127.0.0.1:8080` unless told otherwise.
     pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Settings, String> {
         let mut settings = Settings::default();
@@ -73,6 +84,13 @@ impl Settings {
                 "--state" => settings.state = value()?.into(),
                 "--dist" => settings.dist = value()?.into(),
                 "--listen" => settings.listen = value()?,
+                "--debounce" => {
+                    let ms = value()?;
+                    let ms = ms
+                        .parse()
+                        .map_err(|_| format!("--debounce takes milliseconds, not {ms}"))?;
+                    settings.debounce = Duration::from_millis(ms);
+                }
                 _ => {
                     return Err(format!(
                         "unknown option {flag}; serve takes --configs, --state, --dist, and --listen"
@@ -84,9 +102,89 @@ impl Settings {
     }
 }
 
-/// All of serve's routes, over `settings`.
+/// What serve's routes share: the settings, and the news of which app's files changed.
+struct Server {
+    settings: Settings,
+    /// An app's name each time its files change (`*` for a change outside any one app's folder).
+    changes: broadcast::Sender<String>,
+}
+
+/// Keeps the configs folder watched for as long as it's held. Dropping it stops hot reload.
+pub struct Watching(#[allow(dead_code)] notify::RecommendedWatcher);
+
+/// serve's routes, with hot reload ([spec 060](../../../specs/060_hot_reload.md)): the configs
+/// folder is watched, and once it's been quiet for `settings.debounce` after a change, every open
+/// config stream of each app that changed gets the app's new config, or its problems.
+///
+/// Must be called inside a Tokio runtime. Fails if the configs folder can't be watched.
+pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String> {
+    settings.configs = settings
+        .configs
+        .canonicalize()
+        .map_err(|e| format!("configs folder {}: {e}", settings.configs.display()))?;
+    let (configs, debounce) = (settings.configs.clone(), settings.debounce);
+    let server = Arc::new(Server {
+        settings,
+        changes: broadcast::channel(64).0,
+    });
+    let (paths, mut changed) = tokio::sync::mpsc::unbounded_channel::<PathBuf>();
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        // Reading a file to reload it is an access, not a change; counting it would reload forever.
+        if let Some(event) = event.ok().filter(|e| !e.kind.is_access()) {
+            for path in event.paths {
+                let _ = paths.send(path);
+            }
+        }
+    })
+    .map_err(|e| format!("can't watch the configs folder: {e}"))?;
+    notify::Watcher::watch(&mut watcher, &configs, notify::RecursiveMode::Recursive)
+        .map_err(|e| format!("can't watch {}: {e}", configs.display()))?;
+    let changes = server.changes.clone();
+    tokio::spawn(async move {
+        while let Some(first) = changed.recv().await {
+            let mut apps = BTreeSet::from([app_of(&configs, &first)]);
+            // Editors and file servers save in bursts: wait for the folder to go quiet.
+            loop {
+                match tokio::time::timeout(debounce, changed.recv()).await {
+                    Ok(Some(path)) => {
+                        apps.insert(app_of(&configs, &path));
+                    }
+                    Ok(None) => return,
+                    Err(_quiet) => break,
+                }
+            }
+            for app in apps {
+                let _ = changes.send(app);
+            }
+        }
+    });
+    Ok((routes(server), Watching(watcher)))
+}
+
+/// Which app a changed path belongs to: the first folder under the configs folder, or `*` when
+/// it's outside any app's folder, or in the shared `components/` folder every app may use
+/// (spec 090).
+fn app_of(configs: &Path, path: &Path) -> String {
+    let first = path
+        .strip_prefix(configs)
+        .ok()
+        .and_then(|rest| rest.components().next());
+    match first.and_then(|c| c.as_os_str().to_str()) {
+        Some(name) if plain(name) && name != SHARED_COMPONENTS => name.to_string(),
+        _ => "*".to_string(),
+    }
+}
+
+/// serve's routes, without hot reload: each config stream sends the app once.
 pub fn router(settings: Settings) -> Router {
-    let bundle = ServeDir::new(&settings.dist);
+    routes(Arc::new(Server {
+        settings,
+        changes: broadcast::channel(1).0,
+    }))
+}
+
+fn routes(server: Arc<Server>) -> Router {
+    let bundle = ServeDir::new(&server.settings.dist);
     Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/", get(list))
@@ -96,10 +194,10 @@ pub fn router(settings: Settings) -> Router {
         .route("/api/{app}/config", get(config))
         .route("/api/{app}/mirror", post(mirror))
         .nest_service("/_genesis", bundle)
-        .with_state(Arc::new(settings))
+        .with_state(server)
 }
 
-type Shared = State<Arc<Settings>>;
+type Shared = State<Arc<Server>>;
 
 /// A refusal: its status, and a message saying why. It becomes the response as it is.
 type Refusal = (StatusCode, String);
@@ -148,8 +246,8 @@ fn app_names(settings: &Settings) -> Vec<String> {
     names
 }
 
-async fn list(State(settings): Shared) -> Html<String> {
-    let names = app_names(&settings);
+async fn list(State(server): Shared) -> Html<String> {
+    let names = app_names(&server.settings);
     // Names are plain (letters, digits, _ and -), so they're safe in HTML as they are.
     let items: String = names
         .iter()
@@ -165,9 +263,10 @@ async fn list(State(settings): Shared) -> Html<String> {
     ))
 }
 
-async fn status(State(settings): Shared) -> Json<Value> {
+async fn status(State(server): Shared) -> Json<Value> {
+    let settings = &server.settings;
     let mut apps = serde_json::Map::new();
-    for name in app_names(&settings) {
+    for name in app_names(settings) {
         let report = match load(&settings.configs.join(&name).join("app.toml")).await {
             Ok(_) => serde_json::json!({ "status": "loaded" }),
             Err(problems) => {
@@ -179,8 +278,9 @@ async fn status(State(settings): Shared) -> Json<Value> {
     Json(serde_json::json!({ "apps": apps }))
 }
 
-async fn page(State(settings): Shared, UrlPath(name): UrlPath<String>) -> Response {
-    if let Err(refused) = app_dir(&settings, &name) {
+async fn page(State(server): Shared, UrlPath(name): UrlPath<String>) -> Response {
+    let settings = &server.settings;
+    if let Err(refused) = app_dir(settings, &name) {
         return refused.into_response();
     }
     match tokio::fs::read_to_string(settings.dist.join("index.html")).await {
@@ -192,29 +292,50 @@ async fn page(State(settings): Shared, UrlPath(name): UrlPath<String>) -> Respon
     }
 }
 
-async fn config(State(settings): Shared, UrlPath(name): UrlPath<String>) -> Response {
-    let dir = match app_dir(&settings, &name) {
-        Ok(dir) => dir,
+async fn config(State(server): Shared, UrlPath(name): UrlPath<String>) -> Response {
+    let file = match app_dir(&server.settings, &name) {
+        Ok(dir) => dir.join("app.toml"),
         Err(refused) => return refused.into_response(),
     };
-    let event = match load(&dir.join("app.toml")).await {
+    // Listen before the first load, so a change during it isn't missed.
+    let news = BroadcastStream::new(server.changes.subscribe());
+    let first = {
+        let file = file.clone();
+        stream::once(async move { app_event(&file).await })
+    };
+    // After the first event the stream stays open: a closed stream would make the browser
+    // reconnect and ask again every few seconds. Each change to this app sends it again.
+    let later = news.filter_map(move |news| {
+        let (file, name) = (file.clone(), name.clone());
+        async move {
+            match news {
+                Ok(app) if app != name && app != "*" => None,
+                // Ok for this app, or a lag that may have dropped news for it: send it again.
+                _ => Some(app_event(&file).await),
+            }
+        }
+    });
+    Sse::new(first.chain(later).map(Ok::<_, Infallible>)).into_response()
+}
+
+/// The event an app's file makes now: `config` with the app, or `problems`.
+async fn app_event(file: &Path) -> Event {
+    match load(file).await {
         Ok(app) => Event::default()
             .event("config")
             .data(serde_json::to_string(&app).unwrap_or_default()),
         Err(problems) => Event::default().event("problems").data(problems),
-    };
-    // One event, then the stream stays open: a closed stream would make the browser reconnect
-    // and ask again every few seconds. Hot reload (spec 060) sends more events on it.
-    let events: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
-        Box::pin(stream::once(async move { Ok(event) }).chain(stream::pending()));
-    Sse::new(events).into_response()
+    }
 }
 
 /// Loads an app, or says what's wrong with it, one problem per line as `app.toml:LINE:COLUMN: ...`.
 async fn load(file: &Path) -> Result<App, String> {
     let text = tokio::fs::read_to_string(file)
         .await
-        .map_err(|e| format!("app.toml: {e}"))?;
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => "app.toml not found".to_string(),
+            _ => format!("app.toml: {e}"),
+        })?;
     App::from_toml(&text).map_err(|problems| {
         let lines: Vec<String> = problems
             .iter()
@@ -228,11 +349,12 @@ async fn load(file: &Path) -> Result<App, String> {
 }
 
 async fn mirror(
-    State(settings): Shared,
+    State(server): Shared,
     UrlPath(name): UrlPath<String>,
     Json(body): Json<Value>,
 ) -> Response {
-    if let Err(refused) = app_dir(&settings, &name) {
+    let settings = &server.settings;
+    if let Err(refused) = app_dir(settings, &name) {
         return refused.into_response();
     }
     let client = body["client"].as_str().unwrap_or_default();

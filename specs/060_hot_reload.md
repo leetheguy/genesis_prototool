@@ -13,7 +13,8 @@ live reload (PurpleFlow spec 090), applied to screens.
 `serve` watches the configs folder (`notify`). A change reloads every app it touches: a file in
 `configs/{app}/` reloads that app, and a shared partial in `configs/components/` reloads every app that
 uses it. Editors and file servers save in bursts, so a reload waits until the files have been quiet
-for `GENESIS_DEBOUNCE_MS` (default `150`).
+for `--debounce` milliseconds (default `150`). A change in `configs/components/`, or anywhere outside an
+app's folder, reloads every app. Reading a file to reload it doesn't count as a change.
 
 ## Loading
 
@@ -50,7 +51,7 @@ write through `/fs/`, an agent checks `/status` to know whether its change took.
 
 Milestone two ([999](999_todo.md)):
 
-- [ ] `serve`: watch the configs folder, debounced, and push each app's new config (or its problems) on its open streams
+- [x] `serve`: watch the configs folder, debounced, and push each app's new config (or its problems) on its open streams
 - [x] core: carry the state across a new config (kept, new, and removed variables; [050](050_state.md), "Across a config reload")
 - [ ] the renderer: swap in a good config live; show a bad one's problems in a banner over the last good screen
 - [ ] deployed check: edit the hello app while the browser is open, and watch it change
