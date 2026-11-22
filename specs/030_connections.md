@@ -117,4 +117,4 @@ Milestone two ([999](999_todo.md)):
 - [x] core: the `call` step: a call effect for the host, the reply resuming the list, `.ok`/`.failed`/`.{status}` events, `into`, `select`, and `event`
 - [x] `serve`: `POST /api/{app}/call` makes the request (`reqwest`), with `{{ creds.NAME }}` from `GENESIS_CREDS_NAME`, redacted from failures; only declared operations
 - [x] the browser: send calls to `serve` and hand replies back; `genesis-bench --mock`
-- [ ] deployed check: the hello app (or a contacts sample) lists and creates records against a mock API, and against a PurpleFlow webhook when one is reachable
+- [x] deployed check: the contacts sample lists and creates records against a mock API, and pings a PurpleFlow webhook when one is reachable (`tests/deployed/calls.mjs`)

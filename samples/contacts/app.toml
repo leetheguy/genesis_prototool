@@ -1,0 +1,57 @@
+# Milestone two's calls app: a contacts list from an API (with a credential serve holds), adding a
+# contact, and a ping to a real PurpleFlow webhook. The API is tests/deployed/mock-api.mjs:
+#   node tests/deployed/mock-api.mjs 4010 test-token &
+#   GENESIS_CREDS_CONTACTS_TOKEN=test-token cargo run -p genesis-serve -- --configs samples
+# then open http://127.0.0.1:8080/contacts/. scripts/check-hello.sh does all that headless.
+
+[app]
+name = "Contacts"
+
+[state]
+pong = ""
+
+[connections.api]
+base_url = "http://127.0.0.1:4010"
+headers = { Authorization = "Bearer {{ creds.CONTACTS_TOKEN }}" }
+
+[connections.api.crud.contacts]
+
+[connections.pf]
+base_url = "http://127.0.0.1:4002/hooks"
+
+[connections.pf.ops.ping]
+method = "POST"
+path = "/ping"
+
+[sources.contacts]
+call = "api.contacts.list"
+select = "/rows"
+
+[[body]]
+type = "stack"
+
+[[body.children]]
+type = "heading"
+text = "Contacts"
+
+[[body.children]]
+type = "text"
+text = "Contacts: {{ app.contacts }}"
+
+[[body.children]]
+type = "button"
+id = "add_btn"
+label = "Add Ada"
+
+[[body.children]]
+type = "button"
+id = "ping_btn"
+label = "Ping PurpleFlow"
+
+[[body.children]]
+type = "text"
+text = "PurpleFlow says: {{ app.pong }}"
+
+[on]
+"add_btn.click" = [{ call = "api.contacts.create", params = { name = "Ada" } }, { reload = ["app.contacts"] }]
+"ping_btn.click" = [{ call = "pf.ping", params = { text = "ping" }, into = { "app.pong" = "" } }]
