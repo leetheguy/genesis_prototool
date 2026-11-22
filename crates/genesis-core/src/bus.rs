@@ -26,7 +26,7 @@
 use crate::config::{App, Handler, Node, Step, body_place, child_place};
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 /// Something the machine needs its host to do, since the machine itself does no IO.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +36,53 @@ pub enum Effect {
         /// The message.
         text: String,
     },
+    /// Make a call to an operation, and answer it with [`Machine::reply`].
+    Call(Call),
+}
+
+/// A call for the host to make ([spec 030](../../../specs/030_connections.md)). The machine only
+/// names the operation: the host that holds the credentials (serve) looks up its method and URL
+/// in the app's own config, so a call can never reach anything the config doesn't declare.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Call {
+    /// Answer with this, in [`Machine::reply`].
+    pub id: u64,
+    /// The operation's name: `crm.contacts.list`.
+    pub op: String,
+    /// Its params, templates filled in.
+    pub params: Value,
+    /// Its headers, with `app.*` and `sys.*` templates filled in and `{{ creds.NAME }}` left for
+    /// the host to fill.
+    pub headers: BTreeMap<String, String>,
+}
+
+/// How a call came out.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Reply {
+    /// The API answered: its status, and its body as JSON (`null` when it sent none).
+    Response {
+        /// The HTTP status.
+        status: u16,
+        /// The body.
+        body: Value,
+    },
+    /// No answer to read: a timeout, a refused connection, a body that isn't JSON, a credential that
+    /// isn't set. Says what went wrong, with no secrets in it.
+    Failed(String),
+}
+
+/// A run waiting on a call.
+struct Waiting {
+    run: Run,
+    op: String,
+    into: BTreeMap<String, String>,
+    event: Option<String>,
+}
+
+/// Why settling a reply failed, and whether a `.failed` event already says so.
+struct CallFailed {
+    message: String,
+    reported: bool,
 }
 
 /// A list of steps being run, which can wait on a timer and carry on later.
@@ -84,6 +131,10 @@ pub struct Machine {
     queue: VecDeque<Queued>,
     /// What the host must do, gathered while the queue runs.
     effects: Vec<Effect>,
+    /// Runs waiting on calls, by call id.
+    waiting: BTreeMap<u64, Waiting>,
+    /// The next call's id.
+    next_call: u64,
     /// Waiting runs and repeating events, in the order they were set.
     timers: Vec<Timer>,
     /// Trail entries kept for [`Machine::take_tapped`], once [`Machine::tap`] is called.
@@ -133,6 +184,8 @@ impl Machine {
             state,
             queue: VecDeque::new(),
             effects: Vec::new(),
+            waiting: BTreeMap::new(),
+            next_call: 1,
             timers: Vec::new(),
             tapped: None,
             now: 0,
@@ -158,6 +211,29 @@ impl Machine {
             .collect();
         (self.app, self.handlers, self.fires) = (app, handlers, fires);
         self.fire("config.loaded", json!({}))
+    }
+
+    /// Hands the machine the reply to call `id`, and handles everything that follows: `OP.ok`
+    /// and `OP.{status}` (and the reply's own event, with `event`) and the list carrying on, or
+    /// `OP.failed` and the list stopping. Returns what the host must do as a result.
+    pub fn reply(&mut self, id: u64, reply: Reply) -> Vec<Effect> {
+        match self.waiting.remove(&id) {
+            None => {
+                let message = format!("a reply came for call {id}, which isn't waiting");
+                self.fail(json!({ "name": "reply.unknown", "message": message }), true);
+            }
+            Some(Waiting {
+                run,
+                op,
+                into,
+                event,
+            }) => match self.settle(&run.event, &op, &into, event.as_deref(), reply) {
+                Ok(()) => self.execute(run),
+                Err(failed) => self.unwind(run, None, failed.message, failed.reported),
+            },
+        }
+        self.drain();
+        std::mem::take(&mut self.effects)
     }
 
     /// Fires `app.opened`, and handles everything that follows from it.
@@ -333,6 +409,33 @@ impl Machine {
                     id,
                     with,
                 } => self.every(*every, fire, id, with, &run.event),
+                Step::Call { call, params, .. } => {
+                    match self.begin_call(call, params, &run.event) {
+                        Ok(call) => {
+                            let Step::Call {
+                                call: op,
+                                into,
+                                event,
+                                ..
+                            } = step
+                            else {
+                                unreachable!()
+                            };
+                            self.waiting.insert(
+                                call.id,
+                                Waiting {
+                                    run,
+                                    op,
+                                    into,
+                                    event,
+                                },
+                            );
+                            self.effects.push(Effect::Call(call));
+                            return;
+                        }
+                        Err(message) => Err(message),
+                    }
+                }
                 Step::Cancel { cancel } => {
                     self.timers
                         .retain(|t| t.id.as_deref() != Some(cancel.as_str()));
@@ -341,7 +444,7 @@ impl Machine {
                 other => self.run_step(other, &run.event),
             };
             if let Err(message) = result {
-                return self.unwind(run, &step, message);
+                return self.unwind(run, Some(&step), message, false);
             }
         }
     }
@@ -390,11 +493,12 @@ impl Machine {
     }
 
     /// Stops a run whose `step` failed. Every custom action it was inside fires `NAME.failed`
-    /// with the error, innermost first; so does an action that couldn't start. A failure no
-    /// action reported is logged under the event's name, and toasted.
-    fn unwind(&mut self, run: Run, step: &Step, message: String) {
+    /// with the error, innermost first; so does an action that couldn't start. A failure nothing
+    /// reported (no action, and no `.failed` event already, as a failed call fires) is logged
+    /// under the event's name, and toasted.
+    fn unwind(&mut self, run: Run, step: Option<&Step>, message: String, reported: bool) {
         let starting = match step {
-            Step::Run(name) => Some(name.clone()),
+            Some(Step::Run(name)) => Some(name.clone()),
             _ => None,
         };
         let actions: Vec<String> = starting
@@ -408,9 +512,112 @@ impl Machine {
                 &run.event,
             );
         }
-        if actions.is_empty() {
+        if actions.is_empty() && !reported {
             self.fail(json!({ "name": run.event.name, "message": message }), true);
         }
+    }
+
+    /// Makes the call a `call` step asks for: the operation must be declared, and every template
+    /// in its params must have a value.
+    fn begin_call(
+        &mut self,
+        op: &str,
+        params: &Map<String, Value>,
+        event: &Queued,
+    ) -> Result<Call, String> {
+        let operation = self
+            .app
+            .operation(op)
+            .ok_or_else(|| format!("there's no operation named {op}"))?;
+        let params = template::value(&Value::Object(params.clone()), |path| {
+            self.look(path, Some(event))
+        })?;
+        // Credentials are the host's to fill, so their templates pass through as they are.
+        let fill = |path: &str| match path.strip_prefix("creds.") {
+            Some(_) => Some(json!(format!("{{{{ {path} }}}}"))),
+            None => self.look(path, Some(event)),
+        };
+        let headers = operation
+            .headers
+            .iter()
+            .map(|(k, v)| (k.clone(), template::text(v, fill)))
+            .collect();
+        let id = self.next_call;
+        self.next_call += 1;
+        Ok(Call {
+            id,
+            op: op.to_string(),
+            params,
+            headers,
+        })
+    }
+
+    /// Turns a reply into events and variables. A good reply fills `into`, then fires `OP.ok`,
+    /// `OP.{status}`, and the reply's own event; a bad one fires `OP.failed` (and `OP.{status}`).
+    fn settle(
+        &mut self,
+        cause: &Queued,
+        op: &str,
+        into: &BTreeMap<String, String>,
+        event: Option<&str>,
+        reply: Reply,
+    ) -> Result<(), CallFailed> {
+        let (status, body) = match reply {
+            Reply::Failed(message) => {
+                self.enqueue(&format!("{op}.failed"), json!({ "error": message }), cause);
+                return Err(CallFailed {
+                    message,
+                    reported: true,
+                });
+            }
+            Reply::Response { status, body } => (status, body),
+        };
+        if !(200..300).contains(&status) {
+            let text: String = text_of(&body).chars().take(500).collect();
+            let message = format!("HTTP {status}: {text}");
+            self.enqueue(
+                &format!("{op}.failed"),
+                json!({ "status": status, "body": body, "error": message }),
+                cause,
+            );
+            self.enqueue(
+                &format!("{op}.{status}"),
+                json!({ "status": status, "body": body }),
+                cause,
+            );
+            return Err(CallFailed {
+                message,
+                reported: true,
+            });
+        }
+        let at = |pointer: &str| {
+            body.pointer(pointer).cloned().ok_or_else(|| CallFailed {
+                message: format!("nothing at {pointer} in the reply to {op}"),
+                reported: false,
+            })
+        };
+        let values = into
+            .iter()
+            .map(|(var, pointer)| Ok((var.clone(), at(pointer)?)))
+            .collect::<Result<Vec<_>, CallFailed>>()?;
+        let branch = event
+            .map(|pointer| at(pointer).map(|v| text_of(&v)))
+            .transpose()?;
+        let payload = json!({ "status": status, "body": body });
+        for name in ["ok".to_string(), status.to_string()]
+            .into_iter()
+            .chain(branch)
+        {
+            self.enqueue(&format!("{op}.{name}"), payload.clone(), cause);
+        }
+        for (var, value) in values {
+            self.write(&var, value, cause)
+                .map_err(|message| CallFailed {
+                    message,
+                    reported: false,
+                })?;
+        }
+        Ok(())
     }
 
     /// Runs one built-in step that neither pauses nor nests.

@@ -15,7 +15,7 @@
 //! Leptos terms in a few words: a *view* is a piece of the page; a *signal* is a value the page
 //! watches, so whatever read it redraws when it changes.
 
-use genesis_core::bus::{Effect, Machine};
+use genesis_core::bus::{Call, Effect, Machine, Reply};
 use genesis_core::config::{App, Node, body_place, child_place};
 use genesis_core::template;
 use leptos::prelude::*;
@@ -39,6 +39,8 @@ pub struct Host {
     config: RwSignal<()>,
     /// The latest bad config's problems, shown over the last good screen.
     problems: RwSignal<Option<String>>,
+    /// Calls waiting for the host to make them.
+    calls: Arc<Mutex<Vec<Call>>>,
     /// Whether the first mirror has been taken.
     mirrored: Arc<AtomicBool>,
 }
@@ -54,6 +56,7 @@ impl Host {
             toasts: RwSignal::new(Vec::new()),
             config: RwSignal::new(()),
             problems: RwSignal::new(None),
+            calls: Arc::new(Mutex::new(Vec::new())),
             mirrored: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -118,11 +121,30 @@ impl Host {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Calls the machine is waiting on, oldest first, for the host to make and answer with
+    /// [`Host::reply`].
+    pub fn take_calls(&self) -> Vec<Call> {
+        std::mem::take(&mut *self.calls.lock().unwrap_or_else(|p| p.into_inner()))
+    }
+
+    /// Hands the machine the reply to call `id`.
+    pub fn reply(&self, id: u64, reply: Reply) {
+        let effects = self.machine().reply(id, reply);
+        self.after(effects);
+    }
+
     fn after(&self, effects: Vec<Effect>) {
-        let texts: Vec<String> = effects
-            .into_iter()
-            .map(|Effect::Toast { text }| text)
-            .collect();
+        let mut texts = Vec::new();
+        for effect in effects {
+            match effect {
+                Effect::Toast { text } => texts.push(text),
+                Effect::Call(call) => self
+                    .calls
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .push(call),
+            }
+        }
         if !texts.is_empty() {
             self.toasts.update(|toasts| toasts.extend(texts));
         }

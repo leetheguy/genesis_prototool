@@ -30,7 +30,10 @@ fn errors(m: &Machine) -> Vec<Value> {
 fn toasts(effects: &[Effect]) -> Vec<String> {
     effects
         .iter()
-        .map(|Effect::Toast { text }| text.clone())
+        .filter_map(|e| match e {
+            Effect::Toast { text } => Some(text.clone()),
+            _ => None,
+        })
         .collect()
 }
 

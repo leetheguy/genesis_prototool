@@ -102,8 +102,14 @@ fn report(out: &mut impl Write, machine: &mut Machine, effects: Vec<Effect>) {
     for entry in machine.take_tapped() {
         print_line(out, &entry);
     }
-    for Effect::Toast { text } in effects {
-        print_line(out, &json!({ "toast": text }));
+    for effect in effects {
+        match effect {
+            Effect::Toast { text } => print_line(out, &json!({ "toast": text })),
+            Effect::Call(call) => print_line(
+                out,
+                &json!({ "call": { "id": call.id, "op": call.op, "params": call.params } }),
+            ),
+        }
     }
 }
 

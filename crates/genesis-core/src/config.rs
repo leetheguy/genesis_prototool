@@ -260,6 +260,20 @@ pub enum Step {
         /// The `id`.
         cancel: String,
     },
+    /// Calls an operation and waits for the reply ([spec 030](../../../specs/030_connections.md)).
+    Call {
+        /// The operation: `connection.op` or `connection.resource.action`.
+        call: String,
+        /// Its params; values may be templates.
+        #[serde(skip_serializing_if = "Map::is_empty")]
+        params: Map<String, Value>,
+        /// Variables to fill from the reply, each from a JSON Pointer into its body (`""` is all of it).
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        into: BTreeMap<String, String>,
+        /// A JSON Pointer to a value in the reply that names one more event to fire.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        event: Option<String>,
+    },
 }
 
 /// A problem found loading an app, with where it is when that's known.
@@ -558,8 +572,8 @@ fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
 
 /// The step kinds, keyed by the TOML key that names each one. `every` comes before `fire`
 /// because an `every` step has a `fire` key too.
-const STEP_KINDS: [&str; 9] = [
-    "every", "set", "step", "toggle", "go", "fire", "log", "delay", "cancel",
+const STEP_KINDS: [&str; 10] = [
+    "call", "every", "set", "step", "toggle", "go", "fire", "log", "delay", "cancel",
 ];
 
 impl<'de> Deserialize<'de> for Step {
@@ -639,6 +653,15 @@ impl<'de> Deserialize<'de> for Step {
                     with: s.with,
                 }
             }
+            "call" => {
+                let s: steps::Call = serde_json::from_value(fields).map_err(wrong)?;
+                Step::Call {
+                    call: s.call,
+                    params: s.params,
+                    into: s.into,
+                    event: s.event,
+                }
+            }
             _ => Step::Cancel {
                 cancel: serde_json::from_value::<steps::Cancel>(fields)
                     .map_err(wrong)?
@@ -711,6 +734,17 @@ mod steps {
         pub id: Option<String>,
         #[serde(default)]
         pub with: Map<String, Value>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Call {
+        pub call: String,
+        #[serde(default)]
+        pub params: Map<String, Value>,
+        #[serde(default)]
+        pub into: std::collections::BTreeMap<String, String>,
+        pub event: Option<String>,
     }
 
     #[derive(Deserialize)]
