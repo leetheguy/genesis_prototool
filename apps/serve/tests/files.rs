@@ -212,3 +212,22 @@ async fn an_empty_agent_token_keeps_fs_shut() {
         .unwrap();
     assert_eq!(send(settings, request).await.0, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn the_folder_root_with_its_slash_is_behind_the_token_and_reaches_dufs() {
+    let seen: Arc<Mutex<Vec<Value>>> = Arc::default();
+    let bare = Request::get("/fs/").body(Body::empty()).unwrap();
+    assert_eq!(
+        send(settings(seen.clone()).await, bare).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let with = Request::get("/fs/")
+        .header("authorization", "Bearer agent-secret")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        send(settings(seen.clone()).await, with).await.0,
+        StatusCode::CREATED
+    );
+    assert_eq!(seen.lock().unwrap()[0]["uri"], "/fs/");
+}

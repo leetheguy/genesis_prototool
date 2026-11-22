@@ -96,7 +96,14 @@ try {
   expect("the files service has a credential in its environment", !filesEnv.includes("GENESIS_CREDS") && !filesEnv.includes("credential-value"));
 
   // dufs isn't published on the host.
-  expect("dufs is published on a host port", compose("port", "files", "5000").trim() === "");
+  // `compose port` fails when the port isn't published, which is what's wanted here.
+  let published;
+  try {
+    published = compose("port", "files", "5000").trim();
+  } catch {
+    published = "";
+  }
+  expect(`dufs is published on the host at ${published}`, published === "");
 
   console.log("ok: /fs/ needs the token; an app written there went live; the mirror reads but doesn't write; serve can't write configs; files holds no credentials and isn't published");
 } catch (error) {

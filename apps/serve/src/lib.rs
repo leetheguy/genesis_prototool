@@ -288,6 +288,8 @@ fn routes(server: Arc<Server>) -> Router {
         .route("/api/{app}/mirror", post(mirror))
         .route("/api/{app}/call", post(call))
         .route("/fs", any(files))
+        // `/fs/{*rest}` needs something after the slash, and the folder root is what agents list first.
+        .route("/fs/", any(files))
         .route("/fs/{*rest}", any(files))
         .nest_service("/_genesis", bundle)
         .with_state(server)
