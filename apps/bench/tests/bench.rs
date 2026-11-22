@@ -168,3 +168,110 @@ fn a_line_it_cant_read_fails_naming_the_line() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("line 2"), "{stderr}");
 }
+
+const CALLS: &str = r#"
+[app]
+name = "Calls"
+
+[connections.api]
+base_url = "http://api"
+
+[connections.api.ops.hi]
+method = "GET"
+path = "/hi"
+
+[sources.greeting]
+call = "api.hi"
+select = "/text"
+"#;
+
+fn bench_with_mocks(app: &std::path::Path, mocks: &str, stdin: &str) -> Output {
+    let file = app.join("mocks.toml");
+    std::fs::write(&file, mocks).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_genesis-bench"))
+        .arg(app)
+        .arg("--mock")
+        .arg(&file)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn a_mock_answers_a_call() {
+    let app = AppDir::new("mock", CALLS);
+    let out = bench_with_mocks(
+        &app.0,
+        "[[mock]]\nop = \"api.hi\"\nbody = { text = \"hello\" }\n",
+        "",
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let lines = lines(&out);
+    assert!(lines.iter().any(|l| l["name"] == "api.hi.ok"));
+    assert_eq!(lines.last().unwrap()["state"]["app"]["greeting"], "hello");
+}
+
+#[test]
+fn a_mock_can_answer_with_a_status_or_a_failure() {
+    let app = AppDir::new("mockfail", CALLS);
+    let out = bench_with_mocks(
+        &app.0,
+        "[[mock]]\nop = \"api.hi\"\nstatus = 503\nbody = { error = \"down\" }\n",
+        "",
+    );
+    assert!(lines(&out).iter().any(|l| l["name"] == "api.hi.503"));
+    let out = bench_with_mocks(
+        &app.0,
+        "[[mock]]\nop = \"api.hi\"\nerror = \"refused\"\n",
+        "",
+    );
+    assert!(
+        lines(&out)
+            .iter()
+            .any(|l| l["name"] == "api.hi.failed" && l["payload"]["error"] == "refused")
+    );
+}
+
+#[test]
+fn a_call_with_no_mock_fails_saying_so() {
+    let app = AppDir::new("nomock", CALLS);
+    let out = bench_with_mocks(&app.0, "", "");
+    assert!(
+        lines(&out)
+            .iter()
+            .any(|l| l["payload"]["error"] == "the bench has no mock for api.hi")
+    );
+}
+
+#[test]
+fn without_mocks_calls_are_printed_and_left_waiting() {
+    let app = AppDir::new("nomocks", CALLS);
+    let out = bench(&app.0, "");
+    assert!(lines(&out).iter().any(|l| l["call"]["op"] == "api.hi"));
+}
+
+#[test]
+fn an_option_it_doesnt_know_shows_how_to_use_it() {
+    let app = AppDir::new("badflag", CALLS);
+    let out = Command::new(env!("CARGO_BIN_EXE_genesis-bench"))
+        .arg(&app.0)
+        .arg("--mocks")
+        .arg("x.toml")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("usage:"));
+}

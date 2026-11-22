@@ -25,6 +25,9 @@ use std::sync::{Arc, Mutex};
 
 mod components;
 
+/// Makes a call and answers it, as [`Host::set_caller`] takes it.
+type Caller = Arc<dyn Fn(Call) + Send + Sync>;
+
 /// One running app: its state machine, and the signals the screen redraws from.
 ///
 /// It's cheap to copy: every copy shares the same machine.
@@ -39,8 +42,10 @@ pub struct Host {
     config: RwSignal<()>,
     /// The latest bad config's problems, shown over the last good screen.
     problems: RwSignal<Option<String>>,
-    /// Calls waiting for the host to make them.
+    /// Calls waiting for a caller.
     calls: Arc<Mutex<Vec<Call>>>,
+    /// Whoever makes the calls, once there is one.
+    caller: Arc<Mutex<Option<Caller>>>,
     /// Whether the first mirror has been taken.
     mirrored: Arc<AtomicBool>,
 }
@@ -57,6 +62,7 @@ impl Host {
             config: RwSignal::new(()),
             problems: RwSignal::new(None),
             calls: Arc::new(Mutex::new(Vec::new())),
+            caller: Arc::new(Mutex::new(None)),
             mirrored: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -121,6 +127,17 @@ impl Host {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Hands every call the machine makes to `caller`, which makes it and answers with
+    /// [`Host::reply`]: the browser posts it to serve. Calls made before there was a caller go to
+    /// it at once, oldest first.
+    pub fn set_caller(&self, caller: impl Fn(Call) + Send + Sync + 'static) {
+        let caller: Caller = Arc::new(caller);
+        *self.caller.lock().unwrap_or_else(|p| p.into_inner()) = Some(caller.clone());
+        for call in self.take_calls() {
+            caller(call);
+        }
+    }
+
     /// Calls the machine is waiting on, oldest first, for the host to make and answer with
     /// [`Host::reply`].
     pub fn take_calls(&self) -> Vec<Call> {
@@ -138,11 +155,22 @@ impl Host {
         for effect in effects {
             match effect {
                 Effect::Toast { text } => texts.push(text),
-                Effect::Call(call) => self
-                    .calls
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .push(call),
+                Effect::Call(call) => {
+                    // Cloned out first, so the caller runs with no lock held.
+                    let caller = self
+                        .caller
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .clone();
+                    match caller {
+                        Some(caller) => caller(call),
+                        None => self
+                            .calls
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .push(call),
+                    }
+                }
             }
         }
         if !texts.is_empty() {

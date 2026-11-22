@@ -116,5 +116,5 @@ Milestone two ([999](999_todo.md)):
 - [x] core: `[connections.*]` config types: `base_url`, `headers`, `timeout`, `ops`, and `crud` (both styles) expanded into operations
 - [x] core: the `call` step: a call effect for the host, the reply resuming the list, `.ok`/`.failed`/`.{status}` events, `into`, `select`, and `event`
 - [x] `serve`: `POST /api/{app}/call` makes the request (`reqwest`), with `{{ creds.NAME }}` from `GENESIS_CREDS_NAME`, redacted from failures; only declared operations
-- [ ] the browser: send calls to `serve` and hand replies back; `genesis-bench --mock`
+- [x] the browser: send calls to `serve` and hand replies back; `genesis-bench --mock`
 - [ ] deployed check: the hello app (or a contacts sample) lists and creates records against a mock API, and against a PurpleFlow webhook when one is reachable

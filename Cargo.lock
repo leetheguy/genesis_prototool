@@ -643,7 +643,9 @@ name = "genesis-bench"
 version = "0.1.0"
 dependencies = [
  "genesis-core",
+ "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]

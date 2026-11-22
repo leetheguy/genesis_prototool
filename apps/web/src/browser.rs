@@ -1,5 +1,6 @@
 //! The browser side: the address, the config stream, the clock, and the mirror.
 
+use genesis_core::bus::Reply;
 use genesis_core::config::App;
 use genesis_ui::{Host, app_view};
 use leptos::leptos_dom::helpers::set_interval;
@@ -68,10 +69,69 @@ fn run(app: App, name: String) -> Host {
     let host = Host::new(app);
     let drawn = host.clone();
     leptos::mount::mount_to_body(move || app_view(drawn.clone()));
+    caller(host.clone(), name.clone());
     host.open();
     clock(host.clone());
     mirror(host.clone(), name);
     host
+}
+
+/// Makes the machine's calls through serve, and hands each answer back.
+fn caller(host: Host, name: String) {
+    let url = format!("/api/{name}/call");
+    let replies = host.clone();
+    host.set_caller(move |call| {
+        let (host, url) = (replies.clone(), url.clone());
+        leptos::task::spawn_local(async move {
+            let body = json!({ "op": call.op, "params": call.params, "headers": call.headers });
+            let reply = match fetch_json(&url, &body).await {
+                Ok((200, answer)) => reply_from(answer),
+                Ok((status, answer)) => Reply::Failed(format!(
+                    "serve refused the call to {} ({status}): {}",
+                    call.op, answer
+                )),
+                Err(why) => {
+                    Reply::Failed(format!("the call to {} didn't reach serve: {why}", call.op))
+                }
+            };
+            host.reply(call.id, reply);
+        });
+    });
+}
+
+/// serve's answer to a call: `{"status", "body"}`, or `{"error"}`.
+fn reply_from(answer: Value) -> Reply {
+    match (answer["status"].as_u64(), answer["error"].as_str()) {
+        (Some(status), _) => Reply::Response {
+            status: status as u16,
+            body: answer["body"].clone(),
+        },
+        (None, Some(error)) => Reply::Failed(error.to_string()),
+        (None, None) => Reply::Failed(format!("serve's answer made no sense: {answer}")),
+    }
+}
+
+/// POSTs `body` as JSON, and gives back the status and the answer (as JSON, or as text).
+async fn fetch_json(url: &str, body: &Value) -> Result<(u16, Value), String> {
+    let init = web_sys::RequestInit::new();
+    init.set_method("POST");
+    init.set_body(&body.to_string().into());
+    let headers = web_sys::Headers::new().map_err(|e| format!("{e:?}"))?;
+    let _ = headers.set("content-type", "application/json");
+    init.set_headers(&headers);
+    let response =
+        wasm_bindgen_futures::JsFuture::from(window().fetch_with_str_and_init(url, &init))
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+    let response: web_sys::Response = response.dyn_into().map_err(|e| format!("{e:?}"))?;
+    let text = response.text().map_err(|e| format!("{e:?}"))?;
+    let text = wasm_bindgen_futures::JsFuture::from(text)
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .as_string()
+        .unwrap_or_default();
+    let answer = serde_json::from_str(&text).unwrap_or(Value::String(text));
+    Ok((response.status(), answer))
 }
 
 /// Moves the machine's clock on with real time.

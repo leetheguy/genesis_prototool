@@ -131,8 +131,9 @@ the logic belongs behind the API, in PurpleFlow or wherever else.
 `{"fire": "NAME", "payload": {...}}` fires an event, and `{"advance": MS}` moves the clock on. After
 each line it prints every trail entry recorded (events with their handlers, and `log` lines) and any
 `{"toast": ...}`, one JSON object per line, and at the end `{"state": ...}`. An app that doesn't load
-exits `2`, each problem as `FILE:LINE:COLUMN: ...`; a script line it can't read exits `1`. Once calls
-exist, it answers them from a mock file (`--mock mocks.toml`: an operation, its status, and its body).
+exits `2`, each problem as `FILE:LINE:COLUMN: ...`; a script line it can't read exits `1`. Each call the app
+makes is printed as `{"call": ...}`; with `--mock mocks.toml` (`[[mock]]` tables of `op` and a `status` and
+`body`, or an `error`) it's answered at once, and a call with no mock fails saying so.
 
 ## Tests
 
