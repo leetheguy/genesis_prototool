@@ -8,8 +8,10 @@
 //!    event over the last good screen (or alone, before there is one),
 //! 3. makes the machine's calls through `POST /api/{app}/call` and hands each answer back
 //!    ([spec 030](../../../specs/030_connections.md)),
-//! 4. runs the machine's clock, so `delay` and `every` fire on time,
-//! 5. posts the mirror to `POST /api/{app}/mirror` whenever something has happened
+//! 4. keeps the session in local storage and brings it back on the next open
+//!    ([spec 050](../../../specs/050_state.md), "Persisting"),
+//! 5. runs the machine's clock, so `delay` and `every` fire on time,
+//! 6. posts the mirror to `POST /api/{app}/mirror` whenever something has happened
 //!    ([spec 050](../../../specs/050_state.md), "The mirror").
 //!
 //! Built natively, it's an empty program; everything here is for `wasm32`.

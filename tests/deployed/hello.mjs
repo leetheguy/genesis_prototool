@@ -83,9 +83,13 @@ try {
   if (clicks !== 3) fail(`the mirror's trail has ${clicks} clicks, not 3`);
   if (logs.join("|") !== "click number 1|click number 2|click number 3") fail(`the mirror's logs are ${JSON.stringify(logs)}`);
   if (!events.some((e) => e.name === "app.opened")) fail("the mirror's trail has no app.opened");
+  // The session is kept on this device: a reload of the page comes back where it left off.
+  await page.reload();
+  await page.getByText("Clicked 3 times").waitFor();
+
   if (consoleErrors.length) fail(`the browser logged errors: ${consoleErrors.join(" / ")}`);
 
-  if (!process.exitCode) console.log(`ok: 3 clicks counted on screen and mirrored to ${dir}`);
+  if (!process.exitCode) console.log(`ok: 3 clicks counted on screen, mirrored to ${dir}, and kept across a reload`);
 } catch (error) {
   fail(error.message);
 } finally {

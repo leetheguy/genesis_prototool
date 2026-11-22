@@ -70,10 +70,53 @@ fn run(app: App, name: String) -> Host {
     let drawn = host.clone();
     leptos::mount::mount_to_body(move || app_view(drawn.clone()));
     caller(host.clone(), name.clone());
+    restore(&host, &name);
     host.open();
+    keep(host.clone(), name.clone());
     clock(host.clone());
     mirror(host.clone(), name);
     host
+}
+
+/// Where this app's kept session lives in local storage.
+fn kept_key(name: &str) -> String {
+    format!("genesis.kept.{name}")
+}
+
+/// Brings back this device's kept session, if there is one (spec 050, "Persisting").
+fn restore(host: &Host, name: &str) {
+    let storage = window().local_storage().ok().flatten();
+    let Some(text) = storage.and_then(|s| s.get_item(&kept_key(name)).ok().flatten()) else {
+        return;
+    };
+    let kept = serde_json::from_str(&text).unwrap_or(Value::Null);
+    for note in host.restore(&kept) {
+        web_sys::console::warn_1(&format!("genesis: {note}").into());
+    }
+}
+
+/// Saves the kept session whenever it changes.
+fn keep(host: Host, name: String) {
+    let key = kept_key(&name);
+    let last = RefCell::new(String::new());
+    set_interval(
+        move || {
+            let kept = host.kept().to_string();
+            if *last.borrow() == kept {
+                return;
+            }
+            let saved = window()
+                .local_storage()
+                .ok()
+                .flatten()
+                .is_some_and(|s| s.set_item(&key, &kept).is_ok());
+            if !saved {
+                web_sys::console::warn_1(&"genesis: this browser won't keep the session".into());
+            }
+            *last.borrow_mut() = kept;
+        },
+        MIRROR_EVERY,
+    );
 }
 
 /// Makes the machine's calls through serve, and hands each answer back.

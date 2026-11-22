@@ -68,7 +68,8 @@ left it. The rule is simple: **what the user did is kept; what an API said is fe
 
 Credentials and session tokens are never in the browser at all ([070](070_secrets.md)).
 
-- Kept state lives in local storage, keyed by app, so each device has its own.
+- Kept state lives in local storage (`genesis.kept.{app}`), saved whenever it changes, so each device has its own.
+  A variable a reply's `into` filled last isn't kept; an action writing it makes it the user's again.
 - `[app] forget = ["scratch"]` marks app variables never to keep, for anything an app would rather start fresh.
 - A kept value whose variable no longer exists, or whose starting value now has a different JSON
   type, is dropped and the variable starts fresh. A note goes to the browser console.
@@ -152,4 +153,4 @@ start at their starting values. Removed variables are dropped. A source whose `c
 Milestone two ([999](999_todo.md)):
 
 - [x] core: `[sources.NAME]` as handlers: a call on `app.opened` (or `load_on`) and on its params' `.changed`, filling `app.NAME`; the `reload` action
-- [ ] core and the browser: persisting: what the user did kept in local storage and restored on open; sources and `into` results never kept; `[app] forget`
+- [x] core and the browser: persisting: what the user did kept in local storage and restored on open; sources and `into` results never kept; `[app] forget`

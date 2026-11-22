@@ -167,3 +167,16 @@ fn a_good_config_clears_the_problems() {
     });
     assert!(!out.contains("unknown field"), "{out}");
 }
+
+#[test]
+fn a_restored_session_draws_where_it_left_off() {
+    let kept = Owner::new().with(|| {
+        let host = Host::new(App::from_toml(HELLO).unwrap());
+        host.fire("hello_btn.click", json!({}));
+        host.kept()
+    });
+    let out = html(HELLO, |host| {
+        assert!(host.restore(&kept).is_empty());
+    });
+    assert!(out.contains("Clicked 1 times"), "{out}");
+}

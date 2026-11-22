@@ -93,6 +93,19 @@ impl Host {
         self.problems.set(Some(problems.to_string()));
     }
 
+    /// What this session keeps on the device ([`Machine::kept`]).
+    pub fn kept(&self) -> Value {
+        self.machine().kept()
+    }
+
+    /// Brings back a kept session before the app opens ([`Machine::restore`]), and redraws.
+    /// Returns notes on anything it couldn't bring back, for the host to log.
+    pub fn restore(&self, kept: &Value) -> Vec<String> {
+        let notes = self.machine().restore(kept);
+        self.changes.notify();
+        notes
+    }
+
     /// Fires `app.opened`.
     pub fn open(&self) {
         let effects = self.machine().open();
