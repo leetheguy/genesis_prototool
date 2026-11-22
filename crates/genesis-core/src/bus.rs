@@ -23,7 +23,7 @@
 //! assert_eq!(machine.get("sys.events").unwrap()[0]["log"], "hello");
 //! ```
 
-use crate::config::{App, Handler, Node, Step};
+use crate::config::{App, Handler, Node, Step, body_place, child_place};
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
@@ -121,7 +121,7 @@ impl Machine {
         let mut handlers = Vec::new();
         let mut node_events = Vec::new();
         for (i, node) in app.body.iter().enumerate() {
-            wire_node(node, &format!("body.{i}"), &mut handlers, &mut node_events);
+            wire_node(node, &body_place(i), &mut handlers, &mut node_events);
         }
         handlers.extend(app.on.iter().cloned());
         let fires = fires(&app, &handlers, node_events);
@@ -563,7 +563,7 @@ impl Machine {
 fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut Vec<String>) {
     match node {
         Node::Button(button) => {
-            let name = button.id.clone().unwrap_or_else(|| place.to_string());
+            let name = node.name(place);
             if button.id.is_some() || button.on_click.is_some() {
                 events.push(format!("{name}.click"));
             }
@@ -576,7 +576,7 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
         }
         Node::Stack(stack) => {
             for (i, child) in stack.children.iter().enumerate() {
-                wire_node(child, &format!("{place}.children.{i}"), handlers, events);
+                wire_node(child, &child_place(place, i), handlers, events);
             }
         }
         Node::Heading(_) | Node::Text(_) => {}

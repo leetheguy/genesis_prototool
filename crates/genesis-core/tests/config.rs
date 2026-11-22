@@ -253,3 +253,25 @@ fn a_heading_is_level_one_by_default() {
     };
     assert_eq!(heading.level, 1);
 }
+
+#[test]
+fn a_node_is_named_by_its_id() {
+    let app = hello();
+    let Node::Stack(stack) = &app.body[0] else {
+        panic!("expected a stack")
+    };
+    assert_eq!(stack.children[1].name("body.0.children.1"), "hello_btn");
+}
+
+#[test]
+fn a_node_without_an_id_is_named_by_its_place() {
+    let app = hello();
+    assert_eq!(
+        app.body[0].name(&genesis_core::config::body_place(0)),
+        "body.0"
+    );
+    assert_eq!(
+        genesis_core::config::child_place("body.0", 1),
+        "body.0.children.1"
+    );
+}

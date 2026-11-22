@@ -99,6 +99,35 @@ pub enum Node {
     Button(Button),
 }
 
+impl Node {
+    /// The node's `id`, if it has one.
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Node::Stack(n) => n.id.as_deref(),
+            Node::Heading(n) => n.id.as_deref(),
+            Node::Text(n) => n.id.as_deref(),
+            Node::Button(n) => n.id.as_deref(),
+        }
+    }
+
+    /// The name the node's events fire under: its `id`, or else its `place` in the tree, as
+    /// [`body_place`] and [`child_place`] write it. The bus and the renderer both name nodes
+    /// through this, so they always agree.
+    pub fn name(&self, place: &str) -> String {
+        self.id().map_or_else(|| place.to_string(), String::from)
+    }
+}
+
+/// The place of the `i`th top-level node: `body.0`.
+pub fn body_place(i: usize) -> String {
+    format!("body.{i}")
+}
+
+/// The place of the `i`th child of the node at `parent`: `body.0.children.1`.
+pub fn child_place(parent: &str, i: usize) -> String {
+    format!("{parent}.children.{i}")
+}
+
 /// `type = "stack"`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

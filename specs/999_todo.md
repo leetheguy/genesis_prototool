@@ -16,6 +16,9 @@ came from.
   3. `serve` renders `configs/hello/` in a browser. Clicking the button logs each click, counts it on screen,
      and shows it in the mirror ([010](010_architecture.md), its `## Tasks`).
   No calls, sources, hot reload, dufs, or desktop yet.
+- **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
+  no action, a bad template, all caught when the app loads, not only when they run. The bus already fails them
+  loudly at runtime ([100](100_events.md)); these checks move the failure to load time, with a line number.
 - **Milestone two: alive and editable.** Hot reload ([060](060_hot_reload.md)); dufs and Docker Compose, with
   `/fs/` and `/status` ([010](010_architecture.md)); connections, `call`, and sources against a mock and a PurpleFlow
   webhook ([030](030_connections.md)); persistence ([050](050_state.md)); and the Tauri desktop window.
