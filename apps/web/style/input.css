@@ -1,0 +1,5 @@
+@import "tailwindcss" source(none);
+@source "../../../crates/genesis-ui/src";
+@plugin "./vendor/daisyui.mjs" {
+  themes: all;
+}

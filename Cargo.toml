@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/genesis-core", "crates/genesis-ui", "apps/bench"]
+members = ["crates/genesis-core", "crates/genesis-ui", "apps/bench", "apps/web"]
 
 [workspace.package]
 edition = "2024"

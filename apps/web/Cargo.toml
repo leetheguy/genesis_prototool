@@ -1,0 +1,23 @@
+[package]
+name = "genesis-web"
+version = "0.1.0"
+description = "Genesis in the browser: the wasm entry that trunk builds and serve hands out."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Everything is wasm-only. Built natively (as cargo test --workspace does) this is an empty
+# program, so Leptos's browser mode never meets the server mode genesis-ui's tests turn on.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.7"
+genesis-core.workspace = true
+genesis-ui = { path = "../../crates/genesis-ui" }
+js-sys = "0.3"
+leptos = { workspace = true, features = ["csr"] }
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Window", "Location", "Storage", "Performance", "RequestInit", "Headers", "Response", "console"] }
+
+[lints]
+workspace = true

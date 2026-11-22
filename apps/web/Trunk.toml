@@ -1,0 +1,9 @@
+# serve hands the bundle out under /_genesis/, and every app's page loads it from there.
+[build]
+public_url = "/_genesis/"
+
+# Tailwind and daisyUI are compiled ahead of time from the classes genesis-ui uses (spec 010, "Styling").
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["build-css.sh"]

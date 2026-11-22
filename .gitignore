@@ -4,3 +4,6 @@ node_modules/
 .env
 *.log
 /mutants.out*/
+/apps/web/dist/
+/apps/web/style/vendor/
+/apps/web/style/genesis.css

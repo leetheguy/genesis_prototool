@@ -7,9 +7,9 @@ specific to Genesis.
 
 | Binding | Genesis |
 |---|---|
-| **precommit** | `scripts/precommit.sh`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo machete`, `cargo test`, and `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` |
-| **test** | `cargo test`; `wasm-pack test --headless --firefox crates/genesis-ui` for the renderer |
-| **coverage** | `cargo llvm-cov --workspace --exclude genesis-ui --fail-under-lines 90`. The renderer compiles to wasm, where llvm-cov doesn't run; it's kept thin, and its behavior is covered by its wasm tests |
+| **precommit** | `scripts/precommit.sh`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (and for wasm on `genesis-web`), `cargo machete`, `cargo test`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`, and `trunk build` of the browser bundle |
+| **test** | `cargo test`. The renderer's tests draw to HTML natively (Leptos's server-side mode); what only a real browser does (clicks) is a deployed check with Playwright against the served app |
+| **coverage** | `scripts/coverage.sh` (`cargo llvm-cov --workspace --fail-under-lines 90`). `genesis-web` is wasm-only and natively an empty program, so it adds nothing to the count |
 | **mutation** | `cargo mutants --in-diff <(git diff)` on the lines a change touches; `cargo mutants -f FILE` to harden a whole file |
 | **security** | `cargo audit` (known vulnerabilities) and gitleaks (secrets in history), both in CI |
 | **run** | `docker compose up -d --build` (`serve` and `files`); `cargo tauri dev` for the desktop shell; `genesis-bench APP_DIR` for the bus alone |

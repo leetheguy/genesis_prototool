@@ -13,12 +13,21 @@ rustup target add wasm32-unknown-unknown
 curl -L --proto '=https' --tlsv1.2 -sSf \
   https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 cargo binstall --no-confirm cargo-machete cargo-llvm-cov cargo-mutants cargo-audit
+
+# The browser build: trunk (bundles the wasm) and Tailwind's standalone binary (no Node needed).
+# apps/web/build-css.sh fetches daisyUI's plugin file itself, at the version it pins.
+cargo binstall --no-confirm trunk@0.22.2
+mkdir -p ~/.local/bin
+curl -sSL -o ~/.local/bin/tailwindcss \
+  https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/tailwindcss-linux-x64
+chmod +x ~/.local/bin/tailwindcss
 ```
 
 Then:
 
 - `scripts/precommit.sh`: every local check (AGENTS.md, **precommit**).
 - `scripts/coverage.sh`: the tests, with the 90% line-coverage floor.
+- `cd apps/web && trunk build`: the browser bundle, into `apps/web/dist/` (precommit builds it too).
 
 `.cargo/config.toml` caps builds at two parallel jobs, because the first box had about 1.5 GB of free
 memory. Raise it on a bigger machine.
