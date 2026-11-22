@@ -6,3 +6,5 @@
 //! renderer in the browser).
 //!
 //! See `specs/000_overview.md` for the whole model and `specs/100_events.md` for the bus.
+
+pub mod config;
