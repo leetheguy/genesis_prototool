@@ -12,6 +12,7 @@
 //! | `GET /api/{app}/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
 //! | `POST /api/{app}/call` | makes a call to one of the app's operations: `{"op", "params", "headers"}` in, `{"status", "body"}` or `{"error"}` out |
 //! | `POST /api/{app}/mirror` | a client's state and trail entries, written to the state folder |
+//! | `/fs/*` | the files service (dufs), for agents with `Authorization: Bearer GENESIS_AGENT_TOKEN` |
 //! | `GET /health` | `200` when the server is up |
 //!
 //! The mirror ([spec 050](../../../specs/050_state.md), "The mirror") turns names from the outside
@@ -24,7 +25,7 @@ use axum::extract::{Path as UrlPath, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use futures_util::stream::{self, StreamExt};
 use genesis_core::config::{App, Method, Operation};
@@ -46,7 +47,7 @@ pub const SHARED_COMPONENTS: &str = "components";
 pub const EVENTS_KEPT: usize = 10_000;
 
 /// Where serve finds things, and where it listens.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Settings {
     /// The configs folder: one folder per app.
     pub configs: PathBuf,
@@ -60,6 +61,26 @@ pub struct Settings {
     pub debounce: Duration,
     /// The credentials connections may use, by name ([spec 070](../../../specs/070_secrets.md)).
     pub creds: Creds,
+    /// Where the files service (dufs) answers, for `/fs/`. Without one, there's no `/fs/`.
+    pub files_url: Option<String>,
+    /// The token agents send for `/fs/`, and the password serve gives dufs. Without one, `/fs/` stays shut.
+    pub agent_token: Option<String>,
+}
+
+// By hand, so the agent token never prints: only whether there is one.
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Settings")
+            .field("configs", &self.configs)
+            .field("state", &self.state)
+            .field("dist", &self.dist)
+            .field("listen", &self.listen)
+            .field("debounce", &self.debounce)
+            .field("creds", &self.creds)
+            .field("files_url", &self.files_url)
+            .field("agent_token", &self.agent_token.as_ref().map(|_| "[set]"))
+            .finish()
+    }
 }
 
 /// Credentials, by name: `GENESIS_CREDS_PF_TOKEN` in serve's environment is `{{ creds.PF_TOKEN }}`.
@@ -114,11 +135,31 @@ impl Default for Settings {
             listen: "127.0.0.1:8080".into(),
             debounce: Duration::from_millis(150),
             creds: Creds::default(),
+            files_url: None,
+            agent_token: None,
         }
     }
 }
 
 impl Settings {
+    /// These settings with what serve's environment says (`std::env::vars()`): the credentials
+    /// (`GENESIS_CREDS_*`), the files service (`GENESIS_FILES_URL`), and the agent token
+    /// (`GENESIS_AGENT_TOKEN`).
+    pub fn with_env(self, vars: impl IntoIterator<Item = (String, String)>) -> Settings {
+        let vars: Vec<(String, String)> = vars.into_iter().collect();
+        let var = |name: &str| {
+            vars.iter()
+                .find(|(k, v)| k == name && !v.is_empty())
+                .map(|(_, v)| v.clone())
+        };
+        Settings {
+            files_url: var("GENESIS_FILES_URL"),
+            agent_token: var("GENESIS_AGENT_TOKEN"),
+            creds: Creds::from_vars(vars.clone()),
+            ..self
+        }
+    }
+
     /// Reads `--configs DIR`, `--state DIR`, `--dist DIR`, `--listen ADDRESS`, and `--debounce MS`,
     /// each optional.
     /// It listens on `127.0.0.1:8080` unless told otherwise.
@@ -246,6 +287,8 @@ fn routes(server: Arc<Server>) -> Router {
         .route("/api/{app}/config", get(config))
         .route("/api/{app}/mirror", post(mirror))
         .route("/api/{app}/call", post(call))
+        .route("/fs", any(files))
+        .route("/fs/{*rest}", any(files))
         .nest_service("/_genesis", bundle)
         .with_state(server)
 }
@@ -591,6 +634,103 @@ fn as_text(value: &Value) -> String {
     value
         .as_str()
         .map_or_else(|| value.to_string(), String::from)
+}
+
+/// The headers serve never passes between a client and the files service: its own login, and the
+/// connection's own.
+const NOT_PASSED: [&str; 5] = [
+    "authorization",
+    "host",
+    "content-length",
+    "connection",
+    "transfer-encoding",
+];
+
+/// Passes a request through to the files service, for an agent holding the agent token, with
+/// dufs's own login added (as PurpleFlow does, PurpleFlow spec 090).
+async fn files(State(server): Shared, request: axum::extract::Request) -> Response {
+    let settings = &server.settings;
+    let Some(files_url) = &settings.files_url else {
+        return refuse(
+            StatusCode::NOT_FOUND,
+            "this serve has no files service".into(),
+        );
+    };
+    let token = settings.agent_token.as_deref().filter(|t| !t.is_empty());
+    let sent = request
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    let Some(token) = token.filter(|t| sent.is_some_and(|s| same(s, t))) else {
+        return refuse(
+            StatusCode::UNAUTHORIZED,
+            "/fs/ needs Authorization: Bearer GENESIS_AGENT_TOKEN".into(),
+        );
+    };
+    let (parts, body) = request.into_parts();
+    let path = parts.uri.path_and_query().map_or("/fs", |p| p.as_str());
+    let url = format!("{}{path}", files_url.trim_end_matches('/'));
+    let body = match axum::body::to_bytes(body, usize::MAX).await {
+        Ok(body) => body,
+        Err(e) => {
+            return refuse(
+                StatusCode::BAD_REQUEST,
+                format!("couldn't read the request: {e}"),
+            );
+        }
+    };
+    let method = reqwest::Method::from_bytes(parts.method.as_str().as_bytes())
+        .unwrap_or(reqwest::Method::GET);
+    let mut onward = server
+        .http
+        .request(method, &url)
+        .basic_auth("genesis", Some(token))
+        .timeout(Duration::from_secs(60))
+        .body(body);
+    for (name, value) in parts
+        .headers
+        .iter()
+        .filter(|(n, _)| !NOT_PASSED.contains(&n.as_str()))
+    {
+        onward = onward.header(name.as_str(), value.as_bytes());
+    }
+    let answer = match onward.send().await {
+        Ok(answer) => answer,
+        Err(_) => {
+            return refuse(
+                StatusCode::BAD_GATEWAY,
+                "the files service didn't answer".into(),
+            );
+        }
+    };
+    let mut response = Response::builder().status(answer.status().as_u16());
+    for (name, value) in answer
+        .headers()
+        .iter()
+        .filter(|(n, _)| !NOT_PASSED.contains(&n.as_str()))
+    {
+        response = response.header(name.as_str(), value.as_bytes());
+    }
+    let body = answer.bytes().await.unwrap_or_default();
+    response
+        .body(axum::body::Body::from(body))
+        .unwrap_or_else(|_| {
+            refuse(
+                StatusCode::BAD_GATEWAY,
+                "the files service's answer didn't read".into(),
+            )
+        })
+}
+
+/// Whether two tokens are the same, taking as long whatever their first difference, so timing
+/// doesn't give a token away a character at a time.
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |diff, (x, y)| diff | (x ^ y))
+            == 0
 }
 
 /// Writes a client's state whole, and adds its events to the end of its event file.
