@@ -118,13 +118,7 @@ struct Queued {
 impl Machine {
     /// A machine for `app`, at its starting state. Nothing has fired yet; see [`Machine::open`].
     pub fn new(app: App) -> Machine {
-        let mut handlers = Vec::new();
-        let mut node_events = Vec::new();
-        for (i, node) in app.body.iter().enumerate() {
-            wire_node(node, &body_place(i), &mut handlers, &mut node_events);
-        }
-        handlers.extend(app.on.iter().cloned());
-        let fires = fires(&app, &handlers, node_events);
+        let (handlers, fires) = wiring(&app);
         let state = State {
             app: app.state.clone(),
             view: app.app.start.clone(),
@@ -148,6 +142,22 @@ impl Machine {
     /// The app this machine runs, as loaded.
     pub fn app(&self) -> &App {
         &self.app
+    }
+
+    /// Swaps in a new config for the app, keeping its state ([spec 050](../../../specs/050_state.md),
+    /// "Across a config reload"): variables still declared keep their values, new ones start at
+    /// their starting values, and removed ones are dropped. The view, theme, trail, errors, and
+    /// timers carry over. Then it fires `config.loaded`, and returns what the host must do.
+    pub fn reload(&mut self, app: App) -> Vec<Effect> {
+        let (handlers, fires) = wiring(&app);
+        let old = std::mem::take(&mut self.state.app);
+        self.state.app = app
+            .state
+            .iter()
+            .map(|(k, start)| (k.clone(), old.get(k).unwrap_or(start).clone()))
+            .collect();
+        (self.app, self.handlers, self.fires) = (app, handlers, fires);
+        self.fire("config.loaded", json!({}))
     }
 
     /// Fires `app.opened`, and handles everything that follows from it.
@@ -563,6 +573,19 @@ impl Machine {
     }
 }
 
+/// Every handler an app has (nodes' `on_*` shortcuts first, in tree order, then `[on]`), and every
+/// event name it can fire.
+fn wiring(app: &App) -> (Vec<Handler>, Vec<String>) {
+    let mut handlers = Vec::new();
+    let mut node_events = Vec::new();
+    for (i, node) in app.body.iter().enumerate() {
+        wire_node(node, &body_place(i), &mut handlers, &mut node_events);
+    }
+    handlers.extend(app.on.iter().cloned());
+    let fires = fires(app, &handlers, node_events);
+    (handlers, fires)
+}
+
 /// Turns a node's `on_*` shortcuts into handlers, and notes the events it fires, for it and its
 /// children. A node without an `id` is named by its place in the tree (`body.0.children.1`).
 fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut Vec<String>) {
@@ -590,7 +613,7 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
 
 /// Every event name the config can fire, without repeats, for `sys.bus`.
 fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<String> {
-    let mut names = vec!["app.opened".to_string()];
+    let mut names = vec!["app.opened".to_string(), "config.loaded".to_string()];
     names.extend(node_events);
     names.extend(app.state.keys().map(|k| format!("app.{k}.changed")));
     names.extend([
