@@ -23,9 +23,11 @@ came from.
 - **Then:** Table, Detail, Form, and display logic ([040](040_catalog.md), [080](080_display_logic.md)); partials
   ([090](090_components.md)); signing in ([050](050_state.md), [070](070_secrets.md)); and the CRM hello world.
 - **Streams** for sources: tickers, live dashboards, and streamed AI answers ([030](030_connections.md), [050](050_state.md)).
-- **Events pushed from the server.** `POST /api/{app}/push/{name}` (with an optional credential, like a PurpleFlow
-  webhook's `auth`) fires `push.{name}` in every open client of that app. Then a PurpleFlow workflow can tell the
-  screen `job_scored`, and the screen reacts. From [100](100_events.md).
+- **A webhook for sending events in.** `POST /api/{app}/push/{name}` with a JSON payload fires `push.{name}` in every
+  open client of that app, so agents and workflows can drive a screen: an agent tells it `review_ready`, a PurpleFlow
+  workflow tells it `job_scored`, and handlers react. Agents send `GENESIS_AGENT_TOKEN`, as for `/fs/`; workflows
+  can use a credential of their own, like a PurpleFlow webhook's `auth`. Pushed events land in the trail and the
+  mirror like any other, so the sender can see what its event set off. Asked for by Lee (2026-11-22). From [100](100_events.md).
 - **MCP adapter for the configs folder**: PurpleFlow spec 270's tools, rebuilt in `serve`, so Claude can
   edit apps as a connector ([010](010_architecture.md)).
 - **Mobile**: the Tauri shell on Android, on a `serve` URL ([010](010_architecture.md)).
