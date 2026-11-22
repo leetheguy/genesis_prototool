@@ -7,3 +7,6 @@ node_modules/
 /apps/web/dist/
 /apps/web/style/vendor/
 /apps/web/style/genesis.css
+/tests/deployed/node_modules/
+/configs/
+/state/

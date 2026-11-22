@@ -19,7 +19,10 @@ specific to Genesis.
 | **copies** | none yet |
 | **branching** | a branch per piece of work, merged into `main` locally when asked; the user pushes |
 
-Nothing is built yet. The bindings above take effect as the workspace appears ([010](specs/010_architecture.md)).
+Milestone one is built; [000](specs/000_overview.md) says what exists. The **run** binding's Docker and Tauri parts are planned.
+
+**Browser checks:** `scripts/check-hello.sh` builds the bundle and `serve`, then drives the hello app in headless
+Chromium (`tests/deployed/hello.mjs`). Run it after any change to the renderer, `apps/web`, or `serve`.
 
 ## Genesis rules
 

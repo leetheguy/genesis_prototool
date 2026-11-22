@@ -10,12 +10,15 @@ came from.
 
 ## Planned
 
-- **Milestone one: the bus, the renderer, and a button, served.** A super light foundation:
+- **Milestone one: the bus, the renderer, and a button, served.** *Built* on `m1-bus` and `m1-ui`; this item
+  goes when they're merged. A super light foundation:
   1. The event bus in genesis-core, worked out with tests and `genesis-bench` first ([100](100_events.md), its `## Tasks`).
   2. The Leptos base: the `Component` trait, the `Wired` wrapper, and `stack`, `heading`, `text`, and `button` ([040](040_catalog.md), its `## Tasks`).
   3. `serve` renders `configs/hello/` in a browser. Clicking the button logs each click, counts it on screen,
      and shows it in the mirror ([010](010_architecture.md), its `## Tasks`).
   No calls, sources, hot reload, dufs, or desktop yet.
+- **Mirror housekeeping** ([050](050_state.md), "The mirror"): deleting the files of clients gone for a day isn't
+  built yet, so `state/` only grows. The 10,000-event cap per client is built.
 - **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
   no action, a bad template, all caught when the app loads, not only when they run. The bus already fails them
   loudly at runtime ([100](100_events.md)); these checks move the failure to load time, with a line number.

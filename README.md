@@ -47,11 +47,32 @@ That's a paged list screen. Save a change to the file and every open window chan
 
 ## Status
 
-**Not built yet.** The design is in [`specs/`](specs/000_overview.md); start with `000_overview.md`.
+**Milestone one is built:** the event bus, the renderer (stack, heading, text, button), and `serve`
+drawing an app in a browser. Connections and sources (what the example above needs) come next, in
+milestone two. The design for the rest is in [`specs/`](specs/000_overview.md); start with
+`000_overview.md`.
+
 Genesis runs as a server (`serve`, plus dufs for the config files) and shows apps in a browser or a
 Tauri desktop window, with one renderer (Leptos + daisyUI 5).
+
+## Running it
+
+Set up the toolchain once ([`docs/setup.md`](docs/setup.md)), then:
+
+```bash
+(cd apps/web && trunk build)                       # the browser bundle
+cargo run -p genesis-serve -- --configs samples    # then open http://127.0.0.1:8080/hello/
+```
+
+`scripts/check-hello.sh` does all that headless and clicks the button for you. To run an app's
+events with no screen at all:
+
+```bash
+echo '{"fire": "hello_btn.click"}' | cargo run -q -p genesis-bench -- samples/hello
+```
 
 ## For agents
 
 Working on Genesis: read [`AGENTS.md`](AGENTS.md) and [`OP-PARAMS.md`](OP-PARAMS.md).
-Writing Genesis apps: `docs/authoring.md` (coming with the first build).
+Writing Genesis apps: `docs/authoring.md` (coming soon); until then, `samples/hello/app.toml` and
+[`specs/100_events.md`](specs/100_events.md).

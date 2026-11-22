@@ -6,8 +6,10 @@ Created: 2026-11-21
 This is the source of truth for what Genesis is today. Read it first. It's rewritten whenever the
 project changes; the numbered specs it links to hold the detail and the reasons behind each decision.
 
-**Nothing is built yet.** Every numbered spec is a draft under review. This page describes the
-design they add up to.
+**Milestone one is built** ([999](999_todo.md)): the event bus and its workbench, the renderer with
+`stack`, `heading`, `text`, and `button`, and `serve` drawing an app in a browser and writing the
+mirror. Everything else here is still design: every numbered spec is a draft, and this page describes
+the design they add up to.
 
 ## What this is
 
@@ -89,31 +91,35 @@ See [010](010_architecture.md).
 
 ## Where things live
 
-Nothing is built yet. The planned layout ([010](010_architecture.md)):
+Built so far, then planned ([010](010_architecture.md)):
 
 | Path | What's there |
 |---|---|
-| `crates/genesis-core` | pure Rust: config types, checks, partials, templates, conditions, formats, the state machine. Native and wasm |
-| `crates/genesis-ui` | the Leptos renderer: the `Component` trait, the `Wired` wrapper, the components |
+| `crates/genesis-core` | pure Rust, native and wasm: the config types (`config`), event patterns (`pattern`), templates (`template`), and the bus and state machine (`bus`) |
+| `crates/genesis-ui` | the Leptos renderer: `Host`, the `Component` trait, the `Wired` wrapper, and the components |
 | `apps/bench` | `genesis-bench`: runs an app's bus with no screen |
-| `apps/serve` | genesis-serve |
-| `apps/desktop` | the Tauri shell |
-| `docker-compose.yml` | `serve` and `files` |
-| `state/` | the mirror: each client's state and event trail, read-only to agents at `/fs/.state/` |
-| `docs/authoring.md` | the guide for agents writing Genesis apps |
+| `apps/web` | the browser entry (wasm), built by trunk with Tailwind and daisyUI |
+| `apps/serve` | `genesis-serve`: the renderer, each app's config stream, and the mirror |
+| `samples/` | sample apps (`hello`); the configs folder itself is the user's |
+| `tests/deployed/` | checks against a real `serve` and a real browser (`scripts/check-hello.sh`) |
+| `state/` | the mirror: each client's state and event trail (read-only to agents at `/fs/.state/`, once dufs is in) |
+| `apps/desktop` | *planned:* the Tauri shell |
+| `docker-compose.yml` | *planned:* `serve` and `files` |
+| `docs/authoring.md` | *planned:* the guide for agents writing Genesis apps |
 
 ## Dependencies
 
-Planned; versions are checked when the code starts.
+In use now, then planned. Check current versions before adding any.
 
 | Need | Package |
 |---|---|
 | Config types, TOML, JSON | `serde`, `toml`, `serde_json` |
-| Renderer (Rust to wasm, signals) | `leptos` (client-side), built with `trunk` |
-| Styling and themes | daisyUI 5 on Tailwind CSS 4 (built ahead of time) |
-| Server | `axum`, `reqwest`, `notify` |
-| Desktop and mobile shell | `tauri` 2 |
-| Config files for agents | dufs (container image) |
+| Renderer (Rust to wasm, signals) | `leptos` 0.8 (client-side in the browser, server-side for tests), built with `trunk` |
+| Styling and themes | daisyUI 5 on Tailwind CSS 4 (the standalone binary, built ahead of time) |
+| Server | `axum`, `tokio`, `tower-http` (now); `reqwest`, `notify` (planned) |
+| Desktop and mobile shell | `tauri` 2 (planned) |
+| Config files for agents | dufs (container image, planned) |
+| Browser checks | `playwright-core` (Node, in `tests/deployed/`) |
 
 ## Specs
 

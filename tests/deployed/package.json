@@ -1,0 +1,9 @@
+{
+  "name": "genesis-deployed-checks",
+  "private": true,
+  "type": "module",
+  "description": "Checks run against a real genesis-serve and a real browser (OP-PARAMS section 3).",
+  "dependencies": {
+    "playwright-core": "1.65.1"
+  }
+}

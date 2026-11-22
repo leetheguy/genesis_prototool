@@ -1,0 +1,29 @@
+# Milestone one's hello app: a button whose clicks are logged, counted on screen, and mirrored.
+# Run it: scripts/check-hello.sh, or serve it with `cargo run -p genesis-serve -- --configs samples`
+# and open http://127.0.0.1:8080/hello/.
+
+[app]
+name = "Hello"
+theme = "corporate"
+
+[state]
+clicks = 0
+
+[[body]]
+type = "stack"
+
+[[body.children]]
+type = "heading"
+text = "Hello, Genesis"
+
+[[body.children]]
+type = "text"
+text = "Clicked {{ app.clicks }} times"
+
+[[body.children]]
+type = "button"
+id = "hello_btn"
+label = "Click me"
+
+[on]
+"hello_btn.click" = [{ step = "app.clicks" }, { log = "click number {{ app.clicks }}" }]

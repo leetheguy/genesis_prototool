@@ -120,4 +120,4 @@ The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)) a
 
 - [x] `serve`: loads `configs/{app}/app.toml` when a client asks, serves the renderer at `/{app}/`, and sends the config
 - [x] `serve`: `POST /api/{app}/mirror` writes `state/{app}/{client}.json` and `.events.ndjson`
-- [ ] hello: `configs/hello/app.toml`, where a button's clicks are logged and counted on screen and in the mirror (deployed check)
+- [x] hello: `samples/hello/app.toml`, where a button's clicks are logged and counted on screen and in the mirror (deployed check: `scripts/check-hello.sh`)
