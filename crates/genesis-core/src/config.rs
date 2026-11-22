@@ -40,6 +40,9 @@ pub struct App {
     /// `[actions.NAME]`: custom actions, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub actions: BTreeMap<String, Action>,
+    /// `[connections.NAME]`: the APIs the app calls ([spec 030](../../../specs/030_connections.md)).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub connections: BTreeMap<String, Connection>,
     /// `[[body]]`: the screen, as a tree of nodes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub body: Vec<Node>,
@@ -270,7 +273,203 @@ pub struct ConfigError {
     pub column: Option<usize>,
 }
 
+/// `[connections.NAME]`: an HTTP API ([spec 030](../../../specs/030_connections.md)).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Connection {
+    /// Where its requests go; each operation's path is joined onto it.
+    pub base_url: String,
+    /// Headers on every request; values may hold `{{ creds.NAME }}` and `{{ app.* }}` templates.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    /// Seconds before a request fails; `0` waits forever. Default `30`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    /// `[connections.NAME.ops.OP]`: its operations, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ops: BTreeMap<String, OpConfig>,
+    /// `[connections.NAME.crud.RESOURCE]`: resources that expand into five operations each.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub crud: BTreeMap<String, Crud>,
+}
+
+/// One operation, as written in the TOML.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpConfig {
+    /// The HTTP method.
+    pub method: Method,
+    /// Joined onto the connection's `base_url`; `{name}` takes the param `name`.
+    pub path: String,
+    /// Headers merged over the connection's.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    /// Seconds before it fails, over the connection's `timeout`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+}
+
+/// A `crud` resource: `list`, `get`, `create`, `update`, and `delete` by convention.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Crud {
+    /// The param naming one record. Default `"id"`.
+    #[serde(default = "defaults::key")]
+    pub key: String,
+    /// `rest` (the default) or `post`.
+    #[serde(default)]
+    pub style: CrudStyle,
+    /// For `rest`: the base path. Default `/RESOURCE`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// For `post`: the name before `-list` and the rest. Default the resource's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    /// Replaces the conventional `list`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list: Option<OpConfig>,
+    /// Replaces the conventional `get`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub get: Option<OpConfig>,
+    /// Replaces the conventional `create`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create: Option<OpConfig>,
+    /// Replaces the conventional `update`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<OpConfig>,
+    /// Replaces the conventional `delete`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delete: Option<OpConfig>,
+}
+
+/// How a `crud` resource maps onto requests.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CrudStyle {
+    /// `GET /contacts`, `GET /contacts/{id}`, `POST /contacts`, `PATCH /contacts/{id}`, `DELETE /contacts/{id}`.
+    #[default]
+    Rest,
+    /// Every action is `POST /contacts-ACTION`, as PurpleFlow webhooks take them.
+    Post,
+}
+
+/// An HTTP method. Written in any case in TOML; always upper case in JSON.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Method {
+    /// `GET`
+    Get,
+    /// `HEAD`
+    Head,
+    /// `POST`
+    Post,
+    /// `PUT`
+    Put,
+    /// `PATCH`
+    Patch,
+    /// `DELETE`
+    Delete,
+    /// `OPTIONS`
+    Options,
+}
+
+impl Method {
+    const ALL: [(Method, &'static str); 7] = [
+        (Method::Get, "GET"),
+        (Method::Head, "HEAD"),
+        (Method::Post, "POST"),
+        (Method::Put, "PUT"),
+        (Method::Patch, "PATCH"),
+        (Method::Delete, "DELETE"),
+        (Method::Options, "OPTIONS"),
+    ];
+
+    /// The method's name, in upper case.
+    pub fn as_str(self) -> &'static str {
+        Method::ALL
+            .iter()
+            .find(|(m, _)| *m == self)
+            .map_or("GET", |(_, name)| name)
+    }
+}
+
+impl Serialize for Method {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Method {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = String::deserialize(deserializer)?;
+        let upper = name.to_ascii_uppercase();
+        Method::ALL
+            .iter()
+            .find(|(_, n)| *n == upper)
+            .map(|(m, _)| *m)
+            .ok_or_else(|| {
+                let names: Vec<&str> = Method::ALL.iter().map(|(_, n)| *n).collect();
+                de::Error::custom(format!(
+                    "unknown method `{name}`; a method is one of {}",
+                    names.join(", ")
+                ))
+            })
+    }
+}
+
+/// An operation ready to call: its method, full URL, merged headers, and timeout.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Operation {
+    /// The HTTP method.
+    pub method: Method,
+    /// The base URL and path joined; `{name}` placeholders still in it.
+    pub url: String,
+    /// The connection's headers with the operation's over them; templates still in them.
+    pub headers: BTreeMap<String, String>,
+    /// Seconds before it fails; `0` waits forever.
+    pub timeout: u64,
+}
+
+const CRUD_ACTIONS: [&str; 5] = ["list", "get", "create", "update", "delete"];
+
 impl App {
+    /// The operation called `name`: `connection.op`, or `connection.resource.action` for `crud`.
+    /// `None` when no connection declares it.
+    pub fn operation(&self, name: &str) -> Option<Operation> {
+        let (connection_name, rest) = name.split_once('.')?;
+        let connection = self.connections.get(connection_name)?;
+        let op = match connection.ops.get(rest) {
+            Some(op) => op.clone(),
+            None => {
+                let (resource, action) = rest.split_once('.')?;
+                crud_op(resource, connection.crud.get(resource)?, action)?
+            }
+        };
+        let mut headers = connection.headers.clone();
+        headers.extend(op.headers.clone());
+        Some(Operation {
+            method: op.method,
+            url: format!("{}{}", connection.base_url.trim_end_matches('/'), op.path),
+            headers,
+            timeout: op.timeout.or(connection.timeout).unwrap_or(30),
+        })
+    }
+
+    /// Every operation's name, connection by connection.
+    pub fn operation_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for (name, connection) in &self.connections {
+            names.extend(connection.ops.keys().map(|op| format!("{name}.{op}")));
+            for resource in connection.crud.keys() {
+                names.extend(
+                    CRUD_ACTIONS
+                        .iter()
+                        .map(|action| format!("{name}.{resource}.{action}")),
+                );
+            }
+        }
+        names
+    }
+
     /// Loads an app from the text of its `app.toml`.
     ///
     /// Fails with every problem found, each with its line and column when the TOML reader knows them.
@@ -309,6 +508,44 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
         offset += line.len();
     }
     None
+}
+
+/// A `crud` resource's operation for `action`: its override, or the convention for its style.
+fn crud_op(resource: &str, crud: &Crud, action: &str) -> Option<OpConfig> {
+    let replaced = match action {
+        "list" => &crud.list,
+        "get" => &crud.get,
+        "create" => &crud.create,
+        "update" => &crud.update,
+        "delete" => &crud.delete,
+        _ => return None,
+    };
+    if let Some(op) = replaced {
+        return Some(op.clone());
+    }
+    let (method, path) = match crud.style {
+        CrudStyle::Post => (
+            Method::Post,
+            format!("/{}-{action}", crud.prefix.as_deref().unwrap_or(resource)),
+        ),
+        CrudStyle::Rest => {
+            let base = crud.path.clone().unwrap_or_else(|| format!("/{resource}"));
+            let one = format!("{base}/{{{}}}", crud.key);
+            match action {
+                "list" => (Method::Get, base),
+                "get" => (Method::Get, one),
+                "create" => (Method::Post, base),
+                "update" => (Method::Patch, one),
+                _ => (Method::Delete, one),
+            }
+        }
+    };
+    Some(OpConfig {
+        method,
+        path,
+        headers: BTreeMap::new(),
+        timeout: None,
+    })
 }
 
 /// Turns a byte offset into a 1-based line and column.
@@ -536,6 +773,9 @@ mod defaults {
     }
     pub fn level() -> u8 {
         1
+    }
+    pub fn key() -> String {
+        "id".into()
     }
     pub fn by() -> f64 {
         1.0

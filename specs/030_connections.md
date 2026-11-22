@@ -113,7 +113,7 @@ before it hands off bad data.
 
 Milestone two ([999](999_todo.md)):
 
-- [ ] core: `[connections.*]` config types: `base_url`, `headers`, `timeout`, `ops`, and `crud` (both styles) expanded into operations
+- [x] core: `[connections.*]` config types: `base_url`, `headers`, `timeout`, `ops`, and `crud` (both styles) expanded into operations
 - [ ] core: the `call` step: a call effect for the host, the reply resuming the list, `.ok`/`.failed`/`.{status}` events, `into`, `select`, and `event`
 - [ ] `serve`: `POST /api/{app}/call` makes the request (`reqwest`), with `{{ creds.NAME }}` from `GENESIS_CREDS_NAME`, redacted from failures; only declared operations
 - [ ] the browser: send calls to `serve` and hand replies back; `genesis-bench --mock`
