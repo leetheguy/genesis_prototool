@@ -145,7 +145,7 @@ with its handlers and any state changes, and then the final state. Tests drive t
 
 The first milestone ([999](999_todo.md)): the bus, worked out on the bench first.
 
-- [ ] Install the Rust toolchain; create the Cargo workspace (`crates/genesis-core`, `apps/bench`); add `scripts/precommit.sh`, coverage, and mutation (OP-PARAMS section 10)
+- [x] Install the Rust toolchain; create the Cargo workspace (`crates/genesis-core`, `apps/bench`); add `scripts/precommit.sh`, coverage, and mutation (OP-PARAMS section 10)
 - [ ] core: config types for `[on]`, `[actions]`, `[state]`, and nodes with `id` (TOML and JSON round trip)
 - [ ] core: event names and `*`/`?` patterns
 - [ ] core: the bus: queue, matching handlers in file order, `sys.events`, `sys.bus`

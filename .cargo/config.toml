@@ -1,0 +1,3 @@
+# This box has little free memory; two parallel rustc jobs is the safe ceiling.
+[build]
+jobs = 2
