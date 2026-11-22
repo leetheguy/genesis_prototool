@@ -1,0 +1,31 @@
+[package]
+name = "genesis-desktop"
+version = "0.1.0"
+description = "Genesis on the desktop: a Tauri 2 window on a serve URL."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "genesis_desktop"
+path = "src/lib.rs"
+
+# The window itself needs Tauri and the system's WebKitGTK; the `app` feature brings them in, so the
+# rest of the workspace (and its tests) builds without them. `cargo tauri build` turns it on.
+[[bin]]
+name = "genesis-desktop"
+path = "src/main.rs"
+required-features = ["app"]
+
+[features]
+app = ["dep:tauri", "dep:tauri-build"]
+
+[dependencies]
+tauri = { version = "2.12.7", optional = true }
+url = "2.5.9"
+
+[build-dependencies]
+tauri-build = { version = "2.7.6", optional = true }
+
+[lints]
+workspace = true
