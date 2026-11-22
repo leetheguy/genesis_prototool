@@ -38,20 +38,39 @@ pub enum Effect {
     },
 }
 
-/// Why a list of steps stopped.
-struct Failed {
-    message: String,
-    /// Whether a custom action already reported it by firing `NAME.failed`.
-    reported: bool,
+/// A list of steps being run, which can wait on a timer and carry on later.
+struct Run {
+    /// The lists it's inside, innermost last: a handler's list, then each custom action it ran.
+    frames: Vec<Frame>,
+    /// The event that started it, which its templates read as `event.*`.
+    event: Queued,
 }
 
-impl From<String> for Failed {
-    fn from(message: String) -> Failed {
-        Failed {
-            message,
-            reported: false,
-        }
-    }
+/// One list of steps, and how far through it a run has got.
+struct Frame {
+    steps: Vec<Step>,
+    next: usize,
+    /// The custom action this list belongs to, if it's one; it fires `NAME.done` when the list ends.
+    action: Option<String>,
+}
+
+/// Something waiting for the clock.
+struct Timer {
+    due: u64,
+    /// The name `cancel` stops it by.
+    id: Option<String>,
+    kind: TimerKind,
+}
+
+enum TimerKind {
+    /// A run paused by `delay`.
+    Resume(Run),
+    /// An `every`: fires `fire` with `payload`, then sets itself again `interval` later.
+    Every {
+        fire: String,
+        payload: Value,
+        interval: u64,
+    },
 }
 
 /// One app's state and its queue of events.
@@ -65,6 +84,8 @@ pub struct Machine {
     queue: VecDeque<Queued>,
     /// What the host must do, gathered while the queue runs.
     effects: Vec<Effect>,
+    /// Waiting runs and repeating events, in the order they were set.
+    timers: Vec<Timer>,
     /// Milliseconds since the app opened, as the host last said; stamps the trail.
     now: u64,
 }
@@ -84,6 +105,7 @@ struct State {
 }
 
 /// An event waiting its turn.
+#[derive(Clone)]
 struct Queued {
     name: String,
     payload: Value,
@@ -115,6 +137,7 @@ impl Machine {
             state,
             queue: VecDeque::new(),
             effects: Vec::new(),
+            timers: Vec::new(),
             now: 0,
         }
     }
@@ -132,10 +155,69 @@ impl Machine {
             payload,
             chain: Vec::new(),
         });
+        self.drain();
+        std::mem::take(&mut self.effects)
+    }
+
+    /// Moves the clock on by `ms` milliseconds. Every timer that falls due runs in its turn,
+    /// each with the clock at its own moment, and everything that follows from it is handled.
+    /// Returns what the host must do as a result.
+    pub fn advance(&mut self, ms: u64) -> Vec<Effect> {
+        let until = self.now + ms;
+        while let Some(i) = self.next_timer(until) {
+            let timer = self.timers.remove(i);
+            self.now = timer.due;
+            match timer.kind {
+                TimerKind::Resume(mut run) => {
+                    // After a pause the rest of the list starts a new chain, so a loop with a
+                    // delay in it never hits max_chain.
+                    run.event.chain.clear();
+                    self.execute(run);
+                }
+                TimerKind::Every {
+                    fire,
+                    payload,
+                    interval,
+                } => {
+                    self.queue.push_back(Queued {
+                        name: fire.clone(),
+                        payload: payload.clone(),
+                        chain: Vec::new(),
+                    });
+                    let kind = TimerKind::Every {
+                        fire,
+                        payload,
+                        interval,
+                    };
+                    self.set_timer(self.now + interval, timer.id, kind);
+                }
+            }
+            self.drain();
+        }
+        self.now = until;
+        std::mem::take(&mut self.effects)
+    }
+
+    /// Handles queued events until there are none.
+    fn drain(&mut self) {
         while let Some(event) = self.queue.pop_front() {
             self.handle(event);
         }
-        std::mem::take(&mut self.effects)
+    }
+
+    /// The timer due soonest, no later than `until`; of two due at once, the one set first.
+    fn next_timer(&self, until: u64) -> Option<usize> {
+        let due = self
+            .timers
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.due <= until);
+        // min_by_key keeps the first of equal keys, and the list is in the order timers were set.
+        due.min_by_key(|(_, t)| t.due).map(|(i, _)| i)
+    }
+
+    fn set_timer(&mut self, due: u64, id: Option<String>, kind: TimerKind) {
+        self.timers.push(Timer { due, id, kind });
     }
 
     /// The value at a dotted path, as a template would see it: `app.clicks`, `sys.view`,
@@ -172,66 +254,131 @@ impl Machine {
             );
         }
         for i in matched {
-            let steps = self.handlers[i].steps.clone();
-            if let Err(failed) = self.run_steps(&steps, &event, 0)
-                && !failed.reported
-            {
-                self.fail(
-                    json!({ "name": event.name, "message": failed.message }),
-                    true,
-                );
-            }
+            let frame = Frame {
+                steps: self.handlers[i].steps.clone(),
+                next: 0,
+                action: None,
+            };
+            self.execute(Run {
+                frames: vec![frame],
+                event: event.clone(),
+            });
         }
     }
 
-    /// Runs a list of steps in order, stopping at the first that fails. `nest` is how many
-    /// custom actions deep the list is.
-    fn run_steps(&mut self, steps: &[Step], event: &Queued, nest: u32) -> Result<(), Failed> {
-        steps
-            .iter()
-            .try_for_each(|step| self.run_step(step, event, nest))
-    }
-
-    /// Runs a custom action, then fires `NAME.done`, or `NAME.failed` with the error.
-    fn run_action(&mut self, name: &str, event: &Queued, nest: u32) -> Result<(), Failed> {
-        let result = if nest >= self.app.app.max_chain {
-            Err(format!(
-                "actions nested more than max_chain ({}) deep",
-                self.app.app.max_chain
-            )
-            .into())
-        } else {
-            match self.app.actions.get(name) {
-                Some(action) => {
-                    let steps = action.steps.clone();
-                    self.run_steps(&steps, event, nest + 1)
+    /// Runs a list of steps until it ends, fails, or waits on a timer.
+    ///
+    /// A plain-string step runs a custom action by putting its list on top of the run's stack;
+    /// when a list ends, its action fires `NAME.done`. A `delay` parks the whole run on a timer.
+    /// A failure stops the run ([`Machine::unwind`]).
+    fn execute(&mut self, mut run: Run) {
+        loop {
+            let Some(frame) = run.frames.last_mut() else {
+                return;
+            };
+            let Some(step) = frame.steps.get(frame.next).cloned() else {
+                if let Some(name) = run.frames.pop().and_then(|f| f.action) {
+                    self.enqueue(&format!("{name}.done"), json!({}), &run.event);
                 }
-                None => Err(format!("there's no action named {name}").into()),
-            }
-        };
-        match result {
-            Ok(()) => {
-                self.enqueue(&format!("{name}.done"), json!({}), event);
-                Ok(())
-            }
-            Err(failed) => {
-                self.enqueue(
-                    &format!("{name}.failed"),
-                    json!({ "error": failed.message }),
-                    event,
-                );
-                Err(Failed {
-                    reported: true,
-                    ..failed
-                })
+                continue;
+            };
+            frame.next += 1;
+            let result = match &step {
+                Step::Run(name) => self.enter(&mut run, name),
+                Step::Delay { delay, id } => {
+                    self.set_timer(self.now + delay, id.clone(), TimerKind::Resume(run));
+                    return;
+                }
+                Step::Every {
+                    every,
+                    fire,
+                    id,
+                    with,
+                } => self.every(*every, fire, id, with, &run.event),
+                Step::Cancel { cancel } => {
+                    self.timers
+                        .retain(|t| t.id.as_deref() != Some(cancel.as_str()));
+                    Ok(())
+                }
+                other => self.run_step(other, &run.event),
+            };
+            if let Err(message) = result {
+                return self.unwind(run, &step, message);
             }
         }
     }
 
-    fn run_step(&mut self, step: &Step, event: &Queued, nest: u32) -> Result<(), Failed> {
+    /// Starts the custom action `name` inside `run`, up to `max_chain` actions deep.
+    fn enter(&self, run: &mut Run, name: &str) -> Result<(), String> {
+        let max = self.app.app.max_chain as usize;
+        if run.frames.len() > max {
+            return Err(format!("actions nested more than max_chain ({max}) deep"));
+        }
+        let action = self
+            .app
+            .actions
+            .get(name)
+            .ok_or_else(|| format!("there's no action named {name}"))?;
+        run.frames.push(Frame {
+            steps: action.steps.clone(),
+            next: 0,
+            action: Some(name.to_string()),
+        });
+        Ok(())
+    }
+
+    /// Sets an `every` timer, its payload filled in now.
+    fn every(
+        &mut self,
+        every: u64,
+        fire: &str,
+        id: &Option<String>,
+        with: &Map<String, Value>,
+        event: &Queued,
+    ) -> Result<(), String> {
+        if every == 0 {
+            return Err("every must be at least 1 millisecond".into());
+        }
+        let payload = template::value(&Value::Object(with.clone()), |path| {
+            self.look(path, Some(event))
+        })?;
+        let kind = TimerKind::Every {
+            fire: fire.to_string(),
+            payload,
+            interval: every,
+        };
+        self.set_timer(self.now + every, id.clone(), kind);
+        Ok(())
+    }
+
+    /// Stops a run whose `step` failed. Every custom action it was inside fires `NAME.failed`
+    /// with the error, innermost first; so does an action that couldn't start. A failure no
+    /// action reported is logged under the event's name, and toasted.
+    fn unwind(&mut self, run: Run, step: &Step, message: String) {
+        let starting = match step {
+            Step::Run(name) => Some(name.clone()),
+            _ => None,
+        };
+        let actions: Vec<String> = starting
+            .into_iter()
+            .chain(run.frames.into_iter().rev().filter_map(|f| f.action))
+            .collect();
+        for name in &actions {
+            self.enqueue(
+                &format!("{name}.failed"),
+                json!({ "error": message }),
+                &run.event,
+            );
+        }
+        if actions.is_empty() {
+            self.fail(json!({ "name": run.event.name, "message": message }), true);
+        }
+    }
+
+    /// Runs one built-in step that neither pauses nor nests.
+    fn run_step(&mut self, step: &Step, event: &Queued) -> Result<(), String> {
         let fill = |value: &Value| template::value(value, |path| self.look(path, Some(event)));
         match step {
-            Step::Run(name) => self.run_action(name, event, nest)?,
             Step::Log { log } => {
                 let line = template::text(log, |path| self.look(path, Some(event)));
                 self.record(json!({ "at": self.now, "log": line }));

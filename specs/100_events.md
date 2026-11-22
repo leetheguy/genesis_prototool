@@ -97,9 +97,11 @@ action that runs itself stops instead of running forever.
   when the reply arrives (or the time is up), in its turn on the queue.
 - **Chains have a depth limit.** An event fired by a handler is one deeper than the event that ran
   it. Past `[app] max_chain` (default `100`) the event is dropped, and `chain.too_deep` fails loud with
-  the chain's names. A timer's events (`delay`, `every`) start a new chain at depth 0. So a polling loop
+  the chain's names. A timer starts a new chain: `every` fires at depth 0, and a list resumed after a
+  `delay` fires its events as if the event that started it had just arrived. So a polling loop
   (`delay`, then `fire`) runs forever, while a runaway loop with no pause is stopped.
-- **Timers stop** with `cancel`, on `wipe_state`, and when the app closes.
+- **Timers stop** with `cancel`, on `wipe_state`, and when the app closes. Two due at the same moment
+  run in the order they were set. `every = 0` is a failure.
 - **Failures are always logged.** Every `*.failed` event goes into `sys.errors` and the event trail
   before any handler runs. If no handler's pattern matches it, Genesis also shows a toast. A handler
   can take over the display; it can't make a failure disappear. A step that fails in a handler's own
@@ -158,5 +160,5 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: `set`, `step`, `toggle`, `go`, and `.changed` events
 - [x] core: custom actions with `.done` and `.failed`; stop at the first failure
 - [x] core: chain depth and `max_chain`; failures always logged
-- [ ] core: `delay`, `every`, and `cancel` on a clock tests control
+- [x] core: `delay`, `every`, and `cancel` on a clock tests control
 - [ ] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)

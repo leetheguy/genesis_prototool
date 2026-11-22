@@ -113,3 +113,23 @@ fn an_action_that_runs_itself_is_stopped_at_max_chain() {
         "{failed}"
     );
 }
+
+#[test]
+fn actions_nested_exactly_max_chain_deep_still_run() {
+    let mut m = machine(
+        "[on]\n\"go\" = [\"a1\"]\n[actions.a1]\ndo = [\"a2\"]\n[actions.a2]\ndo = [\"a3\"]\n[actions.a3]\ndo = [\"a4\"]\n[actions.a4]\ndo = [\"a5\"]\n[actions.a5]\ndo = [{ log = \"bottom\" }]\n",
+    );
+    m.fire("go", json!({}));
+    assert!(newest(&m, "a1.done").is_some());
+    assert!(m.get("sys.errors").unwrap().as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_missing_action_fires_its_own_failed() {
+    let mut m = machine("[on]\n\"go\" = [\"nowhere\"]\n");
+    m.fire("go", json!({}));
+    assert_eq!(
+        newest(&m, "nowhere.failed").unwrap()["payload"],
+        json!({ "error": "there's no action named nowhere" })
+    );
+}
