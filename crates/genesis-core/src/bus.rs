@@ -86,6 +86,8 @@ pub struct Machine {
     effects: Vec<Effect>,
     /// Waiting runs and repeating events, in the order they were set.
     timers: Vec<Timer>,
+    /// Trail entries kept for [`Machine::take_tapped`], once [`Machine::tap`] is called.
+    tapped: Option<Vec<Value>>,
     /// Milliseconds since the app opened, as the host last said; stamps the trail.
     now: u64,
 }
@@ -138,6 +140,7 @@ impl Machine {
             queue: VecDeque::new(),
             effects: Vec::new(),
             timers: Vec::new(),
+            tapped: None,
             now: 0,
         }
     }
@@ -218,6 +221,26 @@ impl Machine {
 
     fn set_timer(&mut self, due: u64, id: Option<String>, kind: TimerKind) {
         self.timers.push(Timer { due, id, kind });
+    }
+
+    /// Starts keeping a copy of every trail entry as it's recorded, for [`Machine::take_tapped`].
+    /// The bench prints them, and the mirror will write them; neither should lose entries
+    /// that the trail's cap has dropped.
+    pub fn tap(&mut self) {
+        self.tapped.get_or_insert_with(Vec::new);
+    }
+
+    /// Every trail entry recorded since the last call, oldest first. Empty without [`Machine::tap`].
+    pub fn take_tapped(&mut self) -> Vec<Value> {
+        self.tapped.as_mut().map(std::mem::take).unwrap_or_default()
+    }
+
+    /// The state as one value: `{ "app": {...}, "sys": { "view", "theme", "errors" } }`.
+    pub fn snapshot(&self) -> Value {
+        json!({
+            "app": self.state.app,
+            "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors },
+        })
     }
 
     /// The value at a dotted path, as a template would see it: `app.clicks`, `sys.view`,
@@ -491,6 +514,9 @@ impl Machine {
 
     /// Adds an entry to the front of the trail, dropping the oldest past `event_trail`.
     fn record(&mut self, entry: Value) {
+        if let Some(tapped) = &mut self.tapped {
+            tapped.push(entry.clone());
+        }
         self.state.events.push_front(entry);
         self.state.events.truncate(self.app.app.event_trail);
     }

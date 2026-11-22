@@ -126,10 +126,13 @@ the logic belongs behind the API, in PurpleFlow or wherever else.
 
 ## The workbench
 
-`genesis-bench` runs an app's bus with no screen, for tests and for agents. It loads an app folder, reads
-events from stdin (one JSON object per line), and answers calls from a mock file
-(`--mock mocks.toml`: an operation, its status, and its body). It prints each event as it's handled,
-with its handlers and any state changes, and then the final state. Tests drive the bus the same way.
+`genesis-bench APP_DIR` runs an app's bus with no screen, for tests and for agents. It loads the app
+(a folder holding `app.toml`, or the file), opens it, and reads one JSON object per line from stdin:
+`{"fire": "NAME", "payload": {...}}` fires an event, and `{"advance": MS}` moves the clock on. After
+each line it prints every trail entry recorded (events with their handlers, and `log` lines) and any
+`{"toast": ...}`, one JSON object per line, and at the end `{"state": ...}`. An app that doesn't load
+exits `2`, each problem as `FILE:LINE:COLUMN: ...`; a script line it can't read exits `1`. Once calls
+exist, it answers them from a mock file (`--mock mocks.toml`: an operation, its status, and its body).
 
 ## Tests
 
@@ -161,4 +164,4 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: custom actions with `.done` and `.failed`; stop at the first failure
 - [x] core: chain depth and `max_chain`; failures always logged
 - [x] core: `delay`, `every`, and `cancel` on a clock tests control
-- [ ] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)
+- [x] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)

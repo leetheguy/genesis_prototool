@@ -233,3 +233,44 @@ fn a_path_walks_into_tables_and_lists() {
     assert_eq!(m.get("app.card.tags.2"), None);
     assert_eq!(m.get("app.card.title.more"), None);
 }
+
+#[test]
+fn a_tap_hands_over_every_entry_once_oldest_first_even_past_the_trail_cap() {
+    let mut m = Machine::new(
+        App::from_toml("[app]\nname = \"t\"\nevent_trail = 1\n[on]\n\"a\" = [{ log = \"x\" }]\n")
+            .unwrap(),
+    );
+    m.tap();
+    m.fire("a", json!({}));
+    let taken: Vec<Value> = m
+        .take_tapped()
+        .iter()
+        .map(|e| e.get("name").or(e.get("log")).cloned().unwrap())
+        .collect();
+    assert_eq!(taken, [json!("a"), json!("x")]);
+    assert!(m.take_tapped().is_empty());
+}
+
+#[test]
+fn without_a_tap_nothing_is_kept_for_taking() {
+    let mut m = machine("");
+    m.fire("a", json!({}));
+    assert!(m.take_tapped().is_empty());
+}
+
+#[test]
+fn a_snapshot_holds_the_variables_view_theme_and_errors() {
+    let mut m =
+        machine("[state]\nn = 1\n[on]\n\"go\" = [{ step = \"app.n\" }, { toggle = \"app.n\" }]\n");
+    m.fire("go", json!({}));
+    let snapshot = m.snapshot();
+    assert_eq!(snapshot["app"], json!({ "n": 2 }));
+    assert_eq!(
+        (&snapshot["sys"]["view"], &snapshot["sys"]["theme"]),
+        (&json!("main"), &json!("light"))
+    );
+    assert_eq!(
+        snapshot["sys"]["errors"][0]["message"],
+        "app.n isn't true or false"
+    );
+}
