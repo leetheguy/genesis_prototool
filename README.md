@@ -47,10 +47,10 @@ That's a paged list screen. Save a change to the file and every open window chan
 
 ## Status
 
-**Milestone one is built:** the event bus, the renderer (stack, heading, text, button), and `serve`
-drawing an app in a browser. Connections and sources (what the example above needs) come next, in
-milestone two. The design for the rest is in [`specs/`](specs/000_overview.md); start with
-`000_overview.md`.
+**Milestones one and two are built:** the event bus, the renderer (stack, heading, text, button), live
+reload, connections and sources with server-held credentials, sessions kept on the device, and Docker
+Compose with dufs for agents. The example above needs a Table, which comes next. The design for the
+rest is in [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 
 Genesis runs as a server (`serve`, plus dufs for the config files) and shows apps in a browser or a
 Tauri desktop window, with one renderer (Leptos + daisyUI 5).
@@ -64,7 +64,15 @@ Set up the toolchain once ([`docs/setup.md`](docs/setup.md)), then:
 cargo run -p genesis-serve -- --configs samples    # then open http://127.0.0.1:8080/hello/
 ```
 
-`scripts/check-hello.sh` does all that headless and clicks the button for you. To run an app's
+`scripts/check-hello.sh` does all that headless and clicks the button for you. The whole stack, with
+dufs for agents at `/fs/`:
+
+```bash
+cp .env.example .env    # then set GENESIS_AGENT_TOKEN
+docker compose up -d --build
+```
+
+`scripts/check-compose.sh` checks that stack's boundaries. To run an app's
 events with no screen at all:
 
 ```bash

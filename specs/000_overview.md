@@ -6,10 +6,13 @@ Created: 2026-11-21
 This is the source of truth for what Genesis is today. Read it first. It's rewritten whenever the
 project changes; the numbered specs it links to hold the detail and the reasons behind each decision.
 
-**Milestone one is built** ([999](999_todo.md)): the event bus and its workbench, the renderer with
-`stack`, `heading`, `text`, and `button`, and `serve` drawing an app in a browser and writing the
-mirror. Everything else here is still design: every numbered spec is a draft, and this page describes
-the design they add up to.
+**Milestones one and two are built** ([999](999_todo.md)): the event bus and its workbench; the renderer
+with `stack`, `heading`, `text`, and `button`; `serve` drawing apps in a browser, listing them at `/`,
+reporting them at `/status`, and reloading them live; connections, the `call` step, and sources, with
+credentials only `serve` holds; sessions kept on the device; the mirror; Docker Compose with dufs behind
+`/fs/`; and the desktop shell's logic (its window still needs WebKitGTK to build, [999](999_todo.md)).
+Everything else here is still design: every numbered spec is a draft, and this page describes the
+design they add up to.
 
 ## What this is
 
@@ -103,8 +106,8 @@ Built so far, then planned ([010](010_architecture.md)):
 | `samples/` | sample apps (`hello`); the configs folder itself is the user's |
 | `tests/deployed/` | checks against a real `serve` and a real browser (`scripts/check-hello.sh`) |
 | `state/` | the mirror: each client's state and event trail (read-only to agents at `/fs/.state/`, once dufs is in) |
-| `apps/desktop` | *planned:* the Tauri shell |
-| `docker-compose.yml` | *planned:* `serve` and `files` |
+| `apps/desktop` | the Tauri shell: which `serve` page the window opens (the window itself is behind the `app` feature) |
+| `Dockerfile`, `docker-compose.yml` | `serve` and `files` (dufs), as PurpleFlow runs its files service |
 | `docs/authoring.md` | *planned:* the guide for agents writing Genesis apps |
 
 ## Dependencies
@@ -116,9 +119,9 @@ In use now, then planned. Check current versions before adding any.
 | Config types, TOML, JSON | `serde`, `toml`, `serde_json` |
 | Renderer (Rust to wasm, signals) | `leptos` 0.8 (client-side in the browser, server-side for tests), built with `trunk` |
 | Styling and themes | daisyUI 5 on Tailwind CSS 4 (the standalone binary, built ahead of time) |
-| Server | `axum`, `tokio`, `tower-http` (now); `reqwest`, `notify` (planned) |
-| Desktop and mobile shell | `tauri` 2 (planned) |
-| Config files for agents | dufs (container image, planned) |
+| Server | `axum`, `tokio`, `tower-http`, `reqwest` (rustls), `notify` |
+| Desktop and mobile shell | `tauri` 2 (behind `genesis-desktop`'s `app` feature) |
+| Config files for agents | dufs v0.47 (container image) |
 | Browser checks | `playwright-core` (Node, in `tests/deployed/`) |
 
 ## Specs

@@ -15,11 +15,10 @@ came from.
 - **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
   no action, a bad template, all caught when the app loads, not only when they run. The bus already fails them
   loudly at runtime ([100](100_events.md)); these checks move the failure to load time, with a line number.
-- **Milestone two: alive and editable** (in progress, on `m2`). The app list at `/` and `/status`
-  ([010](010_architecture.md)); hot reload ([060](060_hot_reload.md)); connections, `call`, and sources against a
-  mock and a PurpleFlow webhook ([030](030_connections.md), [050](050_state.md)); persistence ([050](050_state.md));
-  dufs and Docker Compose with `/fs/` ([010](010_architecture.md)); and the Tauri desktop window. Each spec's
-  `## Tasks` lists its part.
+- **The desktop window, built.** `genesis-desktop`'s window (the `app` feature) needs WebKitGTK and its friends
+  (`libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`) to build; they
+  aren't installed on the dev box yet. Then `cargo tauri build`, and a person opens it on a desktop. The rest of
+  milestone two is built. From [010](010_architecture.md).
 - **Then:** Table, Detail, Form, and display logic ([040](040_catalog.md), [080](080_display_logic.md)); partials
   ([090](090_components.md)); signing in ([050](050_state.md), [070](070_secrets.md)); and the CRM hello world.
 - **Streams** for sources: tickers, live dashboards, and streamed AI answers ([030](030_connections.md), [050](050_state.md)).

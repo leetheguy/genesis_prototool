@@ -19,7 +19,9 @@ specific to Genesis.
 | **copies** | none yet |
 | **branching** | a branch per piece of work, merged into `main` locally when asked; the user pushes |
 
-Milestone one is built; [000](specs/000_overview.md) says what exists. The **run** binding's Docker and Tauri parts are planned.
+Milestones one and two are built; [000](specs/000_overview.md) says what exists. The **run** binding's Tauri part waits on
+WebKitGTK being installed ([999](specs/999_todo.md)). `scripts/check-compose.sh` checks the Docker stack; run it after
+any change to the Dockerfile, `docker-compose.yml`, or `/fs/`.
 
 **Browser checks:** `scripts/check-hello.sh` builds the bundle and `serve`, then drives the hello app in headless
 Chromium: clicks and the mirror (`tests/deployed/hello.mjs`), live edits (`tests/deployed/reload.mjs`), and calls
