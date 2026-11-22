@@ -1,0 +1,10 @@
+target/
+.git/
+apps/web/dist/
+apps/web/style/vendor/
+apps/web/style/genesis.css
+tests/deployed/node_modules/
+configs/
+state/
+mutants.out*/
+.env

@@ -1,0 +1,69 @@
+# Genesis: serve and the files service (spec 010). Copy .env.example to .env and set
+# GENESIS_AGENT_TOKEN first (`openssl rand -hex 24`), then `docker compose up -d --build`.
+
+services:
+  # genesis-serve: the renderer, each app's config, its calls, and the mirror. The only way in.
+  serve:
+    build: .
+    image: genesis-serve
+    restart: unless-stopped
+    # The env file holds the credentials (GENESIS_CREDS_*) and the agent token. Only serve reads it.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - GENESIS_FILES_URL=http://files:5000
+      - GENESIS_AGENT_TOKEN=${GENESIS_AGENT_TOKEN:?GENESIS_AGENT_TOKEN is required, generate one with `openssl rand -hex 24`}
+    ports:
+      # Localhost only; put a proxy (or port forwarding) in front to reach it from elsewhere.
+      - "127.0.0.1:${GENESIS_PORT:-8080}:8080"
+    volumes:
+      # Configs read-only: serve never writes an app. The state folder is where it writes the mirror.
+      - ${CONFIGS_PATH:-./configs}:/app/configs:ro
+      - ${STATE_PATH:-./state}:/app/state
+    user: "${PUID:-1000}:${PGID:-1000}"
+    init: true
+    networks:
+      - default
+      - files
+
+  # dufs: the configs folder for agents, read-write, and the mirror, read-only. Reachable only
+  # through serve's /fs/. Hardened as PurpleFlow's files service is.
+  files:
+    image: sigoden/dufs:v0.47.0
+    restart: unless-stopped
+    # Deliberately no env_file: only dufs's own settings, nothing secret but its login.
+    environment:
+      - DUFS_SERVE_PATH=/data
+      - DUFS_BIND=0.0.0.0
+      - DUFS_PORT=5000
+      - DUFS_PATH_PREFIX=/fs
+      - DUFS_ALLOW_ALL=true
+      # Its own login, which serve sends with every request it passes through.
+      - DUFS_AUTH=genesis:${GENESIS_AGENT_TOKEN:?GENESIS_AGENT_TOKEN is required}@/:rw
+      - DUFS_HIDDEN=.git
+    user: "${PUID:-1000}:${PGID:-1000}"
+    volumes:
+      - ${CONFIGS_PATH:-./configs}:/data
+      # The mirror, for agents to read at /fs/.state/, and never to write.
+      - ${STATE_PATH:-./state}:/data/.state:ro
+      # An empty, read-only folder over a configs repo's .git, so nothing written through dufs
+      # can reach git hooks, which run on the host.
+      - type: tmpfs
+        target: /data/.git
+        read_only: true
+    networks:
+      - files
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
+
+networks:
+  # Only serve and dufs, with no route out.
+  files:
+    internal: true
