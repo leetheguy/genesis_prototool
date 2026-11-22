@@ -126,7 +126,7 @@ The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)) a
 
 Milestone two ([999](999_todo.md)):
 
-- [ ] `serve`: `GET /` lists the apps
-- [ ] `serve`: `GET /status`: each app loaded or failed, with its errors
+- [x] `serve`: `GET /` lists the apps
+- [x] `serve`: `GET /status`: each app loaded or failed, with its errors
 - [ ] Docker Compose: `serve` (configs read-only, state read-write) and `files` (dufs: configs read-write, state read-only at `.state`), with `/fs/` proxied behind `GENESIS_AGENT_TOKEN` (deployed check)
 - [ ] the Tauri 2 desktop shell: a window on a `serve` URL and app (built and checked here; a person opens it on a desktop)

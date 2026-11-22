@@ -30,8 +30,8 @@ until the file is back. A new folder with an `app.toml` is a new app, live at on
 
 ## Telling an agent
 
-An agent can't see the screen, so `GET /status` answers for every app: `loaded` or `failed`, when, and
-the errors. It doesn't need the agent token, and it never includes credentials or config contents. After a
+An agent can't see the screen, so `GET /status` answers for every app: `{ "status": "loaded" }`, or
+`{ "status": "failed", "problems": [...] }` with each problem as `app.toml:LINE:COLUMN: ...`. It doesn't need the agent token, and it never includes credentials or config contents. After a
 write through `/fs/`, an agent checks `/status` to know whether its change took.
 
 ## Tests

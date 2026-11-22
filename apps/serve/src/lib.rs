@@ -5,6 +5,8 @@
 //!
 //! | Route | What |
 //! |---|---|
+//! | `GET /` | the list of apps, each a link to its page |
+//! | `GET /status` | each app, `loaded` or `failed` with its problems, as JSON, so an agent can check its change took |
 //! | `GET /{app}/` | the renderer's page, for an app that exists |
 //! | `GET /_genesis/*` | the renderer's bundle (`trunk build` output) |
 //! | `GET /api/{app}/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
@@ -87,6 +89,8 @@ pub fn router(settings: Settings) -> Router {
     let bundle = ServeDir::new(&settings.dist);
     Router::new()
         .route("/health", get(|| async { "ok" }))
+        .route("/", get(list))
+        .route("/status", get(status))
         .route("/{app}", get(page))
         .route("/{app}/", get(page))
         .route("/api/{app}/config", get(config))
@@ -128,6 +132,51 @@ fn plain(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Every app's name: each folder in the configs folder with a plain name and an `app.toml`, in order.
+fn app_names(settings: &Settings) -> Vec<String> {
+    let entries = std::fs::read_dir(&settings.configs)
+        .into_iter()
+        .flatten()
+        .flatten();
+    let mut names: Vec<String> = entries
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| plain(name) && settings.configs.join(name).join("app.toml").is_file())
+        .collect();
+    names.sort();
+    names
+}
+
+async fn list(State(settings): Shared) -> Html<String> {
+    let names = app_names(&settings);
+    // Names are plain (letters, digits, _ and -), so they're safe in HTML as they are.
+    let items: String = names
+        .iter()
+        .map(|n| format!(r#"<li><a class="link" href="/{n}/">{n}</a></li>"#))
+        .collect();
+    let body = if names.is_empty() {
+        "<p>No apps yet. Add a folder with an app.toml to the configs folder.</p>".to_string()
+    } else {
+        format!("<ul>{items}</ul>")
+    };
+    Html(format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Genesis</title></head><body><h1>Genesis apps</h1>{body}</body></html>"
+    ))
+}
+
+async fn status(State(settings): Shared) -> Json<Value> {
+    let mut apps = serde_json::Map::new();
+    for name in app_names(&settings) {
+        let report = match load(&settings.configs.join(&name).join("app.toml")).await {
+            Ok(_) => serde_json::json!({ "status": "loaded" }),
+            Err(problems) => {
+                serde_json::json!({ "status": "failed", "problems": problems.lines().collect::<Vec<_>>() })
+            }
+        };
+        apps.insert(name, report);
+    }
+    Json(serde_json::json!({ "apps": apps }))
 }
 
 async fn page(State(settings): Shared, UrlPath(name): UrlPath<String>) -> Response {

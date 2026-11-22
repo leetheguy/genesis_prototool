@@ -322,3 +322,64 @@ async fn an_event_file_that_cant_be_read_fails_loud_and_is_left_alone() {
     let untouched = std::fs::read(folders.path("state/hello/c1.events.ndjson")).unwrap();
     assert_eq!(untouched, [0xff, 0xfe, 0x00]);
 }
+
+#[tokio::test]
+async fn the_root_lists_each_app_as_a_link_to_its_page() {
+    let folders = Folders::new("list");
+    std::fs::create_dir_all(folders.path("configs/crm")).unwrap();
+    std::fs::write(
+        folders.path("configs/crm/app.toml"),
+        "[app]\nname = \"CRM\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(folders.path("configs/components")).unwrap();
+    std::fs::create_dir_all(folders.path("configs/not plain")).unwrap();
+    std::fs::write(
+        folders.path("configs/not plain/app.toml"),
+        "[app]\nname = \"x\"\n",
+    )
+    .unwrap();
+    let (status, html) = get(&folders, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    let (crm, hello) = (
+        html.find(r#"href="/crm/""#).expect("crm listed"),
+        html.find(r#"href="/hello/""#).expect("hello listed"),
+    );
+    assert!(crm < hello, "in name order: {html}");
+    assert!(
+        !html.contains("components") && !html.contains("not plain"),
+        "{html}"
+    );
+}
+
+#[tokio::test]
+async fn the_root_says_so_when_there_are_no_apps() {
+    let folders = Folders::new("empty");
+    std::fs::remove_dir_all(folders.path("configs/hello")).unwrap();
+    let (status, html) = get(&folders, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("No apps yet"), "{html}");
+}
+
+#[tokio::test]
+async fn status_reports_each_app_loaded_or_failed_with_its_problems() {
+    let folders = Folders::new("status");
+    std::fs::create_dir_all(folders.path("configs/broken")).unwrap();
+    std::fs::write(
+        folders.path("configs/broken/app.toml"),
+        "[app]\nname = \"x\"\ncolour = 1\n",
+    )
+    .unwrap();
+    let (status, body) = get(&folders, "/status").await;
+    assert_eq!(status, StatusCode::OK);
+    let report: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(report["apps"]["hello"], json!({ "status": "loaded" }));
+    assert_eq!(report["apps"]["broken"]["status"], "failed");
+    assert!(
+        report["apps"]["broken"]["problems"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("app.toml:3:1:"),
+        "{report}"
+    );
+}
