@@ -69,6 +69,9 @@ pub struct Info {
     /// How many recent events `sys.events` keeps. Default `200`.
     #[serde(default = "defaults::event_trail")]
     pub event_trail: usize,
+    /// App variables a session never keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forget: Vec<String>,
 }
 
 /// One entry of `[on]`: an event pattern and the steps to run when an event matches it.

@@ -26,7 +26,7 @@
 use crate::config::{App, Handler, Node, Source, Step, body_place, child_place};
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Something the machine needs its host to do, since the machine itself does no IO.
 #[derive(Debug, Clone, PartialEq)]
@@ -137,6 +137,8 @@ pub struct Machine {
     queue: VecDeque<Queued>,
     /// What the host must do, gathered while the queue runs.
     effects: Vec<Effect>,
+    /// App variables a reply's `into` filled last, which a session doesn't keep.
+    filled: BTreeSet<String>,
     /// Runs waiting on calls, by call id.
     waiting: BTreeMap<u64, Waiting>,
     /// The next call's id.
@@ -203,12 +205,91 @@ impl Machine {
             state,
             queue: VecDeque::new(),
             effects: Vec::new(),
+            filled: BTreeSet::new(),
             waiting: BTreeMap::new(),
             next_call: 1,
             timers: Vec::new(),
             tapped: None,
             now: 0,
         }
+    }
+
+    /// What a session keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting"):
+    /// what the user did, never what an API said. That's `app.*` (except sources, variables a reply
+    /// filled last, and `[app] forget`), and `sys.view`, `sys.theme`, `sys.errors`, and `sys.events`.
+    pub fn kept(&self) -> Value {
+        let app: Map<String, Value> = self
+            .state
+            .app
+            .iter()
+            .filter(|(k, _)| self.keeps(k))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        json!({
+            "app": app,
+            "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors, "events": self.state.events },
+        })
+    }
+
+    /// Brings back what [`Machine::kept`] gave, before the app opens. A variable the config no
+    /// longer declares, or whose starting value now has another JSON type, starts fresh instead;
+    /// each of those, and kept state that isn't kept state at all, comes back as a note for the
+    /// host to log. Nothing fires.
+    pub fn restore(&mut self, kept: &Value) -> Vec<String> {
+        let Some(kept) = kept.as_object() else {
+            return vec!["the kept state isn't kept state; starting fresh".into()];
+        };
+        let mut notes = Vec::new();
+        for (key, value) in kept
+            .get("app")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            match self.state.app.get(key) {
+                None => notes.push(format!(
+                    "app.{key} is gone from the config; dropped what was kept"
+                )),
+                Some(_) if !self.keeps(key) => {}
+                Some(start) if !start.is_null() && kind(start) != kind(value) => {
+                    notes.push(format!(
+                        "app.{key} is a {} now, not a {}; starting it fresh",
+                        kind(start),
+                        kind(value)
+                    ))
+                }
+                Some(_) => {
+                    self.state.app.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        let sys = kept.get("sys");
+        if let Some(view) = sys.and_then(|s| s["view"].as_str()) {
+            self.state.view = view.to_string();
+        }
+        if let Some(theme) = sys.and_then(|s| s["theme"].as_str()) {
+            self.state.theme = theme.to_string();
+        }
+        let trail = self.app.app.event_trail;
+        let list = |key: &str| -> Option<VecDeque<Value>> {
+            sys?.get(key)?
+                .as_array()
+                .map(|a| a.iter().take(trail).cloned().collect())
+        };
+        if let Some(errors) = list("errors") {
+            self.state.errors = errors;
+        }
+        if let Some(events) = list("events") {
+            self.state.events = events;
+        }
+        notes
+    }
+
+    /// Whether the app variable `key` is one a session keeps.
+    fn keeps(&self, key: &str) -> bool {
+        !self.app.sources.contains_key(key)
+            && !self.filled.contains(key)
+            && !self.app.app.forget.iter().any(|f| f == key)
     }
 
     /// The app this machine runs, as loaded.
@@ -675,6 +756,9 @@ impl Machine {
                     message,
                     reported: false,
                 })?;
+            if let Some(key) = var.strip_prefix("app.") {
+                self.filled.insert(key.to_string());
+            }
         }
         Ok(())
     }
@@ -737,6 +821,10 @@ impl Machine {
     /// Writes a variable and, when the value changed, fires `{var}.changed` with `value` and `was`.
     fn write(&mut self, var: &str, value: Value, cause: &Queued) -> Result<(), String> {
         let was = self.writable(var)?;
+        // Written by an action, it's the user's again; settle() marks what a reply fills.
+        if let Some(key) = var.strip_prefix("app.") {
+            self.filled.remove(key);
+        }
         if was == value {
             return Ok(());
         }
@@ -959,6 +1047,18 @@ fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<Strin
     let mut seen = std::collections::HashSet::new();
     names.retain(|name| seen.insert(name.clone()));
     names
+}
+
+/// A JSON value's kind, in words: `"number"`, `"text"`, and so on.
+fn kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "true or false",
+        Value::Number(_) => "number",
+        Value::String(_) => "text",
+        Value::Array(_) => "list",
+        Value::Object(_) => "table",
+    }
 }
 
 /// A number as JSON, whole numbers as integers, so `step` on `1` gives `2`, not `2.0`.
