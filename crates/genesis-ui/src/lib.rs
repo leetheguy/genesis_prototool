@@ -20,6 +20,7 @@ use genesis_core::config::{App, Node, body_place, child_place};
 use genesis_core::template;
 use leptos::prelude::*;
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 mod components;
@@ -34,16 +35,32 @@ pub struct Host {
     changes: RwSignal<()>,
     /// Toasts waiting to be seen, oldest first.
     toasts: RwSignal<Vec<String>>,
+    /// Whether the first mirror has been taken.
+    mirrored: Arc<AtomicBool>,
 }
 
 impl Host {
     /// A host for `app`, at its starting state. Call [`Host::open`] once the screen is up.
     pub fn new(app: App) -> Host {
+        let mut machine = Machine::new(app);
+        machine.tap();
         Host {
-            machine: Arc::new(Mutex::new(Machine::new(app))),
+            machine: Arc::new(Mutex::new(machine)),
             changes: RwSignal::new(()),
             toasts: RwSignal::new(Vec::new()),
+            mirrored: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// What to send `serve` for the mirror ([spec 050](../../../specs/050_state.md), "The mirror"):
+    /// `{ "state": ..., "events": [...] }`, with every trail entry since the last mirror, oldest
+    /// first. The first call always has one; after that, `None` when nothing has happened since.
+    pub fn mirror(&self) -> Option<Value> {
+        let mut machine = self.machine();
+        let events = machine.take_tapped();
+        let first = !self.mirrored.swap(true, Ordering::Relaxed);
+        (first || !events.is_empty())
+            .then(|| json!({ "state": machine.snapshot(), "events": events }))
     }
 
     /// Fires `app.opened`.
