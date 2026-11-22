@@ -28,6 +28,32 @@ use crate::{pattern, template};
 use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
 
+/// Something the machine needs its host to do, since the machine itself does no IO.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Effect {
+    /// Show a short message. Every failure nobody handles becomes one.
+    Toast {
+        /// The message.
+        text: String,
+    },
+}
+
+/// Why a list of steps stopped.
+struct Failed {
+    message: String,
+    /// Whether a custom action already reported it by firing `NAME.failed`.
+    reported: bool,
+}
+
+impl From<String> for Failed {
+    fn from(message: String) -> Failed {
+        Failed {
+            message,
+            reported: false,
+        }
+    }
+}
+
 /// One app's state and its queue of events.
 pub struct Machine {
     app: App,
@@ -37,6 +63,8 @@ pub struct Machine {
     fires: Vec<String>,
     state: State,
     queue: VecDeque<Queued>,
+    /// What the host must do, gathered while the queue runs.
+    effects: Vec<Effect>,
     /// Milliseconds since the app opened, as the host last said; stamps the trail.
     now: u64,
 }
@@ -51,6 +79,8 @@ struct State {
     theme: String,
     /// `sys.events`, newest first.
     events: VecDeque<Value>,
+    /// `sys.errors`, newest first.
+    errors: VecDeque<Value>,
 }
 
 /// An event waiting its turn.
@@ -76,6 +106,7 @@ impl Machine {
             view: app.app.start.clone(),
             theme: app.app.theme.clone(),
             events: VecDeque::new(),
+            errors: VecDeque::new(),
         };
         Machine {
             app,
@@ -83,18 +114,19 @@ impl Machine {
             fires,
             state,
             queue: VecDeque::new(),
+            effects: Vec::new(),
             now: 0,
         }
     }
 
     /// Fires `app.opened`, and handles everything that follows from it.
-    pub fn open(&mut self) {
-        self.fire("app.opened", json!({}));
+    pub fn open(&mut self) -> Vec<Effect> {
+        self.fire("app.opened", json!({}))
     }
 
     /// Fires the event `name` with its `payload`, and handles it and every event that follows,
-    /// until the queue is empty.
-    pub fn fire(&mut self, name: &str, payload: Value) {
+    /// until the queue is empty. Returns what the host must do as a result.
+    pub fn fire(&mut self, name: &str, payload: Value) -> Vec<Effect> {
         self.queue.push_back(Queued {
             name: name.to_string(),
             payload,
@@ -103,6 +135,7 @@ impl Machine {
         while let Some(event) = self.queue.pop_front() {
             self.handle(event);
         }
+        std::mem::take(&mut self.effects)
     }
 
     /// The value at a dotted path, as a template would see it: `app.clicks`, `sys.view`,
@@ -127,46 +160,75 @@ impl Machine {
             "handlers": patterns,
             "payload": event.payload,
         }));
+        // A failure is logged before any handler runs, and is shown if nobody handles it.
+        if event.name.ends_with(".failed") {
+            let message = match event.payload.get("error") {
+                Some(Value::String(error)) => error.clone(),
+                _ => event.payload.to_string(),
+            };
+            self.fail(
+                json!({ "name": event.name, "message": message }),
+                matched.is_empty(),
+            );
+        }
         for i in matched {
             let steps = self.handlers[i].steps.clone();
-            // A failed step stops its handler's list. Recording and showing the failure is
-            // spec 100's "failures always logged" task.
-            let _ = self.run_steps(&steps, &event, 0);
+            if let Err(failed) = self.run_steps(&steps, &event, 0)
+                && !failed.reported
+            {
+                self.fail(
+                    json!({ "name": event.name, "message": failed.message }),
+                    true,
+                );
+            }
         }
     }
 
     /// Runs a list of steps in order, stopping at the first that fails. `nest` is how many
     /// custom actions deep the list is.
-    fn run_steps(&mut self, steps: &[Step], event: &Queued, nest: u32) -> Result<(), String> {
+    fn run_steps(&mut self, steps: &[Step], event: &Queued, nest: u32) -> Result<(), Failed> {
         steps
             .iter()
             .try_for_each(|step| self.run_step(step, event, nest))
     }
 
     /// Runs a custom action, then fires `NAME.done`, or `NAME.failed` with the error.
-    fn run_action(&mut self, name: &str, event: &Queued, nest: u32) -> Result<(), String> {
+    fn run_action(&mut self, name: &str, event: &Queued, nest: u32) -> Result<(), Failed> {
         let result = if nest >= self.app.app.max_chain {
             Err(format!(
                 "actions nested more than max_chain ({}) deep",
                 self.app.app.max_chain
-            ))
+            )
+            .into())
         } else {
             match self.app.actions.get(name) {
                 Some(action) => {
                     let steps = action.steps.clone();
                     self.run_steps(&steps, event, nest + 1)
                 }
-                None => Err(format!("there's no action named {name}")),
+                None => Err(format!("there's no action named {name}").into()),
             }
         };
-        match &result {
-            Ok(()) => self.enqueue(&format!("{name}.done"), json!({}), event),
-            Err(error) => self.enqueue(&format!("{name}.failed"), json!({ "error": error }), event),
+        match result {
+            Ok(()) => {
+                self.enqueue(&format!("{name}.done"), json!({}), event);
+                Ok(())
+            }
+            Err(failed) => {
+                self.enqueue(
+                    &format!("{name}.failed"),
+                    json!({ "error": failed.message }),
+                    event,
+                );
+                Err(Failed {
+                    reported: true,
+                    ..failed
+                })
+            }
         }
-        result
     }
 
-    fn run_step(&mut self, step: &Step, event: &Queued, nest: u32) -> Result<(), String> {
+    fn run_step(&mut self, step: &Step, event: &Queued, nest: u32) -> Result<(), Failed> {
         let fill = |value: &Value| template::value(value, |path| self.look(path, Some(event)));
         match step {
             Step::Run(name) => self.run_action(name, event, nest)?,
@@ -243,14 +305,41 @@ impl Machine {
     }
 
     /// Puts an event a handler fired at the back of the queue, one deeper than its cause.
+    /// Past `max_chain` the event is dropped instead, and `chain.too_deep` fails loud.
     fn enqueue(&mut self, name: &str, payload: Value, cause: &Queued) {
         let mut chain = cause.chain.clone();
         chain.push(cause.name.clone());
+        if chain.len() > self.app.app.max_chain as usize {
+            chain.push(name.to_string());
+            let message = format!(
+                "a chain of events went past max_chain ({}): {}",
+                self.app.app.max_chain,
+                chain.join(" > ")
+            );
+            let error = json!({ "name": "chain.too_deep", "message": message, "chain": chain });
+            self.fail(error, true);
+            return;
+        }
         self.queue.push_back(Queued {
             name: name.to_string(),
             payload,
             chain,
         });
+    }
+
+    /// Logs a failure in `sys.errors` and, when `show` is set, toasts it.
+    fn fail(&mut self, mut error: Value, show: bool) {
+        if show {
+            let text = format!(
+                "{}: {}",
+                text_of(&error["name"]),
+                text_of(&error["message"])
+            );
+            self.effects.push(Effect::Toast { text });
+        }
+        error["at"] = json!(self.now);
+        self.state.errors.push_front(error);
+        self.state.errors.truncate(self.app.app.event_trail);
     }
 
     /// Adds an entry to the front of the trail, dropping the oldest past `event_trail`.
@@ -270,6 +359,7 @@ impl Machine {
             ("sys", Some("view")) => json!(self.state.view),
             ("sys", Some("theme")) => json!(self.state.theme),
             ("sys", Some("events")) => json!(self.state.events),
+            ("sys", Some("errors")) => json!(self.state.errors),
             ("sys", Some("bus")) => self.bus(),
             _ => return None,
         };

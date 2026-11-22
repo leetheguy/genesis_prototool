@@ -102,7 +102,9 @@ action that runs itself stops instead of running forever.
 - **Timers stop** with `cancel`, on `wipe_state`, and when the app closes.
 - **Failures are always logged.** Every `*.failed` event goes into `sys.errors` and the event trail
   before any handler runs. If no handler's pattern matches it, Genesis also shows a toast. A handler
-  can take over the display; it can't make a failure disappear.
+  can take over the display; it can't make a failure disappear. A step that fails in a handler's own
+  list (not inside a custom action, which reports its own `.failed`) stops that list, and is logged under
+  the event's name and toasted.
 
 ## What the bus shows
 
@@ -140,6 +142,7 @@ with its handlers and any state changes, and then the final state. Tests drive t
 - a chain past `max_chain` is dropped and fails loud with its names; a `delay` loop runs past the limit
 - `every` repeats until `cancel`; `wipe_state` and closing the app stop all timers
 - every `*.failed` lands in `sys.errors` and the trail; with no matching handler it also toasts
+- a step failing in a handler's own list is logged under the event's name and toasted
 - `sys.bus` lists every pattern with its handlers and every event the config can fire
 - `sys.events` keeps the newest `event_trail` entries, with handlers and depth
 - `genesis-bench` replays a script of events against mocks and prints the trail and final state
@@ -154,6 +157,6 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: the bus: queue, matching handlers in file order, `sys.events`, `sys.bus`, with `fire` and `log`
 - [x] core: `set`, `step`, `toggle`, `go`, and `.changed` events
 - [x] core: custom actions with `.done` and `.failed`; stop at the first failure
-- [ ] core: chain depth and `max_chain`; failures always logged
+- [x] core: chain depth and `max_chain`; failures always logged
 - [ ] core: `delay`, `every`, and `cancel` on a clock tests control
 - [ ] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)
