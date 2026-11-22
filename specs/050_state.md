@@ -144,3 +144,10 @@ start at their starting values. Removed variables are dropped. A source whose `c
 - with `[app.auth]`, `serve` refuses every call but `login` and `check` until signed in
 - a `password` field's value never appears in state, storage, or logs
 - after a config reload: kept, new, and removed variables; a changed source calls again
+
+## Tasks
+
+Milestone two ([999](999_todo.md)):
+
+- [ ] core: `[sources.NAME]` as handlers: a call on `app.opened` (or `load_on`) and on its params' `.changed`, filling `app.NAME`; the `reload` action
+- [ ] core and the browser: persisting: what the user did kept in local storage and restored on open; sources and `into` results never kept; `[app] forget`

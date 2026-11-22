@@ -41,6 +41,7 @@ The state folder holds the mirror ([050](050_state.md)): `serve` writes it, and 
 
 | Route | What |
 |---|---|
+| `GET /` | the list of apps, each a link to its page |
 | `GET /{app}/` | the renderer, opened on the app in `configs/{app}/` |
 | `GET /api/{app}/config` | server-sent events: the app's config whenever it loads, good or bad ([060](060_hot_reload.md)) |
 | `POST /api/{app}/call` | fire one of the app's operations; the reply is the response, or a stream of it ([030](030_connections.md)) |
@@ -111,6 +112,7 @@ dashboards, and live feeds. It isn't for 60fps local interaction.
 - `/fs/` needs `GENESIS_AGENT_TOKEN`; without it, `401`
 - `/status` lists each app as loaded or failed, with its errors
 - the desktop window shows the same app as a browser on the same URL (deployed check)
+- `/` lists every app folder holding an `app.toml`, each linking to `/{app}/`
 - `docker compose up` brings up both services healthy (deployed check)
 - the mirror appears at `/fs/.state/{app}/`, and dufs can't write to it
 
@@ -121,3 +123,10 @@ The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)) a
 - [x] `serve`: loads `configs/{app}/app.toml` when a client asks, serves the renderer at `/{app}/`, and sends the config
 - [x] `serve`: `POST /api/{app}/mirror` writes `state/{app}/{client}.json` and `.events.ndjson`
 - [x] hello: `samples/hello/app.toml`, where a button's clicks are logged and counted on screen and in the mirror (deployed check: `scripts/check-hello.sh`)
+
+Milestone two ([999](999_todo.md)):
+
+- [ ] `serve`: `GET /` lists the apps
+- [ ] `serve`: `GET /status`: each app loaded or failed, with its errors
+- [ ] Docker Compose: `serve` (configs read-only, state read-write) and `files` (dufs: configs read-write, state read-only at `.state`), with `/fs/` proxied behind `GENESIS_AGENT_TOKEN` (deployed check)
+- [ ] the Tauri 2 desktop shell: a window on a `serve` URL and app (built and checked here; a person opens it on a desktop)

@@ -108,3 +108,13 @@ before it hands off bad data.
 - each stream protocol passes on one message per event or line, as they arrive
 - `timeout` makes a slow request a failure; `0` waits; an operation's timeout beats its connection's
 - no failure message contains a credential's value
+
+## Tasks
+
+Milestone two ([999](999_todo.md)):
+
+- [ ] core: `[connections.*]` config types: `base_url`, `headers`, `timeout`, `ops`, and `crud` (both styles) expanded into operations
+- [ ] core: the `call` step: a call effect for the host, the reply resuming the list, `.ok`/`.failed`/`.{status}` events, `into`, `select`, and `event`
+- [ ] `serve`: `POST /api/{app}/call` makes the request (`reqwest`), with `{{ creds.NAME }}` from `GENESIS_CREDS_NAME`, redacted from failures; only declared operations
+- [ ] the browser: send calls to `serve` and hand replies back; `genesis-bench --mock`
+- [ ] deployed check: the hello app (or a contacts sample) lists and creates records against a mock API, and against a PurpleFlow webhook when one is reachable

@@ -10,21 +10,16 @@ came from.
 
 ## Planned
 
-- **Milestone one: the bus, the renderer, and a button, served.** *Built* on `m1-bus` and `m1-ui`; this item
-  goes when they're merged. A super light foundation:
-  1. The event bus in genesis-core, worked out with tests and `genesis-bench` first ([100](100_events.md), its `## Tasks`).
-  2. The Leptos base: the `Component` trait, the `Wired` wrapper, and `stack`, `heading`, `text`, and `button` ([040](040_catalog.md), its `## Tasks`).
-  3. `serve` renders `configs/hello/` in a browser. Clicking the button logs each click, counts it on screen,
-     and shows it in the mirror ([010](010_architecture.md), its `## Tasks`).
-  No calls, sources, hot reload, dufs, or desktop yet.
 - **Mirror housekeeping** ([050](050_state.md), "The mirror"): deleting the files of clients gone for a day isn't
   built yet, so `state/` only grows. The 10,000-event cap per client is built.
 - **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
   no action, a bad template, all caught when the app loads, not only when they run. The bus already fails them
   loudly at runtime ([100](100_events.md)); these checks move the failure to load time, with a line number.
-- **Milestone two: alive and editable.** Hot reload ([060](060_hot_reload.md)); dufs and Docker Compose, with
-  `/fs/` and `/status` ([010](010_architecture.md)); connections, `call`, and sources against a mock and a PurpleFlow
-  webhook ([030](030_connections.md)); persistence ([050](050_state.md)); and the Tauri desktop window.
+- **Milestone two: alive and editable** (in progress, on `m2`). The app list at `/` and `/status`
+  ([010](010_architecture.md)); hot reload ([060](060_hot_reload.md)); connections, `call`, and sources against a
+  mock and a PurpleFlow webhook ([030](030_connections.md), [050](050_state.md)); persistence ([050](050_state.md));
+  dufs and Docker Compose with `/fs/` ([010](010_architecture.md)); and the Tauri desktop window. Each spec's
+  `## Tasks` lists its part.
 - **Then:** Table, Detail, Form, and display logic ([040](040_catalog.md), [080](080_display_logic.md)); partials
   ([090](090_components.md)); signing in ([050](050_state.md), [070](070_secrets.md)); and the CRM hello world.
 - **Streams** for sources: tickers, live dashboards, and streamed AI answers ([030](030_connections.md), [050](050_state.md)).

@@ -45,3 +45,12 @@ write through `/fs/`, an agent checks `/status` to know whether its change took.
 - a new app folder is live without a restart
 - `/status` reports each app's state and errors, and holds no credentials
 - reload works in a release build exactly as in dev (deployed check)
+
+## Tasks
+
+Milestone two ([999](999_todo.md)):
+
+- [ ] `serve`: watch the configs folder, debounced, and push each app's new config (or its problems) on its open streams
+- [ ] core: carry the state across a new config (kept, new, and removed variables; [050](050_state.md), "Across a config reload")
+- [ ] the renderer: swap in a good config live; show a bad one's problems in a banner over the last good screen
+- [ ] deployed check: edit the hello app while the browser is open, and watch it change
