@@ -135,29 +135,98 @@ impl Machine {
 
     fn run_steps(&mut self, steps: &[Step], event: &Queued) {
         for step in steps {
-            match step {
-                Step::Log { log } => {
-                    let line = template::text(log, |path| self.look(path, Some(event)));
-                    self.record(json!({ "at": self.now, "log": line }));
-                }
-                Step::Fire { fire, with } => {
-                    let Ok(payload) = template::value(&Value::Object(with.clone()), |path| {
-                        self.look(path, Some(event))
-                    }) else {
-                        // Failing a step is spec 100's next tasks; until then a bad payload fires nothing.
-                        return;
-                    };
-                    let mut chain = event.chain.clone();
-                    chain.push(event.name.clone());
-                    self.queue.push_back(Queued {
-                        name: fire.clone(),
-                        payload,
-                        chain,
-                    });
-                }
-                _ => {}
+            // A failed step stops its list. Recording and showing the failure is spec 100's
+            // "failures always logged" task.
+            if self.run_step(step, event).is_err() {
+                return;
             }
         }
+    }
+
+    fn run_step(&mut self, step: &Step, event: &Queued) -> Result<(), String> {
+        let fill = |value: &Value| template::value(value, |path| self.look(path, Some(event)));
+        match step {
+            Step::Log { log } => {
+                let line = template::text(log, |path| self.look(path, Some(event)));
+                self.record(json!({ "at": self.now, "log": line }));
+            }
+            Step::Fire { fire, with } => {
+                let payload = fill(&Value::Object(with.clone()))?;
+                self.enqueue(fire, payload, event);
+            }
+            Step::Set { set, to } => {
+                let value = fill(to)?;
+                self.write(set, value, event)?;
+            }
+            Step::Step { step, by, min, max } => {
+                let now = self.writable(step)?;
+                let n = now
+                    .as_f64()
+                    .ok_or_else(|| format!("{step} isn't a number"))?;
+                let sum = (n + by)
+                    .max(min.unwrap_or(f64::MIN))
+                    .min(max.unwrap_or(f64::MAX));
+                self.write(step, number(sum), event)?;
+            }
+            Step::Toggle { toggle } => {
+                let on = self
+                    .writable(toggle)?
+                    .as_bool()
+                    .ok_or_else(|| format!("{toggle} isn't true or false"))?;
+                self.write(toggle, json!(!on), event)?;
+            }
+            Step::Go { go } => self.write("sys.view", json!(go), event)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// The current value of a variable actions may write: a declared `app.*`, `sys.view`, or
+    /// `sys.theme`. Anything else is an error saying why.
+    fn writable(&self, var: &str) -> Result<Value, String> {
+        match var.split_once('.') {
+            Some(("app", key)) => self
+                .state
+                .app
+                .get(key)
+                .cloned()
+                .ok_or_else(|| format!("{var} isn't declared in [state]")),
+            Some(("sys", "view")) => Ok(json!(self.state.view)),
+            Some(("sys", "theme")) => Ok(json!(self.state.theme)),
+            _ => Err(format!("{var} can't be written")),
+        }
+    }
+
+    /// Writes a variable and, when the value changed, fires `{var}.changed` with `value` and `was`.
+    fn write(&mut self, var: &str, value: Value, cause: &Queued) -> Result<(), String> {
+        let was = self.writable(var)?;
+        if was == value {
+            return Ok(());
+        }
+        match var.split_once('.') {
+            Some(("app", key)) => {
+                self.state.app.insert(key.to_string(), value.clone());
+            }
+            Some((_, "view")) => self.state.view = text_of(&value),
+            _ => self.state.theme = text_of(&value),
+        }
+        self.enqueue(
+            &format!("{var}.changed"),
+            json!({ "value": value, "was": was }),
+            cause,
+        );
+        Ok(())
+    }
+
+    /// Puts an event a handler fired at the back of the queue, one deeper than its cause.
+    fn enqueue(&mut self, name: &str, payload: Value, cause: &Queued) {
+        let mut chain = cause.chain.clone();
+        chain.push(cause.name.clone());
+        self.queue.push_back(Queued {
+            name: name.to_string(),
+            payload,
+            chain,
+        });
     }
 
     /// Adds an entry to the front of the trail, dropping the oldest past `event_trail`.
@@ -251,4 +320,22 @@ fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<Strin
     let mut seen = std::collections::HashSet::new();
     names.retain(|name| seen.insert(name.clone()));
     names
+}
+
+/// A number as JSON, whole numbers as integers, so `step` on `1` gives `2`, not `2.0`.
+fn number(n: f64) -> Value {
+    // A whole number that survives the trip to an integer and back is written as one.
+    let whole = n as i64;
+    if whole as f64 == n {
+        json!(whole)
+    } else {
+        json!(n)
+    }
+}
+
+/// A view or theme name: a string as it is, anything else as JSON text.
+fn text_of(value: &Value) -> String {
+    value
+        .as_str()
+        .map_or_else(|| value.to_string(), String::from)
 }

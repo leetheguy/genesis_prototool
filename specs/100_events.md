@@ -149,7 +149,7 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: config types for `[on]`, `[actions]`, `[state]`, and nodes with `id` (TOML and JSON round trip)
 - [x] core: event names and `*`/`?` patterns
 - [x] core: the bus: queue, matching handlers in file order, `sys.events`, `sys.bus`, with `fire` and `log`
-- [ ] core: `set`, `step`, `toggle`, `go`, and `.changed` events
+- [x] core: `set`, `step`, `toggle`, `go`, and `.changed` events
 - [ ] core: custom actions with `.done` and `.failed`; stop at the first failure
 - [ ] core: chain depth and `max_chain`; failures always logged
 - [ ] core: `delay`, `every`, and `cancel` on a clock tests control
