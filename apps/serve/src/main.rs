@@ -1,15 +1,19 @@
 //! `genesis-serve [--configs DIR] [--state DIR] [--dist DIR] [--listen ADDRESS] [--debounce MS]`.
 //!
 //! See the library's docs for the routes. It listens on `127.0.0.1:8080` unless told otherwise,
-//! and reloads apps live as their files change (`--debounce MS`, default 150).
+//! and reloads apps live as their files change (`--debounce MS`, default 150). Credentials come from
+//! its environment: `GENESIS_CREDS_NAME` is `{{ creds.NAME }}`.
 
-use genesis_serve::{Settings, live_router};
+use genesis_serve::{Creds, Settings, live_router};
 use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let settings = match Settings::from_args(std::env::args().skip(1)) {
-        Ok(settings) => settings,
+        Ok(settings) => Settings {
+            creds: Creds::from_vars(std::env::vars()),
+            ..settings
+        },
         Err(why) => {
             eprintln!("{why}");
             return ExitCode::from(2);
