@@ -7,7 +7,7 @@ This is the source of truth for what Genesis is today. Read it first. It's rewri
 project changes; the numbered specs it links to hold the detail and the reasons behind each decision.
 
 **Milestones one and two are built** ([999](999_todo.md)): the event bus and its workbench; the renderer
-with `cell`, `text` (a heading with `level`), and `button`; `serve` drawing the one app, the configs folder, at `/`
+with `cell` (with its layout, box, and type keys), `text` (a heading with `level`, with box and type keys), and `button`; `serve` drawing the one app, the configs folder, at `/`
 ([120](120_one_app.md)), reporting it at `/status`, and reloading it live; connections, the `call` step, and sources, with
 credentials only `serve` holds; sessions kept on the device; the mirror; Docker Compose with dufs behind
 `/fs/`; and the desktop shell, whose window builds and loads a `serve` page (a person has yet to open it on a

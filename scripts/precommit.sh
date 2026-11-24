@@ -10,4 +10,5 @@ cargo machete
 cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 (cd apps/web && PATH="$HOME/.local/bin:$PATH" trunk build --quiet)
+scripts/check-css.sh
 echo "precommit: all green"

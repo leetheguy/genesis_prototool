@@ -24,6 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 mod components;
+pub mod style;
 
 /// Makes a call and answers it, as [`Host::set_caller`] takes it.
 type Caller = Arc<dyn Fn(Call) + Send + Sync>;

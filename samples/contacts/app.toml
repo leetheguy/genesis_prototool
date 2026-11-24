@@ -29,6 +29,8 @@ select = "/rows"
 
 [[body]]
 type = "cell"
+gap = 4
+align = "start"
 
 [[body.children]]
 type = "text"

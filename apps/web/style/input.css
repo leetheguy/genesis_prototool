@@ -1,5 +1,7 @@
 @import "tailwindcss" source(none);
 @source "../../../crates/genesis-ui/src";
+/* Every class a style key can give (spec 040); genesis-ui's tests keep it up to date. */
+@source "../../../crates/genesis-ui/classes.txt";
 @plugin "./vendor/daisyui.mjs" {
   themes: all;
 }

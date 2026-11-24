@@ -10,4 +10,5 @@
 pub mod bus;
 pub mod config;
 pub mod pattern;
+pub mod style;
 pub mod template;

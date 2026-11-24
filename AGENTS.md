@@ -7,7 +7,7 @@ specific to Genesis.
 
 | Binding | Genesis |
 |---|---|
-| **precommit** | `scripts/precommit.sh`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (and for wasm on `genesis-web`), `cargo machete`, `cargo test`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`, and `trunk build` of the browser bundle |
+| **precommit** | `scripts/precommit.sh`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (and for wasm on `genesis-web`), `cargo machete`, `cargo test`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`, `trunk build` of the browser bundle, and `scripts/check-css.sh` (every style class is in the built CSS) |
 | **test** | `cargo test`. The renderer's tests draw to HTML natively (Leptos's server-side mode); what only a real browser does (clicks) is a deployed check with Playwright against the served app |
 | **coverage** | `scripts/coverage.sh` (`cargo llvm-cov --workspace --fail-under-lines 90`). `genesis-web` is wasm-only and natively an empty program, so it adds nothing to the count |
 | **mutation** | `cargo mutants --in-diff <(git diff)` on the lines a change touches; `cargo mutants -f FILE` to harden a whole file |

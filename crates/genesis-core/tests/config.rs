@@ -260,10 +260,9 @@ fn a_level_outside_one_to_three_is_a_problem_where_it_is() {
         "[app]\nname = \"x\"\n[[body]]\ntype = \"text\"\ntext = \"Hi\"\nlevel = 4\n",
     )
     .unwrap_err();
-    let text = problems[0].to_string();
-    assert!(
-        text.starts_with("app.toml:") && text.contains("level is 1, 2, or 3, not 4"),
-        "{text}"
+    assert_eq!(
+        problems[0].to_string(),
+        "app.toml:6:1: `level` is 1, 2, or 3, not 4"
     );
 }
 

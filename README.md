@@ -61,7 +61,7 @@ That's a paged list. Save a change to the file and every open window changes wit
 **Milestones one and two are built:** the event bus, the renderer (cell, text, button), live
 reload, connections and sources with server-held credentials, sessions kept on the device, and Docker
 Compose with dufs for agents. **Milestone three is under way:** `serve` runs one app, the configs
-folder, at `/`. Next come the atoms (the example above needs `cell` with `each`), components, and what
+folder, at `/`, and cells and texts take their style keys. Next come the rest of the atoms (the example above needs `cell` with `each`), components, and what
 agents need to build a screen on their own. The design is in
 [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 

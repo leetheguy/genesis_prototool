@@ -142,8 +142,8 @@ theme colors, so every theme recolors every screen. There are no CSS classes in 
 | Key | Values | Does |
 |---|---|---|
 | `flow` | `"column"` (default), `"row"` | lays children top to bottom, or side by side |
-| `grid` | `1`–`12`, or `"fit"` | lays children in a grid of that many equal columns, filling rows left to right; `"fit"` fits as many columns of at least 6rem as there's room for |
-| `gap` | spacing | space between children |
+| `grid` | `1`–`12`, or `"fit"` | lays children in a grid of that many equal columns, filling rows left to right; `"fit"` fits as many columns of at least 6rem as there's room for. A cell takes `flow` or `grid`, not both |
+| `gap` | spacing | space between children; none unless it's set |
 | `align` | `"start"`, `"center"`, `"end"`, `"stretch"` | lines children up across the flow |
 | `justify` | `"start"`, `"center"`, `"end"`, `"between"`, `"around"` | spreads children along the flow |
 | `wrap` | `true` | lets a row wrap |
@@ -203,7 +203,11 @@ bg = "base-200"
 radius = "box"
 ```
 
-A value outside a key's list is a config error naming the key and the values it takes.
+A value outside a key's list is a config error naming the key and the values it takes, at the key's line.
+
+The CSS is built ahead of time, so genesis-ui lists every class a key can give in
+`crates/genesis-ui/classes.txt`, which Tailwind reads. A test keeps that list the same as the code, and
+precommit checks that the built CSS has every class in it (`scripts/check-css.sh`).
 
 ## Events each node fires
 
@@ -240,7 +244,8 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - every type loads with its keys and draws its HTML element, styled by daisyUI where it has a style
 - each style key gives its classes, and every class it can give is in the built CSS
 - a style key given a table by screen size gives each size's class with its prefix
-- a style key value outside its list is a config error naming the key and its values
+- a style key value outside its list is a config error naming the key and its values, at its line
+- a cell with both `flow` and `grid` is a config error naming its place
 - `grid = 12` with children of `span = 4` lays them three to a row; `offset` skips columns; `"fit"` fits columns
 - a `text` with `level` is a heading element
 - a cell with `each` draws its children once per element, each seeing its own element as `item.*`
@@ -275,7 +280,7 @@ The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)):
 
 Milestone three ([999](999_todo.md)), each with its tests:
 
-- [ ] `cell` with the layout and box keys, replacing `stack`; `text` with `level` and the type keys, replacing `heading` ([120](120_one_app.md))
+- [x] `cell` with the layout and box keys, replacing `stack`; `text` with `level` and the type keys, replacing `heading` ([120](120_one_app.md))
 - [ ] screen sizes for every style key, and the whole style vocabulary in the built CSS
 - [ ] placement keys on every node
 - [ ] `image` and `link`; `button`'s variants and sizes

@@ -23,6 +23,8 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::style::styled;
+
 /// A whole app: the top-level tables of `app.toml` and every other file, put together.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -136,35 +138,42 @@ pub fn child_place(parent: &str, i: usize) -> String {
     format!("{parent}.children.{i}")
 }
 
-/// `type = "cell"`: a `div` holding other nodes ([spec 040](../../../specs/040_catalog.md)).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Cell {
-    /// The node's name; its events fire under it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    /// The nodes inside it.
-    #[serde(default)]
-    pub children: Vec<Node>,
+styled! {
+    [layout, boxed, typed]
+    /// `type = "cell"`: a `div` holding other nodes, laid out and styled by its style keys
+    /// ([spec 040](../../../specs/040_catalog.md)).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Cell {
+        /// The node's name; its events fire under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The nodes inside it.
+        #[serde(default)]
+        pub children: Vec<Node>,
+    }
 }
 
-/// `type = "text"`: a paragraph, or with `level`, a heading.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Text {
-    /// The node's name; its events fire under it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    /// The words; may hold templates.
-    pub text: String,
-    /// 1, 2, or 3: a heading (`h1`–`h3`) for screen readers, with a heading's size and weight.
-    /// Without it, a paragraph.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "heading_level"
-    )]
-    pub level: Option<u8>,
+styled! {
+    [boxed, typed]
+    /// `type = "text"`: a paragraph, or with `level`, a heading.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Text {
+        /// The node's name; its events fire under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The words; may hold templates.
+        pub text: String,
+        /// 1, 2, or 3: a heading (`h1`–`h3`) for screen readers, with a heading's size and weight.
+        /// Without it, a paragraph.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "heading_level"
+        )]
+        pub level: Option<u8>,
+    }
 }
 
 /// Reads `level`, refusing anything but 1, 2, or 3.
@@ -173,7 +182,7 @@ fn heading_level<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u8
     match level {
         1..=3 => Ok(Some(level as u8)),
         _ => Err(de::Error::custom(format!(
-            "level is 1, 2, or 3, not {level}"
+            "`level` is 1, 2, or 3, not {level}"
         ))),
     }
 }
@@ -623,6 +632,11 @@ impl App {
                 },
             );
         }
+        if let Some(app) = &top {
+            for (i, node) in app.body.iter().enumerate() {
+                check_node(node, &body_place(i), &mut problems);
+            }
+        }
         names.clashes(&mut problems);
         match top {
             Some(mut app) if problems.is_empty() => {
@@ -800,13 +814,18 @@ fn toml_problem(path: &str, text: &str, e: &toml::de::Error) -> ConfigError {
     }
 }
 
-/// For an unknown-key error, where that key is written, searching from the start of the table
-/// the error points at.
+/// For an error about one key (an unknown key, or a message starting with a key in backticks, as
+/// `` `gap` is ... ``), where that key is written, searching from the start of the table the
+/// error points at.
 ///
 /// Nodes are read through a `type` tag, so the TOML reader can only point at the table holding a
 /// bad key, not the key itself. The table's own lines are searched for it.
 fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<usize> {
-    let key = message.strip_prefix("unknown field `")?.split('`').next()?;
+    let key = message
+        .strip_prefix("unknown field `")
+        .or_else(|| message.strip_prefix('`'))?
+        .split('`')
+        .next()?;
     let mut offset = table_start;
     for line in text.get(table_start..)?.split_inclusive('\n') {
         let trimmed = line.trim_start();
@@ -819,6 +838,22 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
         offset += line.len();
     }
     None
+}
+
+/// Checks what one key can't: a node's keys that only make sense apart. `place` names the node,
+/// since it may have no `id`.
+fn check_node(node: &Node, place: &str, problems: &mut Vec<ConfigError>) {
+    if let Node::Cell(cell) = node {
+        if cell.flow.is_some() && cell.grid.is_some() {
+            problems.push(problem_in(
+                "app.toml",
+                format!("{place}: a cell lays out by `flow` or by `grid`, not both"),
+            ));
+        }
+        for (i, child) in cell.children.iter().enumerate() {
+            check_node(child, &child_place(place, i), problems);
+        }
+    }
 }
 
 /// A `crud` resource's operation for `action`: its override, or the convention for its style.
