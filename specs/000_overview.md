@@ -15,6 +15,9 @@ real desktop, [999](999_todo.md)).
 Everything else here is still design: every numbered spec is a draft, and this page describes the
 design they add up to.
 
+**Milestone three is planned** ([999](999_todo.md)): an agent builds a CRM on its own. It brings the atomic
+catalog, display logic, and what agents need from `serve`: a guide, logs, and a webhook ([110](110_agents.md)).
+
 ## What this is
 
 Genesis is a generic interface. Each app is a folder of TOML: the variables it holds, the APIs it
@@ -32,8 +35,10 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
 ## The whole model
 
 1. **An app is a folder of TOML** in the configs folder, which agents reach only through dufs, as
-   in PurpleFlow. It's loaded into closed Rust types; unknown keys are errors. See [010](010_architecture.md), [020](020_config.md).
-2. **One page, many views.** The screen is a tree of nodes from a closed catalog ([040](040_catalog.md)).
+   in PurpleFlow. It's loaded into closed Rust types; unknown keys are errors. Within an app, no two files
+   share a name, whatever their folders. See [010](010_architecture.md), [020](020_config.md), [110](110_agents.md).
+2. **One page, many views.** The screen is a tree of nodes from a closed catalog of atoms: each draws one
+   layout, piece of content, or control, and anything bigger is built from them ([040](040_catalog.md)).
    Which parts show depends on variables, `sys.view` among them ([080](080_display_logic.md)).
 3. **Every value comes from the state machine.** Components read immutable state; the screen always
    shows its current state. See [050](050_state.md).
@@ -59,12 +64,16 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
     Catalog components are Rust, all built the same way: the `Component` trait plus one shared `Wired` wrapper that
     knows all the wiring. A new one is a small, regular piece of code that ships in a build ([040](040_catalog.md)).
 11. **Changing a file changes every open screen, live, in every build.** A bad change keeps the last
-    good version running and says where it went wrong. See [060](060_hot_reload.md).
+    good version running and says where it went wrong: on screen, in `/status`, and in a `.log` beside the
+    file, which also collects that file's failures at run time. See [060](060_hot_reload.md), [110](110_agents.md).
 12. **The server makes every call.** Credentials live in its env file, set by a person, and never
     reach the configs folder or a browser. See [070](070_secrets.md).
 13. **Signing in is the API's job; `serve` holds the session.** The token stays on `serve` behind an
     `httpOnly` cookie, every open asks the API whether you're still signed in, and signing back in
     resumes where you were. With `[app.auth]`, `serve` refuses all other calls until you sign in. See [050](050_state.md), [070](070_secrets.md).
+14. **Agents build and drive apps.** `GET /agents` is the guide; they write configs through `/fs/` and check
+    `/status`, the logs, and the mirror. `POST /api/{app}/push/{name}` sends an event, with a JSON payload,
+    into every open client of an app. See [110](110_agents.md).
 
 ## Rules
 
@@ -72,7 +81,7 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
   Genesis's. Filtering, sorting, computing, and deciding are the API's.
 - **The catalog is closed.** A new node type is a spec and a code change. No raw CSS classes in the TOML.
 - **No secrets in the TOML, ever.** Only `{{ creds.NAME }}` references, only in connections.
-- **Fail loud.** Every failure is visible on screen, in `sys.errors`, and (for config) in `/status`. Every `*.failed` event is logged before any handler runs.
+- **Fail loud.** Every failure is visible on screen, in `sys.errors`, in `/status` (for config), and in the `.log` beside the file it came from. Every `*.failed` event is logged before any handler runs.
 - **No conditionals in wiring.** Conditions exist only in `show`, `disabled`, and input checks. Handlers branch by event name.
 - **One-way flow.** Configs are immutable once loaded; state changes only through the state machine;
   nothing flows back into a config.
@@ -109,7 +118,7 @@ Built so far, then planned ([010](010_architecture.md)):
 | `state/` | the mirror: each client's state and event trail (read-only to agents at `/fs/.state/`, once dufs is in) |
 | `apps/desktop` | the Tauri shell: which `serve` page the window opens (the window itself is behind the `app` feature) |
 | `Dockerfile`, `docker-compose.yml` | `serve` and `files` (dufs), as PurpleFlow runs its files service |
-| `docs/authoring.md` | *planned:* the guide for agents writing Genesis apps |
+| `docs/authoring.md` | *planned:* the guide for agents writing Genesis apps, served at `/agents` |
 
 ## Dependencies
 
@@ -144,3 +153,4 @@ In use now, then planned. Check current versions before adding any.
 - [080 — Display logic](080_display_logic.md): *draft.* Conditions, input checks, and formats.
 - [090 — Components](090_components.md): *draft.* Partials with props and local state.
 - [100 — Events, actions, and handlers](100_events.md): *draft.* The bus: event names, `[on]`, actions, the queue, depth, timers, the workbench.
+- [110 — Working with agents](110_agents.md): *draft.* The guide at `/agents`, one name per file, logs beside files, and pushing events in.

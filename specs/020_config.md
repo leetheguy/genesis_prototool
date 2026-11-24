@@ -109,6 +109,9 @@ version running ([060](060_hot_reload.md)), and every problem is reported with i
 - `{{ creds.* }}` or `{{ session.* }}` outside `[connections.*]`, or `session.*` without `[app.auth]`
 - a `select` or `field` that isn't a JSON Pointer, or a template that isn't a plain lookup
 - a partial that doesn't exist, a missing required prop, or partials that use each other in a loop
+- two `.toml` files in one app with the same name, in any folders ([110](110_agents.md))
+
+Each problem is also written to the `.log` beside the file it's in ([110](110_agents.md)).
 
 ## Tests
 

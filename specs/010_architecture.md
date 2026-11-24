@@ -14,14 +14,14 @@ Docker Compose runs two services, like PurpleFlow's `app` and `files`
 
 | Service | What it does |
 |---|---|
-| `serve` | `genesis-serve` (Rust, axum): serves the renderer, loads and watches the configs, sends them to clients, makes every API call, and proxies `/fs/` to `files`. Mounts the configs folder **read-only** |
+| `serve` | `genesis-serve` (Rust, axum): serves the renderer, loads and watches the configs, sends them to clients, makes every API call, and proxies `/fs/` to `files`. Mounts the configs folder read-write, and writes nothing there but `.log` files ([110](110_agents.md)) |
 | `files` | dufs, serving the configs folder **read-write**, on a network of its own. Only `serve` can reach it |
 
 ```
 host                         containers
 $CONFIGS_PATH/ (./configs)
   components/                files:  /data          read-write
-  crm/                       serve:  /app/configs   read-only
+  crm/                       serve:  /app/configs   read-write, for .log files only
     app.toml
     components/
 $STATE_PATH/ (./state)       files:  /data/.state   read-only
@@ -46,6 +46,8 @@ The state folder holds the mirror ([050](050_state.md)): `serve` writes it, and 
 | `GET /api/{app}/config` | server-sent events: the app's config whenever it loads, good or bad ([060](060_hot_reload.md)) |
 | `POST /api/{app}/call` | fire one of the app's operations; the reply is the response, or a stream of it ([030](030_connections.md)) |
 | `POST /api/{app}/mirror` | the client's state and event trail, written to the state folder ([050](050_state.md)) |
+| `POST /api/{app}/push/{name}` | fire `push.{name}` in every open client of the app, behind `GENESIS_AGENT_TOKEN` ([110](110_agents.md)) |
+| `GET /agents` | the guide for agents writing apps, open ([110](110_agents.md)) |
 | `GET /status` | every app's load state and errors, as JSON, so an agent can check its change landed |
 | `/fs/*` | the files service, behind `GENESIS_AGENT_TOKEN` |
 | `GET /health` | `200` when the server is up |

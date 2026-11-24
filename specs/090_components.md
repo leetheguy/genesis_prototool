@@ -10,7 +10,9 @@ structured components with data links, with no code in them, so they hot-reload 
 ## A component
 
 `configs/components/contact_card.toml`, shared by every app, or `configs/crm/components/contact_card.toml`,
-for this app only. An app's own component wins over a shared one with the same name.
+for this app only. A component's name is its file name, so it's never ambiguous: an app's own
+component and a shared one with the same name is a load problem, like any two files in one app with the
+same name ([110](110_agents.md)).
 
 ```toml
 [component]

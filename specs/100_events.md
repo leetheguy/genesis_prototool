@@ -35,6 +35,7 @@ An event is a dotted name, plus a payload that handlers read as `{{ event.* }}`.
 | a custom action | `sign_out.done`, or `sign_out.failed` if a step failed | the failure, if any |
 | a variable changing | `app.page.changed`, `sys.view.changed` | `value`, `was` |
 | a `fire` step | any name | its `with` table |
+| an agent or workflow, through `POST /api/{app}/push/{name}` ([110](110_agents.md)) | `push.review_ready` | the JSON body it sent |
 | Genesis | `app.opened`, `server.connected`, `server.disconnected`, `config.loaded`, `config.failed`, `auth.in`, `auth.out`, `state.wiped` | as fits |
 
 A node without an `id` fires nothing. Give it an `id` to wire it. `.changed` fires only when the value
@@ -166,3 +167,8 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: chain depth and `max_chain`; failures always logged
 - [x] core: `delay`, `every`, and `cancel` on a clock tests control
 - [x] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)
+
+Milestone three ([999](999_todo.md)):
+
+- [ ] `confirm`: asks in a dialog; "no" stops the list quietly
+- [ ] `toast`: a short message, with its variant
