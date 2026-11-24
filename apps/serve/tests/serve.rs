@@ -16,14 +16,10 @@ impl Folders {
         let root =
             std::env::temp_dir().join(format!("genesis-serve-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        for dir in ["configs/hello", "state", "dist"] {
+        for dir in ["configs", "state", "dist"] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
         }
-        std::fs::write(
-            root.join("configs/hello/app.toml"),
-            "[app]\nname = \"Hello\"\n",
-        )
-        .unwrap();
+        std::fs::write(root.join("configs/app.toml"), "[app]\nname = \"Hello\"\n").unwrap();
         std::fs::write(root.join("dist/index.html"), "<html>the renderer</html>").unwrap();
         std::fs::write(root.join("dist/genesis.js"), "// bundle").unwrap();
         Folders(root)
@@ -94,22 +90,23 @@ async fn health_answers_ok() {
 }
 
 #[tokio::test]
-async fn an_apps_page_is_the_renderer() {
+async fn the_root_is_the_renderer() {
     let folders = Folders::new("page");
     assert_eq!(
-        get(&folders, "/hello/").await,
+        get(&folders, "/").await,
         (StatusCode::OK, "<html>the renderer</html>".into())
     );
-    assert_eq!(get(&folders, "/hello").await.0, StatusCode::OK);
 }
 
 #[tokio::test]
-async fn an_app_that_doesnt_exist_is_not_found() {
-    let folders = Folders::new("nope");
-    assert_eq!(get(&folders, "/nope/").await.0, StatusCode::NOT_FOUND);
-    assert_eq!(
-        get(&folders, "/api/nope/config").await.0,
-        StatusCode::NOT_FOUND
+async fn with_no_app_toml_the_stream_says_so() {
+    let folders = Folders::new("noapp");
+    std::fs::remove_file(folders.path("configs/app.toml")).unwrap();
+    let (status, event) = first_event(&folders, "/api/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        event.starts_with("event: problems\n") && event.contains("app.toml not found"),
+        "{event}"
     );
 }
 
@@ -125,7 +122,7 @@ async fn the_bundle_is_served_under_genesis() {
 #[tokio::test]
 async fn the_config_stream_starts_with_the_loaded_app() {
     let folders = Folders::new("config");
-    let (status, event) = first_event(&folders, "/api/hello/config").await;
+    let (status, event) = first_event(&folders, "/api/config").await;
     assert_eq!(status, StatusCode::OK);
     assert!(event.starts_with("event: config\n"), "{event}");
     let data: Value = serde_json::from_str(
@@ -144,11 +141,11 @@ async fn the_config_stream_starts_with_the_loaded_app() {
 async fn an_app_that_doesnt_load_streams_its_problems_with_where_they_are() {
     let folders = Folders::new("problems");
     std::fs::write(
-        folders.path("configs/hello/app.toml"),
+        folders.path("configs/app.toml"),
         "[app]\nname = \"Hello\"\ncolour = \"red\"\n",
     )
     .unwrap();
-    let (_, event) = first_event(&folders, "/api/hello/config").await;
+    let (_, event) = first_event(&folders, "/api/config").await;
     assert!(event.starts_with("event: problems\n"), "{event}");
     assert!(
         event.contains("app.toml:3:1") && event.contains("colour"),
@@ -161,13 +158,12 @@ async fn the_mirror_writes_the_clients_state_whole() {
     let folders = Folders::new("mirror");
     let status = post(
         &folders,
-        "/api/hello/mirror",
+        "/api/mirror",
         json!({ "client": "abc123", "state": { "app": { "n": 1 } }, "events": [] }),
     )
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let state: Value =
-        serde_json::from_str(&read(&folders.path("state/hello/abc123.json"))).unwrap();
+    let state: Value = serde_json::from_str(&read(&folders.path("state/abc123.json"))).unwrap();
     assert_eq!(state, json!({ "app": { "n": 1 } }));
 }
 
@@ -176,17 +172,17 @@ async fn the_mirror_appends_each_event_as_a_line() {
     let folders = Folders::new("events");
     post(
         &folders,
-        "/api/hello/mirror",
+        "/api/mirror",
         json!({ "client": "c1", "state": {}, "events": [{ "name": "a" }] }),
     )
     .await;
     post(
         &folders,
-        "/api/hello/mirror",
+        "/api/mirror",
         json!({ "client": "c1", "state": {}, "events": [{ "name": "b" }, { "log": "x" }] }),
     )
     .await;
-    let lines: Vec<Value> = read(&folders.path("state/hello/c1.events.ndjson"))
+    let lines: Vec<Value> = read(&folders.path("state/c1.events.ndjson"))
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
@@ -206,11 +202,11 @@ async fn the_mirrors_event_file_keeps_the_last_ten_thousand() {
     let events: Vec<Value> = (0..10_005).map(|i| json!({ "n": i })).collect();
     post(
         &folders,
-        "/api/hello/mirror",
+        "/api/mirror",
         json!({ "client": "c1", "state": {}, "events": events }),
     )
     .await;
-    let text = read(&folders.path("state/hello/c1.events.ndjson"));
+    let text = read(&folders.path("state/c1.events.ndjson"));
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 10_000);
     assert_eq!(lines[0], r#"{"n":5}"#);
@@ -222,7 +218,7 @@ async fn a_client_name_that_isnt_plain_is_refused_and_nothing_is_written() {
     for client in ["../escape", "a/b", "", "dot.dot"] {
         let status = post(
             &folders,
-            "/api/hello/mirror",
+            "/api/mirror",
             json!({ "client": client, "state": {}, "events": [] }),
         )
         .await;
@@ -234,34 +230,6 @@ async fn a_client_name_that_isnt_plain_is_refused_and_nothing_is_written() {
             .next()
             .is_none()
     );
-}
-
-#[tokio::test]
-async fn an_app_name_that_isnt_plain_is_refused() {
-    let folders = Folders::new("appname");
-    assert_eq!(
-        get(&folders, "/api/..%2Fhello/config").await.0,
-        StatusCode::BAD_REQUEST
-    );
-    let status = post(
-        &folders,
-        "/api/%2E%2E/mirror",
-        json!({ "client": "c1", "state": {}, "events": [] }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn the_mirror_for_an_app_that_doesnt_exist_is_not_found() {
-    let folders = Folders::new("mirror404");
-    let status = post(
-        &folders,
-        "/api/nope/mirror",
-        json!({ "client": "c1", "state": {}, "events": [] }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[test]
@@ -296,7 +264,7 @@ async fn names_may_hold_underscores_and_dashes() {
     let folders = Folders::new("plain");
     let status = post(
         &folders,
-        "/api/hello/mirror",
+        "/api/mirror",
         json!({ "client": "my_client-1", "state": {}, "events": [] }),
     )
     .await;
@@ -306,77 +274,42 @@ async fn names_may_hold_underscores_and_dashes() {
 #[tokio::test]
 async fn an_event_file_that_cant_be_read_fails_loud_and_is_left_alone() {
     let folders = Folders::new("unreadable");
-    std::fs::create_dir_all(folders.path("state/hello")).unwrap();
-    std::fs::write(
-        folders.path("state/hello/c1.events.ndjson"),
-        [0xff, 0xfe, 0x00],
-    )
-    .unwrap();
+    std::fs::write(folders.path("state/c1.events.ndjson"), [0xff, 0xfe, 0x00]).unwrap();
     let status = post(
         &folders,
-        "/api/hello/mirror",
+        "/api/mirror",
         json!({ "client": "c1", "state": {}, "events": [{ "name": "a" }] }),
     )
     .await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    let untouched = std::fs::read(folders.path("state/hello/c1.events.ndjson")).unwrap();
+    let untouched = std::fs::read(folders.path("state/c1.events.ndjson")).unwrap();
     assert_eq!(untouched, [0xff, 0xfe, 0x00]);
 }
 
 #[tokio::test]
-async fn the_root_lists_each_app_as_a_link_to_its_page() {
-    let folders = Folders::new("list");
-    std::fs::create_dir_all(folders.path("configs/crm")).unwrap();
-    std::fs::write(
-        folders.path("configs/crm/app.toml"),
-        "[app]\nname = \"CRM\"\n",
-    )
-    .unwrap();
-    std::fs::create_dir_all(folders.path("configs/components")).unwrap();
-    std::fs::create_dir_all(folders.path("configs/not plain")).unwrap();
-    std::fs::write(
-        folders.path("configs/not plain/app.toml"),
-        "[app]\nname = \"x\"\n",
-    )
-    .unwrap();
-    let (status, html) = get(&folders, "/").await;
-    assert_eq!(status, StatusCode::OK);
-    let (crm, hello) = (
-        html.find(r#"href="/crm/""#).expect("crm listed"),
-        html.find(r#"href="/hello/""#).expect("hello listed"),
-    );
-    assert!(crm < hello, "in name order: {html}");
-    assert!(
-        !html.contains("components") && !html.contains("not plain"),
-        "{html}"
-    );
-}
-
-#[tokio::test]
-async fn the_root_says_so_when_there_are_no_apps() {
-    let folders = Folders::new("empty");
-    std::fs::remove_dir_all(folders.path("configs/hello")).unwrap();
-    let (status, html) = get(&folders, "/").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("No apps yet"), "{html}");
-}
-
-#[tokio::test]
-async fn status_reports_each_app_loaded_or_failed_with_its_problems() {
+async fn status_says_the_app_loaded() {
     let folders = Folders::new("status");
-    std::fs::create_dir_all(folders.path("configs/broken")).unwrap();
+    let (status, body) = get(&folders, "/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({ "status": "loaded" })
+    );
+}
+
+#[tokio::test]
+async fn status_says_the_app_failed_with_where_each_problem_is() {
+    let folders = Folders::new("statusbad");
     std::fs::write(
-        folders.path("configs/broken/app.toml"),
+        folders.path("configs/app.toml"),
         "[app]\nname = \"x\"\ncolour = 1\n",
     )
     .unwrap();
-    let (status, body) = get(&folders, "/status").await;
-    assert_eq!(status, StatusCode::OK);
+    let (_, body) = get(&folders, "/status").await;
     let report: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(report["apps"]["hello"], json!({ "status": "loaded" }));
-    assert_eq!(report["apps"]["broken"]["status"], "failed");
+    assert_eq!(report["status"], "failed");
     assert!(
-        report["apps"]["broken"]["problems"][0]
+        report["problems"][0]
             .as_str()
             .unwrap()
             .starts_with("app.toml:3:1:"),

@@ -58,7 +58,7 @@ style keys, and [090](090_components.md) for components.
 
 Milestone three ([999](999_todo.md)), in this order, so the rest is built on one app:
 
-- [ ] `serve`: one app from the configs folder at `/`, its routes without the app's name, and the mirror at `state/{client}.json`
+- [x] `serve`: one app from the configs folder at `/`, its routes without the app's name, and the mirror at `state/{client}.json`
 - [ ] the desktop window opens `serve`'s `/` (no app argument)
 - [ ] samples, the deployed checks, Compose, and the docs, moved to one app
 - [ ] core: an app from many files, with every name unique ([020](020_config.md))

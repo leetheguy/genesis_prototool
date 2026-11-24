@@ -20,8 +20,7 @@ const MIRROR_EVERY: Duration = Duration::from_millis(250);
 
 pub fn start() {
     console_error_panic_hook::set_once();
-    let name = app_name();
-    let source = match EventSource::new(&format!("/api/{name}/config")) {
+    let source = match EventSource::new("/api/config") {
         Ok(source) => source,
         Err(e) => return show_problems(&format!("can't reach serve: {e:?}")),
     };
@@ -41,7 +40,7 @@ pub fn start() {
             let host = running.borrow().clone();
             match host {
                 Some(host) => host.reload(app),
-                None => *running.borrow_mut() = Some(run(app, name.clone())),
+                None => *running.borrow_mut() = Some(run(app)),
             }
         })
     };
@@ -65,28 +64,26 @@ fn problems(running: &Rc<RefCell<Option<Host>>>, text: &str) {
 }
 
 /// Draws the app and starts its clock and mirror.
-fn run(app: App, name: String) -> Host {
+fn run(app: App) -> Host {
     let host = Host::new(app);
     let drawn = host.clone();
     leptos::mount::mount_to_body(move || app_view(drawn.clone()));
-    caller(host.clone(), name.clone());
-    restore(&host, &name);
+    caller(host.clone());
+    restore(&host);
     host.open();
-    keep(host.clone(), name.clone());
+    keep(host.clone());
     clock(host.clone());
-    mirror(host.clone(), name);
+    mirror(host.clone());
     host
 }
 
-/// Where this app's kept session lives in local storage.
-fn kept_key(name: &str) -> String {
-    format!("genesis.kept.{name}")
-}
+/// Where the kept session lives in local storage (spec 050, "Persisting").
+const KEPT_KEY: &str = "genesis.kept";
 
 /// Brings back this device's kept session, if there is one (spec 050, "Persisting").
-fn restore(host: &Host, name: &str) {
+fn restore(host: &Host) {
     let storage = window().local_storage().ok().flatten();
-    let Some(text) = storage.and_then(|s| s.get_item(&kept_key(name)).ok().flatten()) else {
+    let Some(text) = storage.and_then(|s| s.get_item(KEPT_KEY).ok().flatten()) else {
         return;
     };
     let kept = serde_json::from_str(&text).unwrap_or(Value::Null);
@@ -96,8 +93,7 @@ fn restore(host: &Host, name: &str) {
 }
 
 /// Saves the kept session whenever it changes.
-fn keep(host: Host, name: String) {
-    let key = kept_key(&name);
+fn keep(host: Host) {
     let last = RefCell::new(String::new());
     set_interval(
         move || {
@@ -109,7 +105,7 @@ fn keep(host: Host, name: String) {
                 .local_storage()
                 .ok()
                 .flatten()
-                .is_some_and(|s| s.set_item(&key, &kept).is_ok());
+                .is_some_and(|s| s.set_item(KEPT_KEY, &kept).is_ok());
             if !saved {
                 web_sys::console::warn_1(&"genesis: this browser won't keep the session".into());
             }
@@ -120,8 +116,8 @@ fn keep(host: Host, name: String) {
 }
 
 /// Makes the machine's calls through serve, and hands each answer back.
-fn caller(host: Host, name: String) {
-    let url = format!("/api/{name}/call");
+fn caller(host: Host) {
+    let url = "/api/call".to_string();
     let replies = host.clone();
     host.set_caller(move |call| {
         let (host, url) = (replies.clone(), url.clone());
@@ -191,9 +187,9 @@ fn clock(host: Host) {
 }
 
 /// Posts the mirror whenever something has happened.
-fn mirror(host: Host, name: String) {
+fn mirror(host: Host) {
     let client = client_id();
-    let url = format!("/api/{name}/mirror");
+    let url = "/api/mirror".to_string();
     set_interval(
         move || {
             if let Some(mut body) = host.mirror() {
@@ -245,16 +241,6 @@ fn client_id() -> String {
         let _ = storage.set_item("genesis.client", &id);
     }
     id
-}
-
-/// The app's name: the first part of the address's path (`/hello/` is `hello`).
-fn app_name() -> String {
-    let path = window().location().pathname().unwrap_or_default();
-    path.trim_matches('/')
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .to_string()
 }
 
 fn show_problems(problems: &str) {

@@ -80,7 +80,7 @@ impl Folders {
         let root =
             std::env::temp_dir().join(format!("genesis-calls-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("configs/crm")).unwrap();
+        std::fs::create_dir_all(root.join("configs")).unwrap();
         let toml = format!(
             r#"
 [app]
@@ -133,7 +133,7 @@ method = "GET"
 path = "/echo/x"
 "#
         );
-        std::fs::write(root.join("configs/crm/app.toml"), toml).unwrap();
+        std::fs::write(root.join("configs/app.toml"), toml).unwrap();
         Folders(root)
     }
 
@@ -159,7 +159,7 @@ impl Drop for Folders {
 }
 
 async fn call(folders: &Folders, body: Value) -> (StatusCode, Value) {
-    let request = Request::post("/api/crm/call")
+    let request = Request::post("/api/call")
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
         .unwrap();
@@ -168,7 +168,9 @@ async fn call(folders: &Folders, body: Value) -> (StatusCode, Value) {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     (
         status,
-        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        // A refusal is plain text: keep it as a string, so tests can read why.
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned())),
     )
 }
 
@@ -359,19 +361,20 @@ async fn a_missing_path_param_fails_naming_it() {
 #[tokio::test]
 async fn an_operation_the_app_doesnt_declare_is_not_found() {
     let folders = Folders::new("undeclared-op").await;
-    let (status, _) = call(
+    let (status, why) = call(
         &folders,
         json!({ "op": "api.nowhere", "params": {}, "headers": {} }),
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(why, "the app declares no operation named \"api.nowhere\"");
 }
 
 #[tokio::test]
 async fn a_failure_never_shows_a_credentials_value() {
     let folders = Folders::new("redact").await;
     std::fs::write(
-        folders.0.join("configs/crm/app.toml"),
+        folders.0.join("configs/app.toml"),
         "[app]\nname = \"x\"\n[connections.bad]\nbase_url = \"http://s3cret-value.invalid\"\nheaders = { Authorization = \"{{ creds.API_TOKEN }}\" }\n[connections.bad.ops.go]\nmethod = \"GET\"\npath = \"/\"\n",
     )
     .unwrap();

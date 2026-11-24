@@ -1,27 +1,26 @@
-//! `genesis-serve`: hands out the renderer and each app's config, and writes the mirror.
+//! `genesis-serve`: hands out the renderer and the app's config, makes its calls, and writes the mirror.
 //!
-//! Each app is a folder in the configs folder, `configs/{app}/app.toml`
-//! ([spec 010](../../../specs/010_architecture.md)). The routes:
+//! The configs folder is the app, with `app.toml` at its top ([spec 120](../../../specs/120_one_app.md),
+//! [spec 010](../../../specs/010_architecture.md)). The routes:
 //!
 //! | Route | What |
 //! |---|---|
-//! | `GET /` | the list of apps, each a link to its page |
-//! | `GET /status` | each app, `loaded` or `failed` with its problems, as JSON, so an agent can check its change took |
-//! | `GET /{app}/` | the renderer's page, for an app that exists |
+//! | `GET /` | the renderer's page, drawing the app |
+//! | `GET /status` | `{"status": "loaded"}`, or `"failed"` with its `problems`, as JSON, so an agent can check its change took |
 //! | `GET /_genesis/*` | the renderer's bundle (`trunk build` output) |
-//! | `GET /api/{app}/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
-//! | `POST /api/{app}/call` | makes a call to one of the app's operations: `{"op", "params", "headers"}` in, `{"status", "body"}` or `{"error"}` out |
-//! | `POST /api/{app}/mirror` | a client's state and trail entries, written to the state folder |
+//! | `GET /api/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
+//! | `POST /api/call` | makes a call to one of the app's operations: `{"op", "params", "headers"}` in, `{"status", "body"}` or `{"error"}` out |
+//! | `POST /api/mirror` | a client's state and trail entries, written to the state folder |
 //! | `/fs/*` | the files service (dufs), for agents with `Authorization: Bearer GENESIS_AGENT_TOKEN` |
 //! | `GET /health` | `200` when the server is up |
 //!
 //! The mirror ([spec 050](../../../specs/050_state.md), "The mirror") turns names from the outside
-//! world into file paths, so app and client names must be plain (letters, digits, `_`, `-`), or the
+//! world into file paths, so client names must be plain (letters, digits, `_`, `-`), or the
 //! request is refused before anything touches the disk. Each client's state is written whole
 //! (to a temporary file, then renamed), and its events are appended as JSON lines, keeping the last
 //! [`EVENTS_KEPT`].
 
-use axum::extract::{Path as UrlPath, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse, Response};
@@ -31,7 +30,7 @@ use futures_util::stream::{self, StreamExt};
 use genesis_core::config::{App, Method, Operation};
 use genesis_core::template;
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -40,16 +39,13 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::ServeDir;
 
-/// The configs folder's shared components folder (spec 090); a change in it reaches every app.
-pub const SHARED_COMPONENTS: &str = "components";
-
 /// How many events a client's `.events.ndjson` keeps, newest last.
 pub const EVENTS_KEPT: usize = 10_000;
 
 /// Where serve finds things, and where it listens.
 #[derive(Clone, PartialEq)]
 pub struct Settings {
-    /// The configs folder: one folder per app.
+    /// The configs folder: the app, with `app.toml` at its top.
     pub configs: PathBuf,
     /// The state folder, where the mirror is written.
     pub state: PathBuf,
@@ -57,7 +53,7 @@ pub struct Settings {
     pub dist: PathBuf,
     /// The address to listen on.
     pub listen: String,
-    /// How long the configs folder must be quiet after a change before apps reload.
+    /// How long the configs folder must be quiet after a change before the app reloads.
     pub debounce: Duration,
     /// The credentials connections may use, by name ([spec 070](../../../specs/070_secrets.md)).
     pub creds: Creds,
@@ -191,13 +187,13 @@ impl Settings {
     }
 }
 
-/// What serve's routes share: the settings, and the news of which app's files changed.
+/// What serve's routes share: the settings, and the news that the app's files changed.
 struct Server {
     settings: Settings,
     /// Makes every call, reusing connections.
     http: reqwest::Client,
-    /// An app's name each time its files change (`*` for a change outside any one app's folder).
-    changes: broadcast::Sender<String>,
+    /// Sent once each time the configs folder changes and goes quiet again.
+    changes: broadcast::Sender<()>,
 }
 
 /// Keeps the configs folder watched for as long as it's held. Dropping it stops hot reload.
@@ -205,7 +201,7 @@ pub struct Watching(#[allow(dead_code)] notify::RecommendedWatcher);
 
 /// serve's routes, with hot reload ([spec 060](../../../specs/060_hot_reload.md)): the configs
 /// folder is watched, and once it's been quiet for `settings.debounce` after a change, every open
-/// config stream of each app that changed gets the app's new config, or its problems.
+/// config stream gets the app's new config, or its problems.
 ///
 /// Must be called inside a Tokio runtime. Fails if the configs folder can't be watched.
 pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String> {
@@ -233,38 +229,19 @@ pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String>
         .map_err(|e| format!("can't watch {}: {e}", configs.display()))?;
     let changes = server.changes.clone();
     tokio::spawn(async move {
-        while let Some(first) = changed.recv().await {
-            let mut apps = BTreeSet::from([app_of(&configs, &first)]);
+        while changed.recv().await.is_some() {
             // Editors and file servers save in bursts: wait for the folder to go quiet.
             loop {
                 match tokio::time::timeout(debounce, changed.recv()).await {
-                    Ok(Some(path)) => {
-                        apps.insert(app_of(&configs, &path));
-                    }
+                    Ok(Some(_)) => {}
                     Ok(None) => return,
                     Err(_quiet) => break,
                 }
             }
-            for app in apps {
-                let _ = changes.send(app);
-            }
+            let _ = changes.send(());
         }
     });
     Ok((routes(server), Watching(watcher)))
-}
-
-/// Which app a changed path belongs to: the first folder under the configs folder, or `*` when
-/// it's outside any app's folder, or in the shared `components/` folder every app may use
-/// (spec 090).
-fn app_of(configs: &Path, path: &Path) -> String {
-    let first = path
-        .strip_prefix(configs)
-        .ok()
-        .and_then(|rest| rest.components().next());
-    match first.and_then(|c| c.as_os_str().to_str()) {
-        Some(name) if plain(name) && name != SHARED_COMPONENTS => name.to_string(),
-        _ => "*".to_string(),
-    }
 }
 
 /// serve's routes, without hot reload: each config stream sends the app once.
@@ -280,13 +257,11 @@ fn routes(server: Arc<Server>) -> Router {
     let bundle = ServeDir::new(&server.settings.dist);
     Router::new()
         .route("/health", get(|| async { "ok" }))
-        .route("/", get(list))
+        .route("/", get(page))
         .route("/status", get(status))
-        .route("/{app}", get(page))
-        .route("/{app}/", get(page))
-        .route("/api/{app}/config", get(config))
-        .route("/api/{app}/mirror", post(mirror))
-        .route("/api/{app}/call", post(call))
+        .route("/api/config", get(config))
+        .route("/api/mirror", post(mirror))
+        .route("/api/call", post(call))
         .route("/fs", any(files))
         // `/fs/{*rest}` needs something after the slash, and the folder root is what agents list first.
         .route("/fs/", any(files))
@@ -297,29 +272,8 @@ fn routes(server: Arc<Server>) -> Router {
 
 type Shared = State<Arc<Server>>;
 
-/// A refusal: its status, and a message saying why. It becomes the response as it is.
-type Refusal = (StatusCode, String);
-
 fn refuse(status: StatusCode, why: String) -> Response {
     (status, why).into_response()
-}
-
-/// The folder of the app `name`, when the name is plain and the app exists.
-fn app_dir(settings: &Settings, name: &str) -> Result<PathBuf, Refusal> {
-    if !plain(name) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("{name:?} isn't a plain app name"),
-        ));
-    }
-    let dir = settings.configs.join(name);
-    if !dir.join("app.toml").is_file() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            format!("there's no app named {name}"),
-        ));
-    }
-    Ok(dir)
 }
 
 /// Letters, digits, `_`, and `-` only, so a name can never leave the folder it's joined to.
@@ -330,57 +284,24 @@ fn plain(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// Every app's name: each folder in the configs folder with a plain name and an `app.toml`, in order.
-fn app_names(settings: &Settings) -> Vec<String> {
-    let entries = std::fs::read_dir(&settings.configs)
-        .into_iter()
-        .flatten()
-        .flatten();
-    let mut names: Vec<String> = entries
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| plain(name) && settings.configs.join(name).join("app.toml").is_file())
-        .collect();
-    names.sort();
-    names
-}
-
-async fn list(State(server): Shared) -> Html<String> {
-    let names = app_names(&server.settings);
-    // Names are plain (letters, digits, _ and -), so they're safe in HTML as they are.
-    let items: String = names
-        .iter()
-        .map(|n| format!(r#"<li><a class="link" href="/{n}/">{n}</a></li>"#))
-        .collect();
-    let body = if names.is_empty() {
-        "<p>No apps yet. Add a folder with an app.toml to the configs folder.</p>".to_string()
-    } else {
-        format!("<ul>{items}</ul>")
-    };
-    Html(format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Genesis</title></head><body><h1>Genesis apps</h1>{body}</body></html>"
-    ))
+impl Server {
+    /// The app's top file, `app.toml` in the configs folder.
+    fn app_file(&self) -> PathBuf {
+        self.settings.configs.join("app.toml")
+    }
 }
 
 async fn status(State(server): Shared) -> Json<Value> {
-    let settings = &server.settings;
-    let mut apps = serde_json::Map::new();
-    for name in app_names(settings) {
-        let report = match load(&settings.configs.join(&name).join("app.toml")).await {
-            Ok(_) => serde_json::json!({ "status": "loaded" }),
-            Err(problems) => {
-                serde_json::json!({ "status": "failed", "problems": problems.lines().collect::<Vec<_>>() })
-            }
-        };
-        apps.insert(name, report);
-    }
-    Json(serde_json::json!({ "apps": apps }))
+    Json(match load(&server.app_file()).await {
+        Ok(_) => serde_json::json!({ "status": "loaded" }),
+        Err(problems) => {
+            serde_json::json!({ "status": "failed", "problems": problems.lines().collect::<Vec<_>>() })
+        }
+    })
 }
 
-async fn page(State(server): Shared, UrlPath(name): UrlPath<String>) -> Response {
+async fn page(State(server): Shared) -> Response {
     let settings = &server.settings;
-    if let Err(refused) = app_dir(settings, &name) {
-        return refused.into_response();
-    }
     match tokio::fs::read_to_string(settings.dist.join("index.html")).await {
         Ok(html) => Html(html).into_response(),
         Err(e) => refuse(
@@ -390,11 +311,8 @@ async fn page(State(server): Shared, UrlPath(name): UrlPath<String>) -> Response
     }
 }
 
-async fn config(State(server): Shared, UrlPath(name): UrlPath<String>) -> Response {
-    let file = match app_dir(&server.settings, &name) {
-        Ok(dir) => dir.join("app.toml"),
-        Err(refused) => return refused.into_response(),
-    };
+async fn config(State(server): Shared) -> Response {
+    let file = server.app_file();
     // Listen before the first load, so a change during it isn't missed.
     let news = BroadcastStream::new(server.changes.subscribe());
     let first = {
@@ -402,16 +320,11 @@ async fn config(State(server): Shared, UrlPath(name): UrlPath<String>) -> Respon
         stream::once(async move { app_event(&file).await })
     };
     // After the first event the stream stays open: a closed stream would make the browser
-    // reconnect and ask again every few seconds. Each change to this app sends it again.
-    let later = news.filter_map(move |news| {
-        let (file, name) = (file.clone(), name.clone());
-        async move {
-            match news {
-                Ok(app) if app != name && app != "*" => None,
-                // Ok for this app, or a lag that may have dropped news for it: send it again.
-                _ => Some(app_event(&file).await),
-            }
-        }
+    // reconnect and ask again every few seconds. Each change sends it again; so does a lag,
+    // which may have dropped a change.
+    let later = news.then(move |_| {
+        let file = file.clone();
+        async move { app_event(&file).await }
     });
     Sse::new(first.chain(later).map(Ok::<_, Infallible>)).into_response()
 }
@@ -446,15 +359,8 @@ async fn load(file: &Path) -> Result<App, String> {
     })
 }
 
-async fn mirror(
-    State(server): Shared,
-    UrlPath(name): UrlPath<String>,
-    Json(body): Json<Value>,
-) -> Response {
+async fn mirror(State(server): Shared, Json(body): Json<Value>) -> Response {
     let settings = &server.settings;
-    if let Err(refused) = app_dir(settings, &name) {
-        return refused.into_response();
-    }
     let client = body["client"].as_str().unwrap_or_default();
     if !plain(client) {
         return refuse(
@@ -462,12 +368,12 @@ async fn mirror(
             format!("{client:?} isn't a plain client name"),
         );
     }
-    let dir = settings.state.join(&name);
+    let dir = &settings.state;
     let events: Vec<String> = body["events"]
         .as_array()
         .map(|e| e.iter().map(Value::to_string).collect())
         .unwrap_or_default();
-    match write_mirror(&dir, client, &body["state"], &events).await {
+    match write_mirror(dir, client, &body["state"], &events).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => refuse(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -476,16 +382,8 @@ async fn mirror(
     }
 }
 
-async fn call(
-    State(server): Shared,
-    UrlPath(name): UrlPath<String>,
-    Json(body): Json<Value>,
-) -> Response {
-    let dir = match app_dir(&server.settings, &name) {
-        Ok(dir) => dir,
-        Err(refused) => return refused.into_response(),
-    };
-    let app = match load(&dir.join("app.toml")).await {
+async fn call(State(server): Shared, Json(body): Json<Value>) -> Response {
+    let app = match load(&server.app_file()).await {
         Ok(app) => app,
         Err(problems) => {
             return refuse(
@@ -500,7 +398,7 @@ async fn call(
     let Some(op) = app.operation(op_name) else {
         return refuse(
             StatusCode::NOT_FOUND,
-            format!("{name} declares no operation named {op_name:?}"),
+            format!("the app declares no operation named {op_name:?}"),
         );
     };
     let params = body["params"].as_object().cloned().unwrap_or_default();

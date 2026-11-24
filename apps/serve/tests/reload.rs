@@ -15,19 +15,10 @@ impl Folders {
         let root =
             std::env::temp_dir().join(format!("genesis-reload-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        for dir in ["configs/hello", "configs/other", "state", "dist"] {
+        for dir in ["configs/views", "state", "dist"] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
         }
-        std::fs::write(
-            root.join("configs/hello/app.toml"),
-            "[app]\nname = \"First\"\n",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("configs/other/app.toml"),
-            "[app]\nname = \"Other\"\n",
-        )
-        .unwrap();
+        std::fs::write(root.join("configs/app.toml"), "[app]\nname = \"First\"\n").unwrap();
         Folders(root)
     }
 
@@ -56,10 +47,8 @@ impl Drop for Folders {
 struct Stream(Body);
 
 impl Stream {
-    async fn open(router: &axum::Router, app: &str) -> Stream {
-        let request = Request::get(format!("/api/{app}/config"))
-            .body(Body::empty())
-            .unwrap();
+    async fn open(router: &axum::Router) -> Stream {
+        let request = Request::get("/api/config").body(Body::empty()).unwrap();
         Stream(router.clone().oneshot(request).await.unwrap().into_body())
     }
 
@@ -80,9 +69,9 @@ const QUIET: Duration = Duration::from_millis(600);
 async fn a_saved_change_reaches_an_open_stream() {
     let folders = Folders::new("change");
     let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
+    let mut stream = Stream::open(&router).await;
     assert!(stream.next(SOON).await.unwrap().contains("First"));
-    folders.write("configs/hello/app.toml", "[app]\nname = \"Second\"\n");
+    folders.write("configs/app.toml", "[app]\nname = \"Second\"\n");
     let event = stream.next(SOON).await.expect("a new config");
     assert!(
         event.starts_with("event: config\n") && event.contains("Second"),
@@ -94,18 +83,15 @@ async fn a_saved_change_reaches_an_open_stream() {
 async fn a_bad_edit_sends_its_problems_and_the_next_good_one_a_config() {
     let folders = Folders::new("bad");
     let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
+    let mut stream = Stream::open(&router).await;
     stream.next(SOON).await.unwrap();
-    folders.write(
-        "configs/hello/app.toml",
-        "[app]\nname = \"x\"\ncolour = 1\n",
-    );
+    folders.write("configs/app.toml", "[app]\nname = \"x\"\ncolour = 1\n");
     let event = stream.next(SOON).await.expect("problems");
     assert!(
         event.starts_with("event: problems\n") && event.contains("app.toml:3:1"),
         "{event}"
     );
-    folders.write("configs/hello/app.toml", "[app]\nname = \"Fixed\"\n");
+    folders.write("configs/app.toml", "[app]\nname = \"Fixed\"\n");
     assert!(stream.next(SOON).await.expect("a config").contains("Fixed"));
 }
 
@@ -113,13 +99,10 @@ async fn a_bad_edit_sends_its_problems_and_the_next_good_one_a_config() {
 async fn a_burst_of_writes_makes_one_reload() {
     let folders = Folders::new("burst");
     let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
+    let mut stream = Stream::open(&router).await;
     stream.next(SOON).await.unwrap();
     for name in ["A", "B", "C"] {
-        folders.write(
-            "configs/hello/app.toml",
-            &format!("[app]\nname = \"{name}\"\n"),
-        );
+        folders.write("configs/app.toml", &format!("[app]\nname = \"{name}\"\n"));
     }
     assert!(
         stream
@@ -132,22 +115,12 @@ async fn a_burst_of_writes_makes_one_reload() {
 }
 
 #[tokio::test]
-async fn a_change_to_another_app_doesnt_reach_this_ones_stream() {
-    let folders = Folders::new("other");
-    let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
-    stream.next(SOON).await.unwrap();
-    folders.write("configs/other/app.toml", "[app]\nname = \"Other2\"\n");
-    assert_eq!(stream.next(QUIET).await, None);
-}
-
-#[tokio::test]
 async fn a_deleted_app_toml_sends_problems_and_recreating_it_reloads() {
     let folders = Folders::new("deleted");
     let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
+    let mut stream = Stream::open(&router).await;
     stream.next(SOON).await.unwrap();
-    std::fs::remove_file(folders.0.join("configs/hello/app.toml")).unwrap();
+    std::fs::remove_file(folders.0.join("configs/app.toml")).unwrap();
     assert!(
         stream
             .next(SOON)
@@ -155,7 +128,7 @@ async fn a_deleted_app_toml_sends_problems_and_recreating_it_reloads() {
             .expect("problems")
             .contains("app.toml not found")
     );
-    folders.write("configs/hello/app.toml", "[app]\nname = \"Back\"\n");
+    folders.write("configs/app.toml", "[app]\nname = \"Back\"\n");
     assert!(stream.next(SOON).await.expect("a config").contains("Back"));
 }
 
@@ -167,22 +140,11 @@ fn the_debounce_is_set_in_milliseconds_and_defaults_to_150() {
 }
 
 #[tokio::test]
-async fn a_change_to_the_shared_components_reaches_every_app() {
-    let folders = Folders::new("shared");
-    std::fs::create_dir_all(folders.0.join("configs/components")).unwrap();
+async fn a_change_to_any_file_in_any_folder_reloads_the_app() {
+    let folders = Folders::new("anyfile");
     let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
+    let mut stream = Stream::open(&router).await;
     stream.next(SOON).await.unwrap();
-    folders.write("configs/components/card.toml", "[component]\n");
-    assert!(stream.next(SOON).await.expect("a reload").contains("First"));
-}
-
-#[tokio::test]
-async fn a_change_outside_any_apps_folder_reaches_every_app() {
-    let folders = Folders::new("outside");
-    let (router, _watching) = live_router(folders.settings()).unwrap();
-    let mut stream = Stream::open(&router, "hello").await;
-    stream.next(SOON).await.unwrap();
-    folders.write("configs/notes.txt", "hi");
+    folders.write("configs/views/notes.txt", "hi");
     assert!(stream.next(SOON).await.expect("a reload").contains("First"));
 }
