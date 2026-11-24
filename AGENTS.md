@@ -16,7 +16,7 @@ specific to Genesis.
 | **CI** | `.github/workflows/ci.yml` (GitHub Actions), once the repo has a remote |
 | **doc tool** | rustdoc: `//!` for modules, `///` for items, and doctests. precommit builds them with warnings as errors |
 | **docs** | the specs, `README.md`, `docs/authoring.md` (the guide for agents writing Genesis TOML) |
-| **copies** | none yet |
+| **copies** | `configs/AGENTS.md` ← `docs/authoring.md`, by the user (it's what `GET /agents` serves, [110](specs/110_agents.md)) |
 | **branching** | a branch per piece of work, merged into `main` locally when asked; the user pushes |
 
 Milestones one and two are built; [000](specs/000_overview.md) says what exists. The desktop window builds with
@@ -39,12 +39,16 @@ about data: that logic lives behind the API. So:
   computing, and deciding belong to the API. Never add an expression language.
 - **One state machine, one bus.** Components read immutable state and fire events; handlers run
   actions; only actions change state ([050](specs/050_state.md), [100](specs/100_events.md)).
-- **No conditionals in wiring.** Conditions live only in `show`, `disabled`, and input checks.
+- **No conditionals in wiring.** Conditions live only in `show`, `disabled`, and checks on controls.
   Handlers and sources branch by event name, never by testing a value.
-- **The catalog is closed.** Every node is one variant of the `Node` enum. Reuse is through TOML
-  partials ([090](specs/090_components.md)); a new kind of node is a spec and a code change. Every
-  catalog component implements the `Component` trait and goes through the `Wired` wrapper; it never
-  touches the bus or the state machine itself ([040](specs/040_catalog.md)). No raw CSS classes in the TOML.
+- **The catalog is closed, and atomic.** Every node is one variant of the `Node` enum, as small as plain
+  HTML: a `cell` lays out, and each thing with behavior of its own is its own atom. Composites (cards,
+  tables, tabs) are TOML components ([090](specs/090_components.md)), never catalog types; a new atom is a
+  spec and a code change. Every atom implements the `Component` trait and goes through the `Wired` wrapper;
+  it never touches the bus or the state machine itself ([040](specs/040_catalog.md)). No raw CSS classes in
+  the TOML: only the closed style keys.
+- **One app.** The configs folder is the app, and every name in it is unique, whatever folder it's in
+  ([120](specs/120_one_app.md)).
 - **Credentials stay on the server.** The TOML holds `{{ creds.NAME }}`, only in connections; `serve`
   resolves it at call time; `files` never sees the env file ([070](specs/070_secrets.md)).
 - **Fail loud.** No silent fallbacks, retries, or special response shapes. Every failure is visible
@@ -59,6 +63,6 @@ about data: that logic lives behind the API. So:
 every other spec.
 
 **Changing what a config can say?** Every doc under the **docs** binding changes in the same
-commit, `docs/authoring.md` above all: it's how other agents learn to write Genesis apps.
+commit, `docs/authoring.md` above all: it's how other agents learn to build Genesis screens.
 
 **Versions:** check current versions on crates.io and npm before adding any dependency.

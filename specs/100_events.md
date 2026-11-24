@@ -29,13 +29,13 @@ An event is a dotted name, plus a payload that handlers read as `{{ event.* }}`.
 
 | Fired by | Name | Payload |
 |---|---|---|
-| a node, by its `id` | `signout_btn.click`, `search.change`, `contact_form.submit`, `contacts_table.row_click` | `value`, `row`, or `form`, as fits ([040](040_catalog.md)) |
+| a node, by its `id` | `signout_btn.click`, `search.change`, `contact_form.submit`, `contact_card.click` | `value`, `item`, or `form`, as fits ([040](040_catalog.md)) |
 | a call to an operation | `auth.logout.ok` or `.failed`, plus `.200`, `.404`, … | `status`, `body` (selected) |
 | a call with `event = "/outcome"` | `score_job.needs_review` (the reply's value at that pointer) | as above |
 | a custom action | `sign_out.done`, or `sign_out.failed` if a step failed | the failure, if any |
 | a variable changing | `app.page.changed`, `sys.view.changed` | `value`, `was` |
 | a `fire` step | any name | its `with` table |
-| an agent or workflow, through `POST /api/{app}/push/{name}` ([110](110_agents.md)) | `push.review_ready` | the JSON body it sent |
+| an agent or workflow, through `POST /api/push/{name}` ([110](110_agents.md)) | `push.review_ready` | the JSON body it sent |
 | Genesis | `app.opened`, `server.connected`, `server.disconnected`, `config.loaded`, `config.failed`, `auth.in`, `auth.out`, `state.wiped` | as fits |
 
 A node without an `id` fires nothing. Give it an `id` to wire it. `.changed` fires only when the value
@@ -47,7 +47,7 @@ actually changes.
 
 ```toml
 [on]
-"contacts_table.row_click" = [{ set = "app.selected", to = "{{ event.row.id }}" }, { go = "contact" }]
+"contact_card.click"       = [{ set = "app.selected", to = "{{ event.item.id }}" }, { go = "contact" }]
 "*.failed"                 = [{ log = "{{ event.name }}: {{ event.body }}" }]
 "contacts.4??"             = [{ toast = "Check that contact and try again." }]
 ```
@@ -56,7 +56,7 @@ actually changes.
   shell matches file names. Nothing else.
 - Every handler whose pattern matches runs, in the order the file lists them.
 - **Shortcut:** `on_click = [...]` on a node is `"{id}.click" = [...]` in `[on]`; likewise `on_change`,
-  `on_submit`, and `on_row`. The node then needs no `id`: it gets one from its place in the tree.
+  and `on_submit`. The node then needs no `id`: it gets one from its place in the tree.
 - **Shortcut:** a step that's a plain string runs that action: `"sign_out"`.
 
 Handlers never test anything. To branch, fire different events. A call's status already does that
@@ -127,7 +127,7 @@ the logic belongs behind the API, in PurpleFlow or wherever else.
 
 ## The workbench
 
-`genesis-bench APP_DIR` runs an app's bus with no screen, for tests and for agents. It loads the app
+`genesis-bench CONFIGS_DIR` runs the app's bus with no screen, for tests and for agents. It loads the app
 (a folder holding `app.toml`, or the file), opens it, and reads one JSON object per line from stdin:
 `{"fire": "NAME", "payload": {...}}` fires an event, and `{"advance": MS}` moves the clock on. After
 each line it prints every trail entry recorded (events with their handlers, and `log` lines) and any

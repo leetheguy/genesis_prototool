@@ -3,16 +3,16 @@
 Status: draft
 Created: 2026-11-21
 
-A component is a partial: a TOML file of catalog nodes, with its own props and local state, that an
-app uses by name. Components make deep trees readable and screens reusable. They're
-structured components with data links, with no code in them, so they hot-reload like everything else.
+A component is a TOML file of catalog atoms, with its own props and local state, that the app uses by
+name. It's how an agent builds the pieces of a screen once and arranges them many times: a card, a
+contact row, a data table, a sign-in form. Components have no code in them, so they hot-reload like
+everything else.
 
 ## A component
 
-`configs/components/contact_card.toml`, shared by every app, or `configs/crm/components/contact_card.toml`,
-for this app only. A component's name is its file name, so it's never ambiguous: an app's own
-component and a shared one with the same name is a load problem, like any two files in one app with the
-same name ([110](110_agents.md)).
+Any `.toml` file with a `[component]` table, in any folder of the app. Its name is its file name:
+`views/people/contact_card.toml` is `contact_card`. Names are unique across the app
+([120](120_one_app.md)), so a name always means one file.
 
 ```toml
 [component]
@@ -23,17 +23,29 @@ optional = ["compact"]             # props that may be left out
 expanded = false
 
 [[body]]
-type = "card"
-title = "{{ props.contact.name }}"
+type = "cell"
+pad = 4
+bg = "base-100"
+border = true
+radius = "box"
+gap = 2
+
+[[body.children]]
+type = "text"
+text = "{{ props.contact.name }}"
+weight = "semibold"
 
 [[body.children]]
 type = "text"
 text = "{{ props.contact.email }}"
+color = "muted"
 show = { var = "local.expanded", is = true }
 
 [[body.children]]
 type = "button"
 label = "More"
+variant = "ghost"
+size = "sm"
 on_click = [{ toggle = "local.expanded" }]
 ```
 
@@ -41,36 +53,48 @@ on_click = [{ toggle = "local.expanded" }]
 
 ```toml
 [[body]]
-type = "list"
-data = "app.contacts"
+type = "cell"
+each = "app.contacts"
+grid = "fit"
+gap = 4
 
 [[body.children]]
 type = "use"
 component = "contact_card"
-props = { contact = "{{ row }}" }
+props = { contact = "{{ item }}" }
 ```
 
-- `props` values are templates. A whole-string template passes the value itself, so `{{ row }}` passes the whole row.
+- `props` values are templates. A whole-string template passes the value itself, so `{{ item }}` passes the whole element.
 - Inside, `props.*` is read-only, and `local.*` is that instance's own: ten cards have ten `expanded`s.
 - A component can use other components. Using one in a loop (A uses B uses A) is a config error.
 - Props can carry steps: a caller can pass `on_open = [{ go = "contact" }]`, and the component
-  runs it with `on_click = "{{ props.on_open }}"`. The steps still run in the caller's app, against its state.
+  runs it with `on_click = "{{ props.on_open }}"`. The steps still run in the app, against its state.
 - **Events inside a component** are named under the `use` node's `id`: a `more_btn` inside `id = "card"` fires
-  `card.more_btn.click`. Every instance in a List fires the same name, and the payload's `row` tells them apart.
-- A component sees no `app.*` of its own. It sees only what it's given, so it's reusable across apps. `sys.*` is visible everywhere.
+  `card.more_btn.click`. Ids inside a component are unique within it, and the `use` node's `id` makes them
+  unique in the app. Every instance in an `each` fires the same name, and the payload's `item` tells them apart.
+- A component sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
+  screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
 
 ## What a component isn't
 
-It isn't code. A new kind of node (a chart, a map, a calendar) is a new catalog type, written in Rust
+It isn't code. A new kind of atom (a chart, a map, a calendar) is a new catalog type, written in Rust
 by a developer or an agent, following the `Component` trait, and shipped in a build ([040](040_catalog.md)). Compiled plugin components are an idea in [999](999_todo.md).
 
 ## Tests
 
-- a component loads and draws with its props, from the app's folder or the shared one; the app's own wins
+- a component in any folder loads and draws with its props, by its file name
 - each instance has its own local state
 - `props.*` is read-only; writing it is a config error
-- a missing required prop, an unknown prop, and a loop of components are config errors
-- a passed step list runs against the caller's state
+- a missing required prop, an unknown prop, an unknown component, and a loop of components are config errors
+- a passed step list runs against the app's state
 - a node inside a component fires its events under the `use` node's `id`
 - `app.*` inside a component is a config error
-- editing a component reloads every app that uses it ([060](060_hot_reload.md))
+- editing a component redraws every place that uses it ([060](060_hot_reload.md))
+
+## Tasks
+
+Milestone three ([999](999_todo.md)):
+
+- [ ] core: component files, `[component]` and its props, and the `use` node, with the load checks
+- [ ] local state per instance, and events named under the `use` node's `id`
+- [ ] props that carry steps

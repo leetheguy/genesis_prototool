@@ -60,7 +60,7 @@ It expands into five operations, named `crm.contacts.list` and so on:
 
 ## Calls
 
-The client sends `POST /api/{app}/call` with the operation's name, its params, and the values of
+The client sends `POST /api/call` with the operation's name, its params, and the values of
 any `app.*` or `sys.*` templates in its headers. `serve` adds the credentials, makes the request,
 and replies with the response. For a streaming operation, `serve` reads the response with the
 named protocol (the same three as PurpleFlow's HTTP node) and passes each message on as it arrives:

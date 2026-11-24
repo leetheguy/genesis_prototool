@@ -14,23 +14,26 @@ Docker Compose runs two services, like PurpleFlow's `app` and `files`
 
 | Service | What it does |
 |---|---|
-| `serve` | `genesis-serve` (Rust, axum): serves the renderer, loads and watches the configs, sends them to clients, makes every API call, and proxies `/fs/` to `files`. Mounts the configs folder read-write, and writes nothing there but `.log` files ([110](110_agents.md)) |
+| `serve` | `genesis-serve` (Rust, axum): serves the renderer, loads and watches the configs, sends them to clients, makes every API call, and proxies `/fs/` to `files`. Mounts the configs folder **read-only**, and the logs folder, which nothing else mounts ([110](110_agents.md)) |
 | `files` | dufs, serving the configs folder **read-write**, on a network of its own. Only `serve` can reach it |
 
 ```
 host                         containers
-$CONFIGS_PATH/ (./configs)
-  components/                files:  /data          read-write
-  crm/                       serve:  /app/configs   read-write, for .log files only
-    app.toml
-    components/
+$CONFIGS_PATH/ (./configs)   the app
+  app.toml                   files:  /data          read-write
+  AGENTS.md                  serve:  /app/configs   read-only
+  crm/
+    api.toml
+    contact_row.toml
 $STATE_PATH/ (./state)       files:  /data/.state   read-only
-  crm/{client}.json          serve:  /app/state     read-write
+  {client}.json              serve:  /app/state     read-write
+$LOGS_PATH/ (./logs)         serve:  /app/logs      read-write
+  genesis.log
 ```
 
 The state folder holds the mirror ([050](050_state.md)): `serve` writes it, and agents read it at `/fs/.state/`.
 
-- **The configs folder is the user's**, and can be its own git repo. Nothing in this repo lives in it.
+- **The configs folder is the app** ([120](120_one_app.md)): the user's, and it can be its own git repo. Nothing in this repo lives in it.
 - **Agents never reach the server.** They read and write configs through `/fs/` (with
   `GENESIS_AGENT_TOKEN`) or, later, the MCP adapter ([999](999_todo.md)). They can't reach the
   env file, the credentials, or the code.
@@ -41,14 +44,14 @@ The state folder holds the mirror ([050](050_state.md)): `serve` writes it, and 
 
 | Route | What |
 |---|---|
-| `GET /` | the list of apps, each a link to its page |
-| `GET /{app}/` | the renderer, opened on the app in `configs/{app}/` |
-| `GET /api/{app}/config` | server-sent events: the app's config whenever it loads, good or bad ([060](060_hot_reload.md)) |
-| `POST /api/{app}/call` | fire one of the app's operations; the reply is the response, or a stream of it ([030](030_connections.md)) |
-| `POST /api/{app}/mirror` | the client's state and event trail, written to the state folder ([050](050_state.md)) |
-| `POST /api/{app}/push/{name}` | fire `push.{name}` in every open client of the app, behind `GENESIS_AGENT_TOKEN` ([110](110_agents.md)) |
-| `GET /agents` | the guide for agents writing apps, open ([110](110_agents.md)) |
-| `GET /status` | every app's load state and errors, as JSON, so an agent can check its change landed |
+| `GET /` | the renderer, drawing the app |
+| `GET /api/config` | server-sent events: the app's config whenever it loads, good or bad ([060](060_hot_reload.md)), and pushed events ([110](110_agents.md)) |
+| `POST /api/call` | fire one of the app's operations; the reply is the response, or a stream of it ([030](030_connections.md)) |
+| `POST /api/mirror` | the client's state and event trail, written to the state folder ([050](050_state.md)) |
+| `POST /api/push/{name}` | fire `push.{name}` in every open client, behind `GENESIS_AGENT_TOKEN` ([110](110_agents.md)) |
+| `GET /api/log` | the log of every failure, behind `GENESIS_AGENT_TOKEN` ([110](110_agents.md)) |
+| `GET /agents` | the configs folder's `AGENTS.md`, open ([110](110_agents.md)) |
+| `GET /status` | the app's load state and errors, as JSON, so an agent can check its change landed |
 | `/fs/*` | the files service, behind `GENESIS_AGENT_TOKEN` |
 | `GET /health` | `200` when the server is up |
 
@@ -57,20 +60,20 @@ so `serve` is never an open proxy.
 
 ## Clients
 
-- **Browser:** open `https://genesis.example.com/crm/`.
-- **Desktop (Tauri 2):** a native window on a `serve` URL and app, which the window asks for
-  the first time it opens or takes as arguments. The window loads the renderer from `serve` like a browser
+- **Browser:** open `https://genesis.example.com/`.
+- **Desktop (Tauri 2):** a native window on a `serve` URL, which the window asks for
+  the first time it opens or takes as an argument. The window loads the renderer from `serve` like a browser
   does. There's no IPC and no copy of the renderer in the app, so desktop and browser can't drift apart.
 - **Mobile (later):** the same Tauri shell on Android.
 
 ## Crates
 
 ```
-crates/genesis-core   pure Rust, no IO: config types, loading checks, partials, templates,
+crates/genesis-core   pure Rust, no IO: config types, loading checks, components, templates,
                       conditions, formatters, and the state machine. Native and wasm.
 crates/genesis-ui     the Leptos renderer (wasm): draws state, fires events
 apps/serve            genesis-serve
-apps/bench            genesis-bench: an app's bus with no screen, for tests and agents ([100](100_events.md))
+apps/bench            genesis-bench: the app's bus with no screen, for tests and agents ([100](100_events.md))
 apps/desktop          the Tauri shell
 ```
 
@@ -97,26 +100,27 @@ Nothing flows back into the config. The config is immutable once loaded; a chang
 
 ## Styling
 
-daisyUI 5 on Tailwind CSS 4, compiled ahead of time from the classes genesis-ui uses. The theme is
-the `sys.theme` variable, set as `data-theme` on the root. The TOML never names a CSS class.
+daisyUI 5 on Tailwind CSS 4, compiled ahead of time from the classes genesis-ui uses, and every class
+the style keys can give ([040](040_catalog.md)). The theme is the `sys.theme` variable, set as `data-theme`
+on the root. The TOML never names a CSS class.
 
 ## Honest edges
 
-Every data change is a round trip to an API. Genesis suits apps, CRUD, review screens,
-dashboards, and live feeds. It isn't for 60fps local interaction.
+Every data change is a round trip to an API. Genesis suits screens an agent builds for a person: CRUD,
+review screens, dashboards, choices, and live feeds. It isn't for 60fps local interaction.
 
 ## Tests
 
 - core parses the same config from TOML and from its JSON form
 - core compiles to `wasm32-unknown-unknown`
 - `serve` refuses a call to an operation the app doesn't declare, and makes no request
-- `serve` mounts configs read-only; `files` has no env file (deployed check)
+- `serve` mounts configs read-only, and only it mounts the logs; `files` has no env file (deployed check)
 - `/fs/` needs `GENESIS_AGENT_TOKEN`; without it, `401`
-- `/status` lists each app as loaded or failed, with its errors
-- the desktop window shows the same app as a browser on the same URL (deployed check)
-- `/` lists every app folder holding an `app.toml`, each linking to `/{app}/`
+- `/status` says whether the app loaded, with its errors
+- the desktop window shows the same screen as a browser on the same URL (deployed check)
+- `/` draws the app from the configs folder's `app.toml`
 - `docker compose up` brings up both services healthy (deployed check)
-- the mirror appears at `/fs/.state/{app}/`, and dufs can't write to it
+- the mirror appears at `/fs/.state/`, and dufs can't write to it
 
 ## Tasks
 

@@ -1,14 +1,16 @@
 # Genesis Prototool
 
-A universal, simple GUI generator. You write TOML; Genesis lays it out, shows it, reloads it live as
-the files change, and wires it to your data through APIs.
+A screen an AI builds on the fly. Whatever an agent wants to show you (a table to review, choices to
+pick from, a form to fill, a dashboard to watch), it writes as TOML, and Genesis draws it at once,
+redraws it live as the files change, and wires it to your data through APIs. You answer by clicking,
+choosing, and typing, so you and the agent can work together by more than words.
 
 It's a dumb interface on purpose. Genesis holds display logic and nothing more. Every read and
 write of data goes through an HTTP API: a [PurpleFlow](https://purple.leenathan.com) webhook, or
 anything else you describe in the config. A switchboard is simple because the power plant is elsewhere.
 
 ```toml
-# configs/contacts/app.toml
+# configs/app.toml
 [app]
 name = "Contacts"
 theme = "corporate"
@@ -29,13 +31,22 @@ headers = { Authorization = "Bearer {{ creds.PF_TOKEN }}" }
 style = "post"
 
 [[body]]
-type = "table"
-data = "app.contacts"
+type = "cell"
+each = "app.contacts"
 empty = "No contacts yet."
-columns = [
-  { label = "Name", field = "/name" },
-  { label = "Email", field = "/email" },
-]
+grid = 12
+gap = 2
+
+[[body.children]]
+type = "text"
+text = "{{ item.name }}"
+span = { base = 12, md = 6 }
+
+[[body.children]]
+type = "text"
+text = "{{ item.email }}"
+color = "muted"
+span = { base = 12, md = 6 }
 
 [[body]]
 type = "button"
@@ -43,14 +54,15 @@ label = "Next page"
 on_click = [{ step = "app.page", by = 1 }]
 ```
 
-That's a paged list screen. Save a change to the file and every open window changes with it.
+That's a paged list. Save a change to the file and every open window changes with it.
 
 ## Status
 
 **Milestones one and two are built:** the event bus, the renderer (stack, heading, text, button), live
 reload, connections and sources with server-held credentials, sessions kept on the device, and Docker
-Compose with dufs for agents. The example above needs a Table, which comes next. The design for the
-rest is in [`specs/`](specs/000_overview.md); start with `000_overview.md`.
+Compose with dufs for agents. **Milestone three is next:** one app, the atoms (the example above needs
+`cell` with `each`), components, and what agents need to build a screen on their own. The design is in
+[`specs/`](specs/000_overview.md); start with `000_overview.md`.
 
 Genesis runs as a server (`serve`, plus dufs for the config files) and shows apps in a browser or a
 Tauri desktop window, with one renderer (Leptos + daisyUI 5).

@@ -24,7 +24,7 @@ There are two kinds of secret in a Genesis app, kept apart:
 - `serve` substitutes the value into the request at the moment it makes the call, and nowhere else. The
   config sent to clients holds the reference, never the value.
 - A credential that isn't set fails that call loudly (`credential NAME isn't set`), with no request
-  made. `/status` lists every credential an app references that isn't set, so the person running the
+  made. `/status` lists every credential the app references that isn't set, so the person running the
   server knows what to add.
 - Values are redacted (`[redacted]`) from logs, failures, and `sys.errors`.
 
@@ -42,7 +42,7 @@ per-credential host locks, are later items in [999](999_todo.md).
 
 ## Remaining risk
 
-Anyone who can open an app can fire the operations it declares, with its credentials attached.
+Anyone who can open the app can fire the operations it declares, with its credentials attached.
 They can't read the credentials, and they can only fire what the config declares. An app with
 `[app.auth]` closes this: `serve` refuses everything but signing in until someone has ([050](050_state.md)).
 An app without it is open to anyone who can reach it, like a PurpleFlow webhook without `auth`.

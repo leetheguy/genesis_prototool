@@ -1,0 +1,65 @@
+# 120 — One app, built on the fly
+
+Status: draft
+Created: 2026-11-24
+
+A pivot, in two parts: Genesis runs one app, and its catalog is atoms. Both bring the design back to
+what Genesis was meant to be from the start.
+
+## Why
+
+Genesis isn't a tool for building apps. It's a screen an AI builds on the fly: whatever an agent
+wants to show a person, in whatever form it judges most useful, it shows at once, and the person
+answers by clicking, choosing, and typing, not only by writing prose. It's a way for people and AI
+to work together without everything going through language.
+
+So:
+
+- **There's one app, and it's whatever is on screen now.** The configs folder is that app. An agent
+  rebuilds, rearranges, and redesigns it by writing files, and the screen follows live. Folders inside
+  it are for organizing files, nothing more. There are no separate apps to choose between.
+- **The catalog is atoms**, as small as plain HTML: a cell for layout, text, an image, a link, a button,
+  each form control, a form, a dialog. A stack, a row, a grid, a card, and a table are all cells laid out
+  a certain way, so they're composites, built from atoms by an agent or as components. An agent can
+  build anything from parts; it isn't stuck with someone else's idea of a card.
+
+## One app
+
+- **The configs folder is the app.** `app.toml` at its top holds `[app]` and the screen's `[[body]]`.
+  Every other `.toml` file, in any folder, is a component ([090](090_components.md)) or adds to the app
+  (state, connections, sources, actions, handlers) ([020](020_config.md)).
+- **Every name is unique across the whole app**: file names, node ids, variables, connections, sources,
+  actions, components, and handler patterns. Folders don't make a name unique: `views/review.toml` and
+  `old/review.toml` clash. A clash is a load problem naming both places. A name then always points at
+  exactly one thing, for an agent, a log line, and a person reading the files.
+- **One address.** `serve` draws the app at `/`; its routes lose the app's name (`/api/call`,
+  `/api/push/{name}`, [010](010_architecture.md)). A second app is a second Genesis, with its own
+  configs folder.
+
+## Atoms
+
+The catalog is in [040](040_catalog.md). Cells carry layout and look through a closed set of style
+keys, mapped to Tailwind classes that daisyUI's themes color, with Tailwind's screen sizes for
+responsive layout. There are still no CSS classes in the TOML: a style key is a word Genesis knows,
+like `span = 4`, and Genesis picks the class. The grid keys follow Atomic Grid
+(github.com/leetheguy/atomic-grid): a grid of columns, cells that span and offset, an auto-fit grid,
+and a different span at each screen size.
+
+Composites (a data table, a sign-in form, a card, tabs) are components built from atoms, in a library
+planned in [999](999_todo.md).
+
+## Tests
+
+The tests for each part are in the spec that holds it: [010](010_architecture.md) for routes,
+[020](020_config.md) for loading many files and unique names, [040](040_catalog.md) for the atoms and
+style keys, and [090](090_components.md) for components.
+
+## Tasks
+
+Milestone three ([999](999_todo.md)), in this order, so the rest is built on one app:
+
+- [ ] `serve`: one app from the configs folder at `/`, its routes without the app's name, and the mirror at `state/{client}.json`
+- [ ] the desktop window opens `serve`'s `/` (no app argument)
+- [ ] samples, the deployed checks, Compose, and the docs, moved to one app
+- [ ] core: an app from many files, with every name unique ([020](020_config.md))
+- [ ] `stack` becomes `cell`; `heading` becomes `text` with `level` ([040](040_catalog.md))

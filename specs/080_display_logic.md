@@ -28,16 +28,16 @@ show = { all = [{ var = "app.role", in = ["admin", "owner"] }, { not = { var = "
 | `matches = "regex"` | is text the regular expression finds a match in |
 | `status = "loading"` | is a source with that status ([050](050_state.md)) |
 
-`all = [...]`, `any = [...]`, and `not = {...}` combine conditions. `var` may also be `row.*`,
+`all = [...]`, `any = [...]`, and `not = {...}` combine conditions. `var` may also be `item.*`,
 `form.*`, `local.*`, `props.*`, or `sys.*`. A test on the wrong type (a `gt` on text) is false, never an error.
 
-Conditions go in `show` (any node) and `disabled` (buttons and inputs), and nowhere else. Handlers
+Conditions go in `show` (any node) and `disabled` (buttons and controls), and nowhere else. Handlers
 and sources never test anything; they branch by event name instead ([100](100_events.md)).
 
 ## Checks on input
 
-Inputs take checks. They run as the user types, and a `form` won't submit while any check on an
-input inside it fails. Each failing check shows its message under its input:
+Controls take checks. They run as the user types, and a `form` won't submit while any check on a
+control inside it fails. Each failing check shows its message under its control:
 
 ```toml
 [[body.children]]
@@ -54,7 +54,7 @@ kind = "number"
 checks = [{ gte = 1, lte = 500, message = "1 to 500 seats." }]
 ```
 
-A check is a condition on the input's own value (so it has no `var`), plus a `message`. `required = true` is
+A check is a condition on the control's own value (so it has no `var`), plus a `message`. `required = true` is
 shorthand for `{ empty = false, message = "Required." }`. Length tests are `min_len` and `max_len`.
 
 These checks are for the person typing. They aren't a guarantee: the API checks what it accepts,
@@ -84,7 +84,7 @@ handle (text given to `currency`) is shown as it is, and the problem goes to the
 - each test in the table holds and fails where it should, including type mismatches being false
 - `all`, `any`, and `not` combine, and nest
 - `show` hides a node and its children; `disabled` disables
-- a condition anywhere but `show`, `disabled`, or an input's checks is a config error
+- a condition anywhere but `show`, `disabled`, or a control's checks is a config error
 - a failing check shows its message and blocks submit; fixing the value clears it
 - `required`, `min_len`, and `max_len` act as their shorthand
 - each format turns its example into the value shown; the raw value in state is unchanged
@@ -95,6 +95,6 @@ handle (text given to `currency`) is shown as it is, and the problem goes to the
 Milestone three ([999](999_todo.md)):
 
 - [ ] conditions, and `show` on every node through `Wired`
-- [ ] `disabled` on buttons and inputs
-- [ ] checks on inputs, with their messages
+- [ ] `disabled` on buttons and controls
+- [ ] checks on controls, with their messages
 - [ ] formats, and `locale`

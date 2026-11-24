@@ -14,8 +14,8 @@ Components never know where a value came from: a starting value, a click, a call
 |---|---|---|
 | app variables | `[state]` | `page = 1` |
 | sources | `[sources.NAME]` | app variables an operation or stream fills; any action can also write one, and its next load replaces it |
-| local variables | `state = { ... }` on a node or partial | `open = false` |
-| form drafts | each Form | the values typed and not yet submitted |
+| local variables | `state = { ... }` on a node or component | `open = false` |
+| form drafts | each `form` | the values typed and not yet submitted |
 | system variables | Genesis | `sys.view`, `sys.theme`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus` |
 
 ### System variables
@@ -25,7 +25,7 @@ Components never know where a value came from: a starting value, a click, a call
 - **`sys.theme`**: the daisyUI theme. It starts at `[app] theme`, can be set like any variable (a
   theme picker is a Select bound to it), and is kept on this device.
 - **`sys.errors`**: every loud failure, newest first: `{ at, op, status, message }`. It's read-only,
-  and a Table can show it.
+  and a cell with `each` can show it.
 - **`sys.events`** and **`sys.bus`**: the event trail and who listens to what ([100](100_events.md)).
 
 ## Sources
@@ -64,13 +64,13 @@ left it. The rule is simple: **what the user did is kept; what an API said is fe
 |---|---|
 | `app.*` variables changed by `set`, `step`, `toggle`, or an `input` | every source |
 | `sys.*`: `view`, `theme`, `errors`, and `events` | every variable an `into` filled (call results) |
-| local variables and form drafts (except `password` fields) | `sys.auth`, which only `check` can answer |
+| local variables and form drafts (except `password` inputs) | `sys.auth`, which only `check` can answer |
 
 Credentials and session tokens are never in the browser at all ([070](070_secrets.md)).
 
-- Kept state lives in local storage (`genesis.kept.{app}`), saved whenever it changes, so each device has its own.
+- Kept state lives in local storage (`genesis.kept`), saved whenever it changes, so each device has its own.
   A variable a reply's `into` filled last isn't kept; an action writing it makes it the user's again.
-- `[app] forget = ["scratch"]` marks app variables never to keep, for anything an app would rather start fresh.
+- `[app] forget = ["scratch"]` marks app variables never to keep, for anything that should start fresh.
 - A kept value whose variable no longer exists, or whose starting value now has a different JSON
   type, is dropped and the variable starts fresh. A note goes to the browser console.
 - Two tabs of one app share the kept state; the last write wins.
@@ -89,7 +89,7 @@ user = "/id"                # optional: who is signed in, in check's reply
 logout = "auth.logout"      # optional: called on sign-out
 ```
 
-- **Signing in:** a Form's `on_submit = [{ sign_in = { email = "{{ event.form.email }}", password = "{{ event.form.password }}" } }]`
+- **Signing in:** a `form`'s `on_submit = [{ sign_in = { email = "{{ event.form.email }}", password = "{{ event.form.password }}" } }]`
   calls `login`, and fires `auth.in` or `sign_in.failed`. `serve` keeps the token in a session of its own, tied to the browser by an `httpOnly`
   cookie, and connections use it as `{{ session.token }}` in their headers. The token never reaches the state.
 - **`sys.auth`** is `checking`, `in`, or `out`, and each change fires `auth.in` or `auth.out`. On every open, `check` runs: a 2xx reply is `in`, and a
@@ -105,7 +105,7 @@ logout = "auth.logout"      # optional: called on sign-out
 - **Required:** with `[app.auth]` set, `serve` refuses every call but `login` and `check` while the session
   isn't signed in. A credential-bearing operation can't be fired by someone who hasn't signed in.
 
-A `password` field's value is sent with its call and then cleared. It's never kept in state, stored, or logged.
+A `password` input's value is sent with its call and then cleared. It's never kept in state, stored, or logged.
 Hiding a screen is cosmetic; the API enforces access.
 
 ## The mirror
@@ -114,22 +114,22 @@ So an agent can debug a running app without a browser, each open client mirrors 
 which writes plain files that dufs serves read-only at `/fs/.state/` ([010](010_architecture.md)):
 
 ```
-state/{app}/{client}.json        the whole state: variables, sources, sys.* (sys.bus, sys.events, sys.errors)
-state/{app}/{client}.events.ndjson   the event trail, one event per line, kept to the last 10,000
+state/{client}.json              the whole state: variables, sources, sys.* (sys.bus, sys.events, sys.errors)
+state/{client}.events.ndjson     the event trail, one event per line, kept to the last 10,000
 ```
 
 - The client sends changes at most every 250 ms. `serve` writes each file whole (write, then rename),
   so a reader never sees half a file.
 - A client is a random ID the browser keeps. Files for clients gone for a day are deleted.
-- Credentials and session tokens are never in client state, so they're never in the mirror. Neither are `password` fields.
+- Credentials and session tokens are never in client state, so they're never in the mirror. Neither are `password` inputs.
 - **The mirror holds whatever app data is on screen**, and anyone with the agent token can read it.
-  `[app] mirror = false` turns it off for an app. It's on by default.
+  `[app] mirror = false` turns it off. It's on by default.
 
 ## Across a config reload
 
 The state stays ([060](060_hot_reload.md)). Variables still declared keep their values, and new ones
 start at their starting values. Removed variables are dropped. A source whose `call`, `params`, or
-`select` changed calls again. A form draft keeps its values if its Form is still in the same place.
+`select` changed calls again. A form draft keeps its values if its `form` is still in the same place.
 
 ## Tests
 
@@ -137,7 +137,7 @@ start at their starting values. Removed variables are dropped. A source whose `c
 - `[state]` starting values; `sys.view` starts at `start` and follows the URL's `#`; the back button goes back a view
 - a source calls on `app.opened` and on its params' `.changed` events; `load_on` replaces `app.opened`; `load_on = []` waits for `reload`
 - a stream in `replace` mode keeps the latest message; in `append` mode joins text and pushes others
-- the mirror files appear under `state/{app}/`, whole, within a second of a change, with no credentials or passwords; `mirror = false` writes nothing
+- the mirror files appear under `state/`, whole, within a second of a change, with no credentials or passwords; `mirror = false` writes nothing
 - after closing and reopening: user-set `app.*`, `sys.view`, `sys.theme`, `sys.errors`, locals, and drafts are back; sources and `into` results are fetched fresh; `forget` variables start fresh
 - a kept value of a removed variable, or of a changed type, is dropped
 - login keeps the token on `serve` only: it's in no state, storage, or response the browser gets
@@ -145,7 +145,7 @@ start at their starting values. Removed variables are dropped. A source whose `c
 - a `401` mid-use sets `sys.auth` to `out` and keeps the state; signing in again resumes
 - a different `user` clears the kept state before anything shows
 - with `[app.auth]`, `serve` refuses every call but `login` and `check` until signed in
-- a `password` field's value never appears in state, storage, or logs
+- a `password` input's value never appears in state, storage, or logs
 - after a config reload: kept, new, and removed variables; a changed source calls again
 
 ## Tasks
