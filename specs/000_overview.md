@@ -45,8 +45,8 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
    defined twice. Agents reach it only through dufs, as in PurpleFlow. It's
    loaded into closed Rust types; unknown keys are errors. See [020](020_config.md), [120](120_one_app.md).
 2. **One screen of atoms.** The screen is a tree of nodes from a closed catalog of atoms, as small as
-   plain HTML: `cell` (a `div`) for layout, and `text`, `image`, `link`, `button`, each form control, `form`,
-   and `dialog`. Cells take closed style keys (no CSS classes) for layout, placement, box, and type, with
+   plain HTML: `cell` (a `div`) for layout, and `text`, `image`, `svg`, `divider`, `audio`, `video`, `iframe`,
+   `link`, `button`, each form control (including `radio` and `file`), `form`, and `dialog`. Cells take closed style keys (no CSS classes) for layout, placement, box, and type, with
    screen sizes. Stacks, grids, cards, and tables are built from cells ([040](040_catalog.md)). Which parts
    show depends on variables ([080](080_display_logic.md)).
 3. **Every value comes from the state machine.** Components read immutable state; the screen always

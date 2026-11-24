@@ -31,6 +31,9 @@ stream = "sse"               # "sse", "ndjson", or "lines"
 - `method` (required) is any HTTP method. `path` is joined onto `base_url`.
 - `{name}` in `path` takes the param `name`, URL-encoded, and that param isn't sent again. The
   rest of the params go in the query string for `GET`, `HEAD`, and `DELETE`, and in a JSON body otherwise.
+- When any param holds a file reference from a `file` control ([040](040_catalog.md)), the request is
+  `multipart/form-data` instead, whatever the method: each file is a part with its name and type, and every
+  other param is a field. That's how a PurpleFlow webhook takes an upload.
 - `headers` may hold `{{ creds.NAME }}` and `{{ session.token }}` ([070](070_secrets.md)), which `serve`
   fills in, and `{{ app.* }}` or `{{ sys.* }}`, which the client sends.
 - An operation may set its own `headers` (merged over the connection's) and `timeout`.
@@ -108,6 +111,7 @@ before it hands off bad data.
 - each stream protocol passes on one message per event or line, as they arrive
 - `timeout` makes a slow request a failure; `0` waits; an operation's timeout beats its connection's
 - no failure message contains a credential's value
+- params holding a file reference go out as `multipart/form-data`, the file as a part with its name and type, the rest as fields
 
 ## Tasks
 
@@ -115,6 +119,6 @@ Milestone two ([999](999_todo.md)):
 
 - [x] core: `[connections.*]` config types: `base_url`, `headers`, `timeout`, `ops`, and `crud` (both styles) expanded into operations
 - [x] core: the `call` step: a call effect for the host, the reply resuming the list, `.ok`/`.failed`/`.{status}` events, `into`, `select`, and `event`
-- [x] `serve`: `POST /api/{app}/call` makes the request (`reqwest`), with `{{ creds.NAME }}` from `GENESIS_CREDS_NAME`, redacted from failures; only declared operations
+- [x] `serve`: `POST /api/call` makes the request (`reqwest`), with `{{ creds.NAME }}` from `GENESIS_CREDS_NAME`, redacted from failures; only declared operations
 - [x] the browser: send calls to `serve` and hand replies back; `genesis-bench --mock`
 - [x] deployed check: the contacts sample lists and creates records against a mock API, and pings a PurpleFlow webhook when one is reachable (`tests/deployed/calls.mjs`)

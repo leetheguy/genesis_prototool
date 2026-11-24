@@ -10,7 +10,7 @@ compose them into components ([090](090_components.md)).
 
 **Every type is an atom**, as small as plain HTML ([120](120_one_app.md)). A `cell` is a `div`: it lays
 out and places what's in it, and that's all. Everything with behavior of its own (a link, a button,
-each form control, a form, a dialog) is its own atom, drawn as the real HTML element, so keyboards,
+each form control, a form, a dialog, a video) is its own atom, drawn as the real HTML element, so keyboards,
 screen readers, autofill, and phones all work. A stack, a row, a grid, a card, a table, tabs, a badge:
 each is cells and text laid out a certain way, built by an agent or taken from the composite library
 ([999](999_todo.md)). If a screen can't be built from the atoms, the missing piece is a new atom,
@@ -32,6 +32,11 @@ never a composite.
 | `cell` | `div` | `children`, `each`, the style keys, `on_click` |
 | `text` | `p`, or `h1`–`h3` with `level` | `text` (with templates), `format`, `level`, the type and box keys |
 | `image` | `img` | `src`, `alt` |
+| `svg` | inline `svg`, cleaned | `svg` (the markup), `label`, the type keys |
+| `divider` | `hr` | `color`, the box keys |
+| `audio` | `audio` | `src`, `controls`, `autoplay`, `loop`, `muted` |
+| `video` | `video` | as `audio`, plus `poster` |
+| `iframe` | `iframe`, sandboxed | `src`, `title`, `sandbox`, `height` |
 | `link` | `a` | `text`, `href` (with templates); an outside link opens in a new tab |
 | `button` | `button` | `label`, `disabled`, `submit`, `variant`, `size` |
 | `input` | `input` | `name` or `var`, `kind` (`text`, `email`, `password`, `number`, `date`, `search`), `label`, `placeholder`, `disabled`, checks |
@@ -39,6 +44,8 @@ never a composite.
 | `select` | `select` | as `input`, without `kind`, plus `options` |
 | `checkbox` | a checkbox | `name` or `var`, `label`, `disabled` |
 | `toggle` | a switch | as `checkbox` |
+| `radio` | a radio button | `name` or `var` (its group), `value`, `label`, `disabled` |
+| `file` | a file picker | `name`, `label`, `accept`, `multiple`, `max_size`, `disabled`, checks |
 | `form` | `form` | `children`, `data` (to start from) |
 | `dialog` | `dialog` | `children`, `open` (a variable), `title` |
 | `markdown` | Markdown, drawn safely (no raw HTML) | `text` |
@@ -46,6 +53,20 @@ never a composite.
 
 A `text` with `level` is a heading (`h1`–`h3`) for screen readers, with a heading's size and weight
 unless its own keys say otherwise. `markdown` is for longer prose, and for streamed AI answers later.
+
+### Media and embeds
+
+- **`svg`** draws its markup inline, so it can take the theme's colors (`currentColor` follows `color`) and the
+  type keys' `size`. It's cleaned as `markdown` is: no `script`, no `on*` attributes, no `foreignObject`, and no
+  links out. With `label` it's an image with that name for screen readers; without one it's decoration.
+  Markup that isn't one `svg` element is a config error.
+- **`divider`** is a plain `hr`, for a rule between sections.
+- **`audio`** and **`video`** play `src` (with templates). `controls` defaults to `true`; `autoplay`, `loop`,
+  and `muted` default to `false` (browsers play on their own only when muted).
+- **`iframe`** embeds another page by `src` (with templates). `title` is required: it's what a screen reader
+  announces. It's sandboxed by default, allowing scripts, forms, and popups but not acting as this app's
+  origin or navigating it; `sandbox = false` lifts that, as a power tool should allow. `height` takes
+  `"screen"`, `"full"`, or a number of rem.
 
 ### Repeating: `each`
 
@@ -75,12 +96,27 @@ The `Wired` wrapper draws these faces, so they look the same everywhere.
 
 ### Controls
 
-A control (`input`, `textarea`, `select`, `checkbox`, `toggle`) works one of two ways:
+A control (`input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`) works one of two ways:
 
 - **Inside a `form`, with `name`:** its value is the form's draft, and goes in the form's `form` payload on submit.
   It starts from `data`'s `/name` when the form has `data`.
 - **Anywhere, with `var`:** it reads and writes that variable directly, with no submit: a search box, a filter,
   a theme picker on `sys.theme`.
+
+**Radios are grouped by name.** Every `radio` with the same `name` in one form, or the same `var`, is one
+group: picking one unpicks the rest, and the group's value is the picked radio's `value` (any JSON value,
+so `value = 3` gives the number 3). The arrow keys move within the group, as in plain HTML. A radio is
+picked when its group's value equals its `value`; none is picked while the value matches none.
+
+**A `file` works only inside a `form`, with `name`.** As in PurpleFlow (its spec 190), the bytes never go
+into state: the control's value is a reference, `{ file, name, type, size }`, where `file` is an ID for the
+bytes the browser holds. With `multiple = true` it's a list of those. A call whose params hold a reference
+(`params = { doc = "{{ event.form.doc }}" }`) goes out as `multipart/form-data`, from the browser through
+`serve` to the API, with each referenced file as a part and every other param as a field, whatever the
+operation's method would otherwise send. So a PurpleFlow webhook gets it just as it gets any upload. A
+reference is good while its page is open; one that's gone fails the call, loudly. `accept` limits what the
+picker offers (`"image/*"`, `".pdf,.csv"`). A file bigger than `max_size` (default 10 MB, in bytes; `0` for
+no limit) fails its control's check with a message naming both sizes.
 
 A `select` takes `options` (`[{ label, value }]`, or `options = "app.companies"` with `option_label` and
 `option_value` pointers). Checks are in [080](080_display_logic.md). A value keeps its JSON type: a
@@ -177,6 +213,7 @@ A node with an `id` fires these ([100](100_events.md)); `on_click`, `on_change`,
 |---|---|---|
 | `button`, `cell` | `.click` | — |
 | a control | `.change` | `value` |
+| `audio`, `video` | `.play`, `.pause`, `.ended` | — |
 | `form` | `.submit` (only when its checks pass), `.invalid` | `form` |
 | `dialog` | `.close` | — |
 
@@ -212,6 +249,13 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - `dialog` opens with its variable, and closing it sets the variable false and fires `.close`
 - `link` opens an outside URL in a new tab
 - `markdown` draws Markdown and escapes raw HTML
+- `svg` draws its markup inline and strips scripts, `on*` attributes, `foreignObject`, and outside links; with `label` it's a named image; markup that isn't one `svg` is a config error
+- `divider` is an `hr`
+- `audio` and `video` take `src` with templates and default to controls on, autoplay off; they fire `.play`, `.pause`, and `.ended`
+- `iframe` is sandboxed unless `sandbox = false`; one with no `title` is a config error
+- radios with one `name` in a form, or one `var`, are one group: picking one sets the group's value to its `value`, with its JSON type, and unpicks the rest
+- a `file` gives `{ file, name, type, size }` (a list with `multiple`), never its bytes; one over `max_size` fails its check; a `file` with `var`, or outside a `form`, is a config error
+- a call whose params hold a file reference reaches the API as `multipart/form-data`, the file as a part with its name and type and the other params as fields; a reference that's gone fails the call
 - a `form` starts its controls from `data`; a `submit` button fires `.submit` with each named control in `form`
 - a `form` with a failing check fires `.invalid`, not `.submit`, and shows each message
 - a control with `var` reads and writes its variable on every change; a `select` on `sys.theme` changes the theme
@@ -235,8 +279,11 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [ ] screen sizes for every style key, and the whole style vocabulary in the built CSS
 - [ ] placement keys on every node
 - [ ] `image` and `link`; `button`'s variants and sizes
+- [ ] `divider` and `svg`
+- [ ] `audio`, `video`, and `iframe`
 - [ ] `each`, with its faces in `Wired`, and `item.*`
-- [ ] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`
+- [ ] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups
 - [ ] `form`, controls with `name`, and the `submit` button
+- [ ] `file`, and calls that send files as multipart through `serve`
 - [ ] `dialog`
 - [ ] `markdown`

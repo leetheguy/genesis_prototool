@@ -14,8 +14,9 @@ came from.
 with no human help, and it works. A deployed check drives the finished CRM in a real browser.
 
 - **The atoms** ([040](040_catalog.md)): `cell` (a `div`, with style keys for layout, placement, box, and
-  type, mapped to Tailwind and daisyUI, with screen sizes), `text`, `image`, `link`, `button`, `input`,
-  `textarea`, `select`, `checkbox`, `toggle`, `form`, `dialog`, and `markdown`. A cell with `each` repeats.
+  type, mapped to Tailwind and daisyUI, with screen sizes), `text`, `image`, `svg`, `divider`, `audio`, `video`,
+  `iframe`, `link`, `button`, `input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`, `form`, `dialog`,
+  and `markdown`. A cell with `each` repeats.
 - **Components** ([090](090_components.md)): TOML files of atoms with props and local state, used by name.
 - **Display logic** ([080](080_display_logic.md)): conditions for `show` and `disabled`, checks on controls, and formats.
 - **`confirm` and `toast`** ([100](100_events.md)).
@@ -61,7 +62,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   session store would be the fix if it starts to matter. From [070](070_secrets.md).
 - **Shared devices without `user`.** Kept state is cleared when a different person signs in, but only if
   `[app.auth] user` is set. Should an app with `[app.auth]` be required to set it? From [050](050_state.md).
-- **Uploads.** A `file` control in a `form`, sent as multipart (PurpleFlow webhooks take files: PurpleFlow spec 190). From [040](040_catalog.md).
 - **A credentials UI and host locks.** A human-only page for credentials like PurpleFlow's (spec 080), and
   per-credential allowed hosts, if env files prove clumsy. From [070](070_secrets.md).
 

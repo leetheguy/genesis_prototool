@@ -127,7 +127,7 @@ review screens, dashboards, choices, and live feeds. It isn't for 60fps local in
 The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)) and the renderer ([040](040_catalog.md)):
 
 - [x] `serve`: loads `configs/{app}/app.toml` when a client asks, serves the renderer at `/{app}/`, and sends the config
-- [x] `serve`: `POST /api/{app}/mirror` writes `state/{app}/{client}.json` and `.events.ndjson`
+- [x] `serve`: `POST /api/mirror` writes `state/{client}.json` and `.events.ndjson`
 - [x] hello: `samples/hello/app.toml`, where a button's clicks are logged and counted on screen and in the mirror (deployed check: `scripts/check-hello.sh`)
 
 Milestone two ([999](999_todo.md)):
