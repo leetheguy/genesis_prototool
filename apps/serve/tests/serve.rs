@@ -316,3 +316,59 @@ async fn status_says_the_app_failed_with_where_each_problem_is() {
         "{report}"
     );
 }
+
+#[tokio::test]
+async fn the_app_is_every_toml_file_in_every_folder() {
+    let folders = Folders::new("manyfiles");
+    std::fs::create_dir_all(folders.path("configs/crm/deep")).unwrap();
+    std::fs::write(
+        folders.path("configs/crm/deep/more.toml"),
+        "[state]\npage = 3\n",
+    )
+    .unwrap();
+    std::fs::write(folders.path("configs/notes.md"), "not toml, not read").unwrap();
+    let (_, event) = first_event(&folders, "/api/config").await;
+    let data: Value = serde_json::from_str(
+        event
+            .lines()
+            .nth(1)
+            .unwrap()
+            .strip_prefix("data: ")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(data["state"]["page"], 3);
+}
+
+#[tokio::test]
+async fn a_problem_in_a_folder_names_the_files_path() {
+    let folders = Folders::new("deepproblem");
+    std::fs::create_dir_all(folders.path("configs/crm")).unwrap();
+    std::fs::write(
+        folders.path("configs/crm/api.toml"),
+        "[state]\nx = 1\ny = \n",
+    )
+    .unwrap();
+    let (_, body) = get(&folders, "/status").await;
+    let report: Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        report["problems"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("crm/api.toml:3:"),
+        "{report}"
+    );
+}
+
+#[tokio::test]
+async fn hidden_files_and_folders_arent_part_of_the_app() {
+    let folders = Folders::new("hidden");
+    std::fs::create_dir_all(folders.path("configs/.git")).unwrap();
+    std::fs::write(folders.path("configs/.git/config.toml"), "not = [valid").unwrap();
+    std::fs::write(folders.path("configs/.draft.toml"), "not = [valid").unwrap();
+    let (_, body) = get(&folders, "/status").await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({ "status": "loaded" })
+    );
+}

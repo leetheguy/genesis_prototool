@@ -284,15 +284,8 @@ fn plain(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-impl Server {
-    /// The app's top file, `app.toml` in the configs folder.
-    fn app_file(&self) -> PathBuf {
-        self.settings.configs.join("app.toml")
-    }
-}
-
 async fn status(State(server): Shared) -> Json<Value> {
-    Json(match load(&server.app_file()).await {
+    Json(match load(&server.settings.configs).await {
         Ok(_) => serde_json::json!({ "status": "loaded" }),
         Err(problems) => {
             serde_json::json!({ "status": "failed", "problems": problems.lines().collect::<Vec<_>>() })
@@ -312,26 +305,26 @@ async fn page(State(server): Shared) -> Response {
 }
 
 async fn config(State(server): Shared) -> Response {
-    let file = server.app_file();
+    let configs = server.settings.configs.clone();
     // Listen before the first load, so a change during it isn't missed.
     let news = BroadcastStream::new(server.changes.subscribe());
     let first = {
-        let file = file.clone();
-        stream::once(async move { app_event(&file).await })
+        let configs = configs.clone();
+        stream::once(async move { app_event(&configs).await })
     };
     // After the first event the stream stays open: a closed stream would make the browser
     // reconnect and ask again every few seconds. Each change sends it again; so does a lag,
     // which may have dropped a change.
     let later = news.then(move |_| {
-        let file = file.clone();
-        async move { app_event(&file).await }
+        let configs = configs.clone();
+        async move { app_event(&configs).await }
     });
     Sse::new(first.chain(later).map(Ok::<_, Infallible>)).into_response()
 }
 
-/// The event an app's file makes now: `config` with the app, or `problems`.
-async fn app_event(file: &Path) -> Event {
-    match load(file).await {
+/// The event the configs folder makes now: `config` with the app, or `problems`.
+async fn app_event(configs: &Path) -> Event {
+    match load(configs).await {
         Ok(app) => Event::default()
             .event("config")
             .data(serde_json::to_string(&app).unwrap_or_default()),
@@ -339,24 +332,50 @@ async fn app_event(file: &Path) -> Event {
     }
 }
 
-/// Loads an app, or says what's wrong with it, one problem per line as `app.toml:LINE:COLUMN: ...`.
-async fn load(file: &Path) -> Result<App, String> {
-    let text = tokio::fs::read_to_string(file)
+/// Loads the app from every `.toml` file in the configs folder, in any folder, or says what's
+/// wrong with it, one problem per line as `FILE:LINE:COLUMN: ...` ([spec 020](../../../specs/020_config.md)).
+async fn load(configs: &Path) -> Result<App, String> {
+    let configs = configs.to_path_buf();
+    let files = tokio::task::spawn_blocking(move || read_configs(&configs))
         .await
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => "app.toml not found".to_string(),
-            _ => format!("app.toml: {e}"),
-        })?;
-    App::from_toml(&text).map_err(|problems| {
-        let lines: Vec<String> = problems
-            .iter()
-            .map(|p| match (p.line, p.column) {
-                (Some(line), Some(column)) => format!("app.toml:{line}:{column}: {}", p.message),
-                _ => format!("app.toml: {}", p.message),
-            })
-            .collect();
+        .map_err(|e| format!("reading the configs folder stopped: {e}"))??;
+    App::from_files(files).map_err(|problems| {
+        let lines: Vec<String> = problems.iter().map(ToString::to_string).collect();
         lines.join("\n")
     })
+}
+
+/// Every `.toml` file under `dir`, as its path from `dir` (with `/` between folders) and its text.
+/// Hidden files and folders (a name starting with `.`, like `.git`) aren't part of the app.
+fn read_configs(dir: &Path) -> Result<Vec<(String, String)>, String> {
+    let mut files = Vec::new();
+    let mut folders = vec![dir.to_path_buf()];
+    while let Some(folder) = folders.pop() {
+        let entries = std::fs::read_dir(&folder)
+            .map_err(|e| format!("the configs folder {}: {e}", folder.display()))?;
+        for entry in entries {
+            let path = entry
+                .map_err(|e| format!("{}: {e}", folder.display()))?
+                .path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(".");
+            if name.starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                folders.push(path);
+            } else if name.ends_with(".toml") {
+                let rel = path.strip_prefix(dir).unwrap_or(&path);
+                let rel = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let text = std::fs::read_to_string(&path).map_err(|e| format!("{rel}: {e}"))?;
+                files.push((rel, text));
+            }
+        }
+    }
+    Ok(files)
 }
 
 async fn mirror(State(server): Shared, Json(body): Json<Value>) -> Response {
@@ -383,7 +402,7 @@ async fn mirror(State(server): Shared, Json(body): Json<Value>) -> Response {
 }
 
 async fn call(State(server): Shared, Json(body): Json<Value>) -> Response {
-    let app = match load(&server.app_file()).await {
+    let app = match load(&server.settings.configs).await {
         Ok(app) => app,
         Err(problems) => {
             return refuse(

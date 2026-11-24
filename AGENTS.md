@@ -47,7 +47,7 @@ about data: that logic lives behind the API. So:
   spec and a code change. Every atom implements the `Component` trait and goes through the `Wired` wrapper;
   it never touches the bus or the state machine itself ([040](specs/040_catalog.md)). No raw CSS classes in
   the TOML: only the closed style keys.
-- **One app.** The configs folder is the app, and every name in it is unique, whatever folder it's in
+- **One app.** The configs folder is the app, and every file name in it is unique, whatever folder it's in
   ([120](specs/120_one_app.md)).
 - **Credentials stay on the server.** The TOML holds `{{ creds.NAME }}`, only in connections; `serve`
   resolves it at call time; `files` never sees the env file ([070](specs/070_secrets.md)).

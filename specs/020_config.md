@@ -86,9 +86,11 @@ And `contact_row.toml`, anywhere in the folder, is a component ([090](090_compon
 | `[component]` | marks the file as a component, with its props ([090](090_components.md)) | a component |
 
 The app is everything in every file, put together. Folders only organize the files: they add nothing
-to names, and moving a file changes nothing else. **Every name is unique across the whole app**: file
-names, node ids, variables, sources, connections, actions, components, and handler patterns. Two of
-anything with one name, in one file or two, is a load problem naming both places.
+to names, and moving a file changes nothing else. **Every file name is unique across the whole app**:
+two files with one name, in any folders, are a load problem naming both paths. Names inside the files
+may repeat ([120](120_one_app.md)), but a definition can't be made twice: the same `[state]` variable,
+source, connection, or action in two files is a load problem naming both places. Handlers for one event
+in several files all run, `app.toml` first and then the other files in path order.
 
 It's one screen. What it shows changes by `show` on any variable ([080](080_display_logic.md)), and by an
 agent rewriting the files. Nodes nest through `children`. A tree too deep to read is split into components ([090](090_components.md)).
@@ -131,8 +133,9 @@ version running ([060](060_hot_reload.md)), and every problem is reported with i
 - `{{ creds.* }}` or `{{ session.* }}` outside `[connections.*]`, or `session.*` without `[app.auth]`
 - a `select` or `field` that isn't a JSON Pointer, or a template that isn't a plain lookup
 - a component that doesn't exist, a missing required prop, or components that use each other in a loop
-- two of anything with one name: files (in any folders), node ids, variables, sources, connections,
-  actions, components, or handler patterns ([120](120_one_app.md))
+- two files with one name, in any folders ([120](120_one_app.md))
+- one `[state]` variable, source, connection, or action defined in two files, or a variable that's both
+  in `[state]` and a source
 - no `app.toml` at the top, `[app]` anywhere else, or a table in a file that can't hold it
 
 Each problem is also written to the log ([110](110_agents.md)).
@@ -142,7 +145,10 @@ Each problem is also written to the log ([110](110_agents.md)).
 - the app above loads into the expected config
 - defaults: no `theme` is `"light"`, no `start` is `"main"`
 - an app from several files in several folders loads as one, and moving a file changes nothing
-- the same name twice, in one file or across two, is a problem naming both places
+- two files with one name, in different folders, are a problem naming both paths
+- the same variable, source, connection, or action defined in two files is a problem naming both places
+- handlers for one event in two files both run, `app.toml`'s first
+- `[app]` or `[[body]]` outside `app.toml`, and no `app.toml` at the top, are problems
 - `children` nest to any depth
 - an unknown key is an error naming the key, file, line, and column
 - every check above fails with its own message, and all problems are reported at once

@@ -1,8 +1,10 @@
 //! The config types: an app's TOML, loaded into closed Rust types.
 //!
-//! An app is one `app.toml` ([spec 020](../../../specs/020_config.md)). serde (Rust's standard
-//! library for turning text formats into typed values) reads it into [`App`]. The same types read
-//! and write JSON too, which is how the server hands a loaded app to the browser.
+//! An app is the configs folder: `app.toml` at its top, and any other `.toml` files in any folders,
+//! put together ([spec 020](../../../specs/020_config.md), [spec 120](../../../specs/120_one_app.md)).
+//! serde (Rust's standard library for turning text formats into typed values) reads them into
+//! [`App`], and [`App::from_files`] puts them together and checks the whole. The same types read and
+//! write JSON too, which is how the server hands a loaded app to the browser.
 //!
 //! Every table refuses keys it doesn't know (`deny_unknown_fields`), so a typo is an error with a
 //! line number, never a setting that's silently ignored.
@@ -21,7 +23,7 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// A whole app: the top-level tables of `app.toml`.
+/// A whole app: the top-level tables of `app.toml` and every other file, put together.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct App {
@@ -288,14 +290,33 @@ pub enum Step {
 }
 
 /// A problem found loading an app, with where it is when that's known.
+///
+/// It prints as `FILE:LINE:COLUMN: MESSAGE`, leaving out what isn't known.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigError {
+    /// The file it's in, by its path in the configs folder (`crm/api.toml`).
+    pub file: Option<String>,
     /// What's wrong.
     pub message: String,
     /// The line, counting from 1.
     pub line: Option<usize>,
     /// The column, counting from 1.
     pub column: Option<usize>,
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(file) = &self.file {
+            write!(f, "{file}:")?;
+        }
+        if let (Some(line), Some(column)) = (self.line, self.column) {
+            write!(f, "{line}:{column}:")?;
+        }
+        if self.file.is_some() || self.line.is_some() {
+            write!(f, " ")?;
+        }
+        write!(f, "{}", self.message)
+    }
 }
 
 /// `[sources.NAME]`: the variable `app.NAME`, filled by calling an operation. It calls when the app
@@ -514,37 +535,266 @@ impl App {
         names
     }
 
-    /// Loads an app from the text of its `app.toml`.
+    /// Loads an app from the text of its `app.toml` alone.
     ///
-    /// Fails with every problem found, each with its line and column when the TOML reader knows them.
+    /// The same as [`App::from_files`] with only that file.
     pub fn from_toml(text: &str) -> Result<App, Vec<ConfigError>> {
-        let app: App = toml::from_str(text).map_err(|e| {
-            let message = e.message().to_string();
-            let at = e
-                .span()
-                .map(|span| unknown_key_offset(text, span.start, &message).unwrap_or(span.start));
-            let (line, column) = at.map(|offset| line_and_column(text, offset)).unzip();
-            vec![ConfigError {
-                message,
+        App::from_files([("app.toml", text)])
+    }
+
+    /// Loads an app from its files: each one's path in the configs folder (`crm/api.toml`, with `/`
+    /// between folders) and its text, in any order.
+    ///
+    /// `app.toml` at the top holds `[app]` and `[[body]]`; every other file may add `[state]`,
+    /// `[sources]`, `[connections]`, `[actions]`, and `[on]`. Handlers keep their order: `app.toml`'s
+    /// first, then each other file's in path order. Fails with every problem in every file at once:
+    /// a file that doesn't read, a table where it can't go, two files with one name in any folders, or
+    /// one variable, source, connection, or action defined twice ([spec 020](../../../specs/020_config.md), "Checks").
+    ///
+    /// ```
+    /// use genesis_core::config::App;
+    ///
+    /// let app = App::from_files([
+    ///     ("app.toml", "[app]\nname = \"CRM\"\n"),
+    ///     ("crm/state.toml", "[state]\npage = 1\n"),
+    /// ])
+    /// .unwrap();
+    /// assert_eq!(app.state["page"], 1);
+    /// ```
+    pub fn from_files<P, T>(
+        files: impl IntoIterator<Item = (P, T)>,
+    ) -> Result<App, Vec<ConfigError>>
+    where
+        P: AsRef<str>,
+        T: AsRef<str>,
+    {
+        let mut files: Vec<(P, T)> = files.into_iter().collect();
+        // app.toml first, then the others by path: the order handlers run in.
+        files.sort_by(|(a, _), (b, _)| {
+            let (a, b) = (a.as_ref(), b.as_ref());
+            (a != "app.toml", a).cmp(&(b != "app.toml", b))
+        });
+        let mut problems = Vec::new();
+        let mut top: Option<App> = None;
+        let mut parts = Vec::new();
+        let mut names = Defined::default();
+        let mut seen_files: BTreeMap<String, String> = BTreeMap::new();
+        for (path, text) in &files {
+            let (path, text) = (path.as_ref(), text.as_ref());
+            let file_name = path.rsplit('/').next().unwrap_or(path).to_string();
+            if let Some(first) = seen_files.get(&file_name) {
+                problems.push(problem_in(
+                    path,
+                    format!(
+                        "the file name {file_name} is also {first}; give one of them another name"
+                    ),
+                ));
+                continue;
+            }
+            seen_files.insert(file_name, path.to_string());
+            let read = if path == "app.toml" {
+                toml::from_str::<App>(text).map(|app| {
+                    top = Some(app);
+                })
+            } else {
+                match misplaced(path, text) {
+                    Some(problem) => {
+                        problems.push(problem);
+                        continue;
+                    }
+                    None => toml::from_str::<Part>(text).map(|part| parts.push(part)),
+                }
+            };
+            match read {
+                Ok(()) => names.add(path, text, &mut problems),
+                Err(e) => problems.push(toml_problem(path, text, &e)),
+            }
+        }
+        if !seen_files.get("app.toml").is_some_and(|p| p == "app.toml") {
+            problems.insert(
+                0,
+                ConfigError {
+                    file: None,
+                    message: "app.toml not found at the top of the configs folder".into(),
+                    line: None,
+                    column: None,
+                },
+            );
+        }
+        names.clashes(&mut problems);
+        match top {
+            Some(mut app) if problems.is_empty() => {
+                for part in parts {
+                    app.state.extend(part.state);
+                    app.on.extend(part.on);
+                    app.actions.extend(part.actions);
+                    app.sources.extend(part.sources);
+                    app.connections.extend(part.connections);
+                }
+                Ok(app)
+            }
+            _ => Err(problems),
+        }
+    }
+}
+
+/// What a file other than `app.toml` may hold: everything but `[app]` and `[[body]]`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Part {
+    #[serde(default)]
+    state: Map<String, Value>,
+    #[serde(default, with = "ordered_handlers")]
+    on: Vec<Handler>,
+    #[serde(default)]
+    actions: BTreeMap<String, Action>,
+    #[serde(default)]
+    sources: BTreeMap<String, Source>,
+    #[serde(default)]
+    connections: BTreeMap<String, Connection>,
+}
+
+/// The names a file defines, each with where it's written.
+#[derive(Deserialize)]
+struct Names {
+    #[serde(default)]
+    state: BTreeMap<toml::Spanned<String>, de::IgnoredAny>,
+    #[serde(default)]
+    sources: BTreeMap<toml::Spanned<String>, de::IgnoredAny>,
+    #[serde(default)]
+    connections: BTreeMap<toml::Spanned<String>, de::IgnoredAny>,
+    #[serde(default)]
+    actions: BTreeMap<toml::Spanned<String>, de::IgnoredAny>,
+}
+
+/// Every definition so far, by kind and name, with the first place each is written
+/// (`FILE:LINE:COLUMN`). A definition made twice is a problem at the second place.
+#[derive(Default)]
+struct Defined {
+    /// By kind (`state`, `sources`, `connections`, `actions`), then name.
+    kinds: BTreeMap<&'static str, BTreeMap<String, String>>,
+}
+
+impl Defined {
+    /// Adds a file's definitions, with a problem for each one already made.
+    fn add(&mut self, path: &str, text: &str, problems: &mut Vec<ConfigError>) {
+        // The file has already read as its full type, so it reads as names too.
+        let Ok(names) = toml::from_str::<Names>(text) else {
+            return;
+        };
+        let kinds = [
+            ("state", names.state),
+            ("sources", names.sources),
+            ("connections", names.connections),
+            ("actions", names.actions),
+        ];
+        for (kind, defined) in kinds {
+            let known = self.kinds.entry(kind).or_default();
+            for name in defined.into_keys() {
+                let (line, column) = line_and_column(text, name.span().start);
+                let place = format!("{path}:{line}:{column}");
+                let name = name.into_inner();
+                match known.get(&name) {
+                    Some(first) => problems.push(ConfigError {
+                        file: Some(path.into()),
+                        message: format!(
+                            "{} is defined twice; it's also at {first}",
+                            what(kind, &name)
+                        ),
+                        line: Some(line),
+                        column: Some(column),
+                    }),
+                    None => {
+                        known.insert(name, place);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A problem for each app variable that's both a `[state]` variable and a source.
+    fn clashes(&self, problems: &mut Vec<ConfigError>) {
+        let (Some(state), Some(sources)) = (self.kinds.get("state"), self.kinds.get("sources"))
+        else {
+            return;
+        };
+        for (name, place) in state {
+            let Some(source) = sources.get(name) else {
+                continue;
+            };
+            let mut at = place.rsplitn(3, ':');
+            let column = at.next().and_then(|c| c.parse().ok());
+            let line = at.next().and_then(|l| l.parse().ok());
+            problems.push(ConfigError {
+                file: at.next().map(String::from),
+                message: format!(
+                    "app.{name} is both a [state] variable and a source (at {source}); give one another name"
+                ),
                 line,
                 column,
-            }]
-        })?;
-        let clashes: Vec<ConfigError> = app
-            .sources
-            .keys()
-            .filter(|name| app.state.contains_key(*name))
-            .map(|name| ConfigError {
-                message: format!("app.{name} is both a [state] variable and a [sources.{name}]; give one another name"),
-                line: None,
-                column: None,
-            })
-            .collect();
-        if clashes.is_empty() {
-            Ok(app)
-        } else {
-            Err(clashes)
+            });
         }
+    }
+}
+
+/// How a problem names a definition: `app.page`, `connection crm`, `source contacts`, `action refresh`.
+fn what(kind: &str, name: &str) -> String {
+    match kind {
+        "state" => format!("app.{name}"),
+        "sources" => format!("source {name}"),
+        "connections" => format!("connection {name}"),
+        _ => format!("action {name}"),
+    }
+}
+
+/// A problem with a whole file, with no line.
+fn problem_in(path: &str, message: String) -> ConfigError {
+    ConfigError {
+        file: Some(path.into()),
+        message,
+        line: None,
+        column: None,
+    }
+}
+
+/// `[app]` or `[[body]]` in a file other than `app.toml`, where its header is written.
+fn misplaced(path: &str, text: &str) -> Option<ConfigError> {
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        let table = match trimmed {
+            "[app]" => "[app]",
+            _ if trimmed.starts_with("[app.") => "[app]",
+            "[[body]]" => "[[body]]",
+            _ if trimmed.starts_with("[body") || trimmed.starts_with("[[body.") => "[[body]]",
+            _ => {
+                offset += line.len();
+                continue;
+            }
+        };
+        let (line, column) = line_and_column(text, offset + (line.len() - line.trim_start().len()));
+        return Some(ConfigError {
+            file: Some(path.into()),
+            message: format!("{table} goes only in app.toml, at the top of the configs folder"),
+            line: Some(line),
+            column: Some(column),
+        });
+    }
+    None
+}
+
+/// A problem the TOML reader found in a file, with its line and column when the reader knows them.
+fn toml_problem(path: &str, text: &str, e: &toml::de::Error) -> ConfigError {
+    let message = e.message().to_string();
+    let at = e
+        .span()
+        .map(|span| unknown_key_offset(text, span.start, &message).unwrap_or(span.start));
+    let (line, column) = at.map(|offset| line_and_column(text, offset)).unzip();
+    ConfigError {
+        file: Some(path.into()),
+        message,
+        line,
+        column,
     }
 }
 

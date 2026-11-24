@@ -146,6 +146,40 @@ fn it_takes_the_app_toml_file_as_well_as_its_folder() {
 }
 
 #[test]
+fn it_loads_every_toml_file_in_the_folder_as_one_app() {
+    let app = AppDir::new("many", HELLO);
+    std::fs::create_dir_all(app.0.join("more")).unwrap();
+    std::fs::write(
+        app.0.join("more/extra.toml"),
+        "[on]\n\"hello_btn.click\" = [{ log = \"from extra\" }]\n",
+    )
+    .unwrap();
+    for target in [app.0.clone(), app.0.join("app.toml")] {
+        let out = bench(&target, "{\"fire\": \"hello_btn.click\"}\n");
+        let logs: Vec<Value> = lines(&out)
+            .into_iter()
+            .filter_map(|line| line.get("log").cloned())
+            .collect();
+        assert_eq!(
+            logs,
+            [json!("clicked 1 times"), json!("from extra")],
+            "{target:?}"
+        );
+    }
+}
+
+#[test]
+fn a_problem_in_another_file_names_its_path() {
+    let app = AppDir::new("badmore", HELLO);
+    std::fs::create_dir_all(app.0.join("more")).unwrap();
+    std::fs::write(app.0.join("more/extra.toml"), "[state]\nclicks = 5\n").unwrap();
+    let out = bench(&app.0, "");
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("more/extra.toml:2:1:"), "{stderr}");
+}
+
+#[test]
 fn an_app_that_doesnt_load_fails_with_where_the_problem_is() {
     let app = AppDir::new("bad", "[app]\nname = \"x\"\ncolour = \"red\"\n");
     let out = bench(&app.0, "");
@@ -185,8 +219,10 @@ call = "api.hi"
 select = "/text"
 "#;
 
+/// Runs the bench with a mocks file kept beside the app's folder: inside it, the file would be
+/// read as part of the app.
 fn bench_with_mocks(app: &std::path::Path, mocks: &str, stdin: &str) -> Output {
-    let file = app.join("mocks.toml");
+    let file = app.with_extension("mocks.toml");
     std::fs::write(&file, mocks).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_genesis-bench"))
         .arg(app)
@@ -203,7 +239,9 @@ fn bench_with_mocks(app: &std::path::Path, mocks: &str, stdin: &str) -> Output {
         .unwrap()
         .write_all(stdin.as_bytes())
         .unwrap();
-    child.wait_with_output().unwrap()
+    let out = child.wait_with_output().unwrap();
+    let _ = std::fs::remove_file(&file);
+    out
 }
 
 #[test]

@@ -4,7 +4,7 @@
 //! genesis-bench APP_DIR_OR_APP_TOML [--mock MOCKS_TOML] < script.ndjson
 //! ```
 //!
-//! It loads the app, opens it (firing `app.opened`), then reads one JSON object per line from
+//! It loads the app (every `.toml` file in the configs folder, [spec 020](../../../specs/020_config.md)), opens it (firing `app.opened`), then reads one JSON object per line from
 //! stdin ([spec 100](../../../specs/100_events.md), "The workbench"):
 //!
 //! - `{"fire": "hello_btn.click", "payload": {...}}` fires an event (`payload` is optional).
@@ -28,7 +28,8 @@
 //! error = "refused"             # a call that got no response
 //! ```
 //!
-//! A call with no mock fails, saying so. Without `--mock`, calls are left waiting.
+//! A call with no mock fails, saying so. Without `--mock`, calls are left waiting. Keep the mocks
+//! file outside the configs folder: every `.toml` file inside it is part of the app.
 //!
 //! It exits with `2` when the app doesn't load (each problem printed as `FILE:LINE:COLUMN: ...`),
 //! and `1` when a line of the script can't be read.
@@ -37,7 +38,7 @@ use genesis_core::bus::{Effect, Machine, Reply};
 use genesis_core::config::App;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 /// One `[[mock]]`: the answer to every call to `op`.
@@ -110,28 +111,54 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Loads the app at `target`, a folder holding `app.toml` or the file itself, into a machine.
-/// Fails with every problem, one per line, each with its file and place.
+/// Loads the app at `target` into a machine: its configs folder, or the `app.toml` at the folder's
+/// top, which stands for the folder. Every `.toml` file in it, in any folder, is part of the app;
+/// hidden ones (a name starting with `.`) aren't. Fails with every problem, one per line, each as
+/// `FILE:LINE:COLUMN: ...` with the file's path in the folder.
 fn load(target: &Path) -> Result<Machine, String> {
-    let file: PathBuf = if target.is_dir() {
-        target.join("app.toml")
+    let dir: &Path = if target.is_dir() {
+        target
     } else {
-        target.to_path_buf()
+        target.parent().unwrap_or(Path::new("."))
     };
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let app = App::from_toml(&text).map_err(|problems| {
-        let lines: Vec<String> = problems
-            .iter()
-            .map(|p| match (p.line, p.column) {
-                (Some(line), Some(column)) => {
-                    format!("{}:{line}:{column}: {}", file.display(), p.message)
-                }
-                _ => format!("{}: {}", file.display(), p.message),
-            })
-            .collect();
+    let app = App::from_files(read_configs(dir)?).map_err(|problems| {
+        let lines: Vec<String> = problems.iter().map(ToString::to_string).collect();
         lines.join("\n")
     })?;
     Ok(Machine::new(app))
+}
+
+/// Every `.toml` file under `dir`, as its path from `dir` (with `/` between folders) and its text,
+/// leaving out hidden files and folders. The same walk as `genesis-serve`'s.
+fn read_configs(dir: &Path) -> Result<Vec<(String, String)>, String> {
+    let mut files = Vec::new();
+    let mut folders = vec![dir.to_path_buf()];
+    while let Some(folder) = folders.pop() {
+        let entries =
+            std::fs::read_dir(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        for entry in entries {
+            let path = entry
+                .map_err(|e| format!("{}: {e}", folder.display()))?
+                .path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(".");
+            if name.starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                folders.push(path);
+            } else if name.ends_with(".toml") {
+                let rel = path.strip_prefix(dir).unwrap_or(&path);
+                let rel = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let text = std::fs::read_to_string(&path).map_err(|e| format!("{rel}: {e}"))?;
+                files.push((rel, text));
+            }
+        }
+    }
+    Ok(files)
 }
 
 /// Runs one line of the script.

@@ -28,10 +28,14 @@ So:
 - **The configs folder is the app.** `app.toml` at its top holds `[app]` and the screen's `[[body]]`.
   Every other `.toml` file, in any folder, is a component ([090](090_components.md)) or adds to the app
   (state, connections, sources, actions, handlers) ([020](020_config.md)).
-- **Every name is unique across the whole app**: file names, node ids, variables, connections, sources,
-  actions, components, and handler patterns. Folders don't make a name unique: `views/review.toml` and
-  `old/review.toml` clash. A clash is a load problem naming both places. A name then always points at
-  exactly one thing, for an agent, a log line, and a person reading the files.
+- **Every file name is unique across the whole app.** Folders don't make a name unique:
+  `views/review.toml` and `old/review.toml` clash, and a clash is a load problem naming both paths. A file
+  name then always points at exactly one file, for an agent, a log line, and a person reading the files,
+  and a component's name, which is its file name, means one component.
+- **Names inside files may repeat.** Two nodes may share an `id`, and two files may handle the same event
+  (both run, in file order). Only a *definition* can't be made twice: the same `[state]` variable,
+  source, connection, or action in two files is a load problem naming both places, as it is within one
+  file, since the app couldn't say which one holds.
 - **One address.** `serve` draws the app at `/`; its routes lose the app's name (`/api/call`,
   `/api/push/{name}`, [010](010_architecture.md)). A second app is a second Genesis, with its own
   configs folder.
@@ -61,5 +65,5 @@ Milestone three ([999](999_todo.md)), in this order, so the rest is built on one
 - [x] `serve`: one app from the configs folder at `/`, its routes without the app's name, and the mirror at `state/{client}.json`
 - [x] the desktop window opens `serve`'s `/` (no app argument)
 - [x] samples, the deployed checks, Compose, and the docs, moved to one app
-- [ ] core: an app from many files, with every name unique ([020](020_config.md))
+- [x] core: an app from many files, with every file name unique ([020](020_config.md))
 - [ ] `stack` becomes `cell`; `heading` becomes `text` with `level` ([040](040_catalog.md))

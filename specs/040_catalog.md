@@ -20,7 +20,7 @@ never a composite.
 
 | Key | Meaning |
 |---|---|
-| `id` | the node's name, unique in the app: it fires its events under it (`save_btn.click`), and its local state and form draft survive reloads by it |
+| `id` | the node's name: it fires its events under it (`save_btn.click`), and its local state and form draft survive reloads by it |
 | `show` | a condition; the node and its children are drawn only while it holds ([080](080_display_logic.md)) |
 | `state` | local variables for this node and its children |
 | placement | `span`, `offset`, `grow`, and `width`: where the node sits in its parent (below) |

@@ -41,8 +41,8 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
 ## The whole model
 
 1. **The app is the configs folder**: `app.toml` at the top, and any other TOML files in any folders,
-   put together. Folders only organize; every name (files, ids, variables, connections, actions,
-   components) is unique across the whole app. Agents reach it only through dufs, as in PurpleFlow. It's
+   put together. Folders only organize; every file name is unique across the whole app, and nothing is
+   defined twice. Agents reach it only through dufs, as in PurpleFlow. It's
    loaded into closed Rust types; unknown keys are errors. See [020](020_config.md), [120](120_one_app.md).
 2. **One screen of atoms.** The screen is a tree of nodes from a closed catalog of atoms, as small as
    plain HTML: `cell` (a `div`) for layout, and `text`, `image`, `link`, `button`, each form control, `form`,
@@ -165,4 +165,4 @@ In use now, then planned. Check current versions before adding any.
 - [090 — Components](090_components.md): *draft.* TOML files of atoms, with props and local state, used by name.
 - [100 — Events, actions, and handlers](100_events.md): *draft.* The bus: event names, `[on]`, actions, the queue, depth, timers, the workbench.
 - [110 — Working with agents](110_agents.md): *draft.* The guide at `/agents`, one log of every failure, and pushing events in.
-- [120 — One app, built on the fly](120_one_app.md): *draft.* The pivot: the configs folder is one app with unique names, and the catalog is atoms.
+- [120 — One app, built on the fly](120_one_app.md): *draft.* The pivot: the configs folder is one app with unique file names, and the catalog is atoms.
