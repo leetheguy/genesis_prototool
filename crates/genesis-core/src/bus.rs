@@ -1011,12 +1011,12 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
                 });
             }
         }
-        Node::Stack(stack) => {
-            for (i, child) in stack.children.iter().enumerate() {
+        Node::Cell(cell) => {
+            for (i, child) in cell.children.iter().enumerate() {
                 wire_node(child, &child_place(place, i), handlers, events);
             }
         }
-        Node::Heading(_) | Node::Text(_) => {}
+        Node::Text(_) => {}
     }
 }
 

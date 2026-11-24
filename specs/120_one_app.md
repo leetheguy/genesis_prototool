@@ -1,6 +1,6 @@
 # 120 — One app, built on the fly
 
-Status: draft
+Status: implemented
 Created: 2026-11-24
 
 A pivot, in two parts: Genesis runs one app, and its catalog is atoms. Both bring the design back to
@@ -57,13 +57,3 @@ planned in [999](999_todo.md).
 The tests for each part are in the spec that holds it: [010](010_architecture.md) for routes,
 [020](020_config.md) for loading many files and unique names, [040](040_catalog.md) for the atoms and
 style keys, and [090](090_components.md) for components.
-
-## Tasks
-
-Milestone three ([999](999_todo.md)), in this order, so the rest is built on one app:
-
-- [x] `serve`: one app from the configs folder at `/`, its routes without the app's name, and the mirror at `state/{client}.json`
-- [x] the desktop window opens `serve`'s `/` (no app argument)
-- [x] samples, the deployed checks, Compose, and the docs, moved to one app
-- [x] core: an app from many files, with every file name unique ([020](020_config.md))
-- [ ] `stack` becomes `cell`; `heading` becomes `text` with `level` ([040](040_catalog.md))

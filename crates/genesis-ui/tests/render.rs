@@ -15,10 +15,10 @@ theme = "dark"
 clicks = 0
 
 [[body]]
-type = "stack"
+type = "cell"
 
 [[body.children]]
-type = "heading"
+type = "text"
 text = "Hello"
 level = 2
 
@@ -46,7 +46,7 @@ fn html(toml: &str, before: impl FnOnce(&Host)) -> String {
 }
 
 #[test]
-fn a_heading_draws_at_its_level() {
+fn a_text_with_a_level_draws_as_that_heading() {
     let out = html(HELLO, |_| {});
     assert!(out.contains("<h2"), "{out}");
     assert!(out.contains(">Hello</h2>"), "{out}");
@@ -63,6 +63,12 @@ fn a_text_fills_its_templates_from_the_current_state() {
 }
 
 #[test]
+fn a_text_without_a_level_draws_as_a_paragraph() {
+    let out = html(HELLO, |_| {});
+    assert!(out.contains(">Clicked 0 times</p>"), "{out}");
+}
+
+#[test]
 fn a_button_draws_as_a_daisyui_button_with_its_label() {
     let out = html(HELLO, |_| {});
     assert!(out.contains(r#"class="btn"#), "{out}");
@@ -70,7 +76,7 @@ fn a_button_draws_as_a_daisyui_button_with_its_label() {
 }
 
 #[test]
-fn a_stack_draws_its_children_in_order() {
+fn a_cell_draws_its_children_in_order_inside_a_div() {
     let out = html(HELLO, |_| {});
     let (h, t, b) = (
         out.find("<h2").unwrap(),
@@ -78,6 +84,11 @@ fn a_stack_draws_its_children_in_order() {
         out.find("<button").unwrap(),
     );
     assert!(h < t && t < b, "{out}");
+    let opened = out[..h]
+        .rfind("<div")
+        .expect("a div opens before the children");
+    let closed = out[b..].find("</div>").expect("and closes after them") + b;
+    assert!(opened < h && closed > b, "{out}");
 }
 
 #[test]
@@ -111,7 +122,7 @@ fn opening_the_app_fires_app_opened() {
 #[test]
 fn headings_draw_at_levels_one_and_three_too() {
     let out = html(
-        "[app]\nname = \"x\"\n[[body]]\ntype = \"heading\"\ntext = \"Big\"\n[[body]]\ntype = \"heading\"\ntext = \"Small\"\nlevel = 3\n",
+        "[app]\nname = \"x\"\n[[body]]\ntype = \"text\"\ntext = \"Big\"\nlevel = 1\n[[body]]\ntype = \"text\"\ntext = \"Small\"\nlevel = 3\n",
         |_| {},
     );
     assert!(

@@ -58,7 +58,7 @@ That's a paged list. Save a change to the file and every open window changes wit
 
 ## Status
 
-**Milestones one and two are built:** the event bus, the renderer (stack, heading, text, button), live
+**Milestones one and two are built:** the event bus, the renderer (cell, text, button), live
 reload, connections and sources with server-held credentials, sessions kept on the device, and Docker
 Compose with dufs for agents. **Milestone three is under way:** `serve` runs one app, the configs
 folder, at `/`. Next come the atoms (the example above needs `cell` with `each`), components, and what

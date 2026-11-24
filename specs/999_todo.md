@@ -13,8 +13,6 @@ came from.
 **Done when** a fresh agent, given only `my-domain.com/agents` and the agent token, builds the CRM below
 with no human help, and it works. A deployed check drives the finished CRM in a real browser.
 
-- **One app** ([120](120_one_app.md)): the configs folder is the app, made of any number of files in any
-  folders, with every file name unique. `serve` draws it at `/`. This comes first; the rest builds on it.
 - **The atoms** ([040](040_catalog.md)): `cell` (a `div`, with style keys for layout, placement, box, and
   type, mapped to Tailwind and daisyUI, with screen sizes), `text`, `image`, `link`, `button`, `input`,
   `textarea`, `select`, `checkbox`, `toggle`, `form`, `dialog`, and `markdown`. A cell with `each` repeats.

@@ -28,11 +28,12 @@ call = "api.contacts.list"
 select = "/rows"
 
 [[body]]
-type = "stack"
+type = "cell"
 
 [[body.children]]
-type = "heading"
+type = "text"
 text = "Contacts"
+level = 1
 
 [[body.children]]
 type = "text"

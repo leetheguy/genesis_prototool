@@ -149,7 +149,7 @@ fn a_button_without_an_id_is_named_by_its_place_in_the_tree() {
     let mut m = machine(
         r#"
 [[body]]
-type = "stack"
+type = "cell"
 [[body.children]]
 type = "text"
 text = "hi"

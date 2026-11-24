@@ -7,16 +7,16 @@ This is the source of truth for what Genesis is today. Read it first. It's rewri
 project changes; the numbered specs it links to hold the detail and the reasons behind each decision.
 
 **Milestones one and two are built** ([999](999_todo.md)): the event bus and its workbench; the renderer
-with `stack`, `heading`, `text`, and `button`; `serve` drawing the one app, the configs folder, at `/`
+with `cell`, `text` (a heading with `level`), and `button`; `serve` drawing the one app, the configs folder, at `/`
 ([120](120_one_app.md)), reporting it at `/status`, and reloading it live; connections, the `call` step, and sources, with
 credentials only `serve` holds; sessions kept on the device; the mirror; Docker Compose with dufs behind
 `/fs/`; and the desktop shell, whose window builds and loads a `serve` page (a person has yet to open it on a
 real desktop, [999](999_todo.md)).
-Everything else here is still design: every numbered spec is a draft, and this page describes the
+Everything else here is still design: every numbered spec but [120](120_one_app.md) is a draft, and this page describes the
 design they add up to.
 
-**Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. It brings one app
-([120](120_one_app.md)), the atoms, components, display logic, and what agents need from `serve`: a guide,
+**Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. One app
+([120](120_one_app.md)) is built; still to come are the rest of the atoms, components, display logic, and what agents need from `serve`: a guide,
 one log, and a webhook ([110](110_agents.md)).
 
 ## What this is
@@ -165,4 +165,4 @@ In use now, then planned. Check current versions before adding any.
 - [090 — Components](090_components.md): *draft.* TOML files of atoms, with props and local state, used by name.
 - [100 — Events, actions, and handlers](100_events.md): *draft.* The bus: event names, `[on]`, actions, the queue, depth, timers, the workbench.
 - [110 — Working with agents](110_agents.md): *draft.* The guide at `/agents`, one log of every failure, and pushing events in.
-- [120 — One app, built on the fly](120_one_app.md): *draft.* The pivot: the configs folder is one app with unique file names, and the catalog is atoms.
+- [120 — One app, built on the fly](120_one_app.md): *implemented.* The pivot: the configs folder is one app with unique file names, and the catalog is atoms.

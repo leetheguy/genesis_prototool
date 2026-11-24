@@ -100,11 +100,9 @@ pub struct Action {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Node {
-    /// Children, top to bottom.
-    Stack(Stack),
-    /// A heading.
-    Heading(Heading),
-    /// A paragraph of text.
+    /// A `div` that lays out its children.
+    Cell(Cell),
+    /// A paragraph, or a heading with `level`.
     Text(Text),
     /// A button.
     Button(Button),
@@ -114,8 +112,7 @@ impl Node {
     /// The node's `id`, if it has one.
     pub fn id(&self) -> Option<&str> {
         match self {
-            Node::Stack(n) => n.id.as_deref(),
-            Node::Heading(n) => n.id.as_deref(),
+            Node::Cell(n) => n.id.as_deref(),
             Node::Text(n) => n.id.as_deref(),
             Node::Button(n) => n.id.as_deref(),
         }
@@ -139,10 +136,10 @@ pub fn child_place(parent: &str, i: usize) -> String {
     format!("{parent}.children.{i}")
 }
 
-/// `type = "stack"`.
+/// `type = "cell"`: a `div` holding other nodes ([spec 040](../../../specs/040_catalog.md)).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Stack {
+pub struct Cell {
     /// The node's name; its events fire under it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -151,29 +148,34 @@ pub struct Stack {
     pub children: Vec<Node>,
 }
 
-/// `type = "heading"`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Heading {
-    /// The node's name; its events fire under it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    /// The heading's text; may hold templates.
-    pub text: String,
-    /// 1 to 3. Default `1`.
-    #[serde(default = "defaults::level")]
-    pub level: u8,
-}
-
-/// `type = "text"`.
+/// `type = "text"`: a paragraph, or with `level`, a heading.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Text {
     /// The node's name; its events fire under it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// The paragraph; may hold templates.
+    /// The words; may hold templates.
     pub text: String,
+    /// 1, 2, or 3: a heading (`h1`–`h3`) for screen readers, with a heading's size and weight.
+    /// Without it, a paragraph.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "heading_level"
+    )]
+    pub level: Option<u8>,
+}
+
+/// Reads `level`, refusing anything but 1, 2, or 3.
+fn heading_level<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u8>, D::Error> {
+    let level = i64::deserialize(deserializer)?;
+    match level {
+        1..=3 => Ok(Some(level as u8)),
+        _ => Err(de::Error::custom(format!(
+            "level is 1, 2, or 3, not {level}"
+        ))),
+    }
 }
 
 /// `type = "button"`. Fires `.click`.
@@ -1110,9 +1112,6 @@ mod defaults {
     }
     pub fn event_trail() -> usize {
         200
-    }
-    pub fn level() -> u8 {
-        1
     }
     pub fn key() -> String {
         "id".into()

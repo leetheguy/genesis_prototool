@@ -14,10 +14,10 @@ clicks = 0
 greeting = "hi"
 
 [[body]]
-type = "stack"
+type = "cell"
 
 [[body.children]]
-type = "heading"
+type = "text"
 text = "Hello"
 level = 2
 
@@ -68,15 +68,15 @@ fn state_keeps_starting_values_with_their_types() {
 #[test]
 fn nodes_nest_and_keep_their_ids() {
     let app = hello();
-    let Node::Stack(stack) = &app.body[0] else {
-        panic!("expected a stack")
+    let Node::Cell(cell) = &app.body[0] else {
+        panic!("expected a cell")
     };
-    assert_eq!(stack.children.len(), 2);
-    let Node::Heading(heading) = &stack.children[0] else {
-        panic!("expected a heading")
+    assert_eq!(cell.children.len(), 2);
+    let Node::Text(heading) = &cell.children[0] else {
+        panic!("expected a text")
     };
-    assert_eq!((heading.text.as_str(), heading.level), ("Hello", 2));
-    let Node::Button(button) = &stack.children[1] else {
+    assert_eq!((heading.text.as_str(), heading.level), ("Hello", Some(2)));
+    let Node::Button(button) = &cell.children[1] else {
         panic!("expected a button")
     };
     assert_eq!(button.id.as_deref(), Some("hello_btn"));
@@ -245,22 +245,46 @@ fn an_on_that_isnt_a_table_says_what_it_should_be() {
 }
 
 #[test]
-fn a_heading_is_level_one_by_default() {
-    let app = App::from_toml("[app]\nname = \"x\"\n[[body]]\ntype = \"heading\"\ntext = \"Hi\"\n")
-        .unwrap();
-    let Node::Heading(heading) = &app.body[0] else {
-        panic!("expected a heading")
+fn a_text_without_a_level_is_a_paragraph() {
+    let app =
+        App::from_toml("[app]\nname = \"x\"\n[[body]]\ntype = \"text\"\ntext = \"Hi\"\n").unwrap();
+    let Node::Text(text) = &app.body[0] else {
+        panic!("expected a text")
     };
-    assert_eq!(heading.level, 1);
+    assert_eq!(text.level, None);
+}
+
+#[test]
+fn a_level_outside_one_to_three_is_a_problem_where_it_is() {
+    let problems = App::from_toml(
+        "[app]\nname = \"x\"\n[[body]]\ntype = \"text\"\ntext = \"Hi\"\nlevel = 4\n",
+    )
+    .unwrap_err();
+    let text = problems[0].to_string();
+    assert!(
+        text.starts_with("app.toml:") && text.contains("level is 1, 2, or 3, not 4"),
+        "{text}"
+    );
+}
+
+#[test]
+fn stack_and_heading_arent_types() {
+    for kind in ["stack", "heading"] {
+        let problems = App::from_toml(&format!(
+            "[app]\nname = \"x\"\n[[body]]\ntype = \"{kind}\"\ntext = \"Hi\"\n"
+        ))
+        .unwrap_err();
+        assert!(problems[0].message.contains(kind), "{problems:?}");
+    }
 }
 
 #[test]
 fn a_node_is_named_by_its_id() {
     let app = hello();
-    let Node::Stack(stack) = &app.body[0] else {
-        panic!("expected a stack")
+    let Node::Cell(cell) = &app.body[0] else {
+        panic!("expected a cell")
     };
-    assert_eq!(stack.children[1].name("body.0.children.1"), "hello_btn");
+    assert_eq!(cell.children[1].name("body.0.children.1"), "hello_btn");
 }
 
 #[test]

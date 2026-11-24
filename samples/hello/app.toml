@@ -10,11 +10,12 @@ theme = "corporate"
 clicks = 0
 
 [[body]]
-type = "stack"
+type = "cell"
 
 [[body.children]]
-type = "heading"
+type = "text"
 text = "Hello, Genesis"
+level = 1
 
 [[body.children]]
 type = "text"

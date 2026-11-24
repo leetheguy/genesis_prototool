@@ -4,10 +4,10 @@
 //! and fires its events through it. That's all a component ever does.
 
 use crate::{Component, Wired, nothing};
-use genesis_core::config::{Button, Heading, Stack, Text};
+use genesis_core::config::{Button, Cell, Text};
 use leptos::prelude::*;
 
-impl Component for Stack {
+impl Component for Cell {
     const EVENTS: &'static [&'static str] = &[];
 
     fn view(&self, wired: Wired) -> AnyView {
@@ -21,24 +21,17 @@ impl Component for Stack {
     }
 }
 
-impl Component for Heading {
+impl Component for Text {
     const EVENTS: &'static [&'static str] = &[];
 
     fn view(&self, wired: Wired) -> AnyView {
         let text = wired.text(&self.text);
         match self.level {
-            1 => view! { <h1 class="text-3xl font-bold">{text}</h1> }.into_any(),
-            2 => view! { <h2 class="text-2xl font-bold">{text}</h2> }.into_any(),
-            _ => view! { <h3 class="text-xl font-semibold">{text}</h3> }.into_any(),
+            None => view! { <p>{text}</p> }.into_any(),
+            Some(1) => view! { <h1 class="text-3xl font-bold">{text}</h1> }.into_any(),
+            Some(2) => view! { <h2 class="text-2xl font-bold">{text}</h2> }.into_any(),
+            Some(_) => view! { <h3 class="text-xl font-semibold">{text}</h3> }.into_any(),
         }
-    }
-}
-
-impl Component for Text {
-    const EVENTS: &'static [&'static str] = &[];
-
-    fn view(&self, wired: Wired) -> AnyView {
-        view! { <p>{wired.text(&self.text)}</p> }.into_any()
     }
 }
 

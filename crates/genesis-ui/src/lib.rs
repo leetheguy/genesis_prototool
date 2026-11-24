@@ -238,8 +238,7 @@ fn draw(node: &Node, place: String, host: &Host) -> AnyView {
         place,
     };
     match node {
-        Node::Stack(n) => n.view(wired),
-        Node::Heading(n) => n.view(wired),
+        Node::Cell(n) => n.view(wired),
         Node::Text(n) => n.view(wired),
         Node::Button(n) => n.view(wired),
     }

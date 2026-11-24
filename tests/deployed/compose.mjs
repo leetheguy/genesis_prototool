@@ -68,7 +68,7 @@ try {
   const status = async () => (await (await fetch(`${base}/status`)).json()).status;
   await write('[app]\nname = "Made by an agent"\ncolour = 1\n');
   await until("/status to say the broken app failed", async () => (await status()) === "failed", 10_000);
-  await write('[app]\nname = "Made by an agent"\n[[body]]\ntype = "heading"\ntext = "Hi from dufs"\n');
+  await write('[app]\nname = "Made by an agent"\n[[body]]\ntype = "text"\ntext = "Hi from dufs"\nlevel = 1\n');
   await until("/status to say the fixed app loaded", async () => (await status()) === "loaded", 10_000);
   expect("the app's page isn't served", (await fetch(`${base}/`)).ok);
 
