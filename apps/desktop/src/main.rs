@@ -1,4 +1,4 @@
-//! `genesis-desktop [--serve URL] [APP]`: a native window on a `serve` page. See the library.
+//! `genesis-desktop [--serve URL]`: a native window on `serve`'s app. See the library.
 
 fn main() {
     let args = std::env::args().skip(1).collect();
