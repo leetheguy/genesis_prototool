@@ -1,6 +1,6 @@
 # Milestone one's hello app: a button whose clicks are logged, counted on screen, and mirrored.
-# Run it: scripts/check-hello.sh, or serve it with `cargo run -p genesis-serve -- --configs samples`
-# and open http://127.0.0.1:8080/hello/.
+# Run it: scripts/check-hello.sh, or serve it with `cargo run -p genesis-serve -- --configs samples/hello`
+# and open http://127.0.0.1:8080/.
 
 [app]
 name = "Hello"

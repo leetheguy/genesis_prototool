@@ -1,7 +1,7 @@
 // The hot reload deployed check (spec 060, its last task): edit an app while it's open in a real
 // browser, and watch it change, keep its state, show a bad edit's problems, and recover.
 //
-// It runs genesis-serve on a temporary copy of samples/, never on samples/ itself. Run it with
+// It runs genesis-serve on a temporary copy of samples/hello, never on samples/ itself. Run it with
 // scripts/check-hello.sh. Waiting is always on a condition with a deadline (OP-PARAMS section 4).
 
 import { spawn } from "node:child_process";
@@ -15,8 +15,8 @@ const port = 19000 + Math.floor(Math.random() * 1000);
 const base = `http://127.0.0.1:${port}`;
 const work = mkdtempSync(join(tmpdir(), "genesis-reload-"));
 const configs = join(work, "configs");
-cpSync(join(root, "samples"), configs, { recursive: true });
-const appToml = join(configs, "hello/app.toml");
+cpSync(join(root, "samples/hello"), configs, { recursive: true });
+const appToml = join(configs, "app.toml");
 const original = readFileSync(appToml, "utf8");
 const chrome =
   process.env.GENESIS_CHROME ??
@@ -43,7 +43,7 @@ try {
   await until("serve's /health", async () => (await fetch(`${base}/health`)).ok);
   browser = await chromium.launch({ executablePath: chrome });
   const page = await browser.newPage();
-  await page.goto(`${base}/hello/`);
+  await page.goto(`${base}/`);
   await page.getByRole("button", { name: "Click me" }).click();
   await page.getByText("Clicked 1 times").waitFor();
 

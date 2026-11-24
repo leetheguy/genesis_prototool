@@ -1,8 +1,8 @@
 # Milestone two's calls app: a contacts list from an API (with a credential serve holds), adding a
 # contact, and a ping to a real PurpleFlow webhook. The API is tests/deployed/mock-api.mjs:
 #   node tests/deployed/mock-api.mjs 4010 test-token &
-#   GENESIS_CREDS_CONTACTS_TOKEN=test-token cargo run -p genesis-serve -- --configs samples
-# then open http://127.0.0.1:8080/contacts/. scripts/check-hello.sh does all that headless.
+#   GENESIS_CREDS_CONTACTS_TOKEN=test-token cargo run -p genesis-serve -- --configs samples/contacts
+# then open http://127.0.0.1:8080/. scripts/check-hello.sh does all that headless.
 
 [app]
 name = "Contacts"

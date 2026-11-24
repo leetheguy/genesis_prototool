@@ -60,12 +60,13 @@ That's a paged list. Save a change to the file and every open window changes wit
 
 **Milestones one and two are built:** the event bus, the renderer (stack, heading, text, button), live
 reload, connections and sources with server-held credentials, sessions kept on the device, and Docker
-Compose with dufs for agents. **Milestone three is next:** one app, the atoms (the example above needs
-`cell` with `each`), components, and what agents need to build a screen on their own. The design is in
+Compose with dufs for agents. **Milestone three is under way:** `serve` runs one app, the configs
+folder, at `/`. Next come the atoms (the example above needs `cell` with `each`), components, and what
+agents need to build a screen on their own. The design is in
 [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 
-Genesis runs as a server (`serve`, plus dufs for the config files) and shows apps in a browser or a
-Tauri desktop window, with one renderer (Leptos + daisyUI 5).
+Genesis runs as a server (`serve`, plus dufs for the config files) and shows its one app, the configs
+folder, in a browser or a Tauri desktop window, with one renderer (Leptos + daisyUI 5).
 
 ## Running it
 
@@ -73,7 +74,7 @@ Set up the toolchain once ([`docs/setup.md`](docs/setup.md)), then:
 
 ```bash
 (cd apps/web && trunk build)                       # the browser bundle
-cargo run -p genesis-serve -- --configs samples    # then open http://127.0.0.1:8080/hello/
+cargo run -p genesis-serve -- --configs samples/hello    # then open http://127.0.0.1:8080/
 ```
 
 `scripts/check-hello.sh` does all that headless and clicks the button for you. The whole stack, with

@@ -1,7 +1,7 @@
 // The calls deployed check (spec 030, its last task): a real browser, a real serve, a mock API that
 // wants a credential only serve holds, and a real PurpleFlow webhook when one is reachable.
 //
-// It runs serve on a temporary copy of samples/ with the contacts app pointed at a fresh mock API,
+// It runs serve on a temporary copy of samples/contacts, pointed at a fresh mock API,
 // and GENESIS_CREDS_CONTACTS_TOKEN in serve's environment only. Run it with scripts/check-hello.sh.
 
 import { spawn } from "node:child_process";
@@ -19,8 +19,8 @@ const pfHooks = process.env.GENESIS_PF_HOOKS ?? "http://127.0.0.1:4002/hooks";
 const token = "check-token-" + Math.random().toString(36).slice(2);
 const work = mkdtempSync(join(tmpdir(), "genesis-calls-"));
 const configs = join(work, "configs");
-cpSync(join(root, "samples"), configs, { recursive: true });
-const appToml = join(configs, "contacts/app.toml");
+cpSync(join(root, "samples/contacts"), configs, { recursive: true });
+const appToml = join(configs, "app.toml");
 writeFileSync(
   appToml,
   readFileSync(appToml, "utf8").replace("http://127.0.0.1:4010", `http://127.0.0.1:${apiPort}`).replace("http://127.0.0.1:4002/hooks", pfHooks),
@@ -53,7 +53,7 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
-  await page.goto(`${base}/contacts/`);
+  await page.goto(`${base}/`);
   await page.getByText("Contacts: []").waitFor();
 
   await page.getByRole("button", { name: "Add Ada" }).click();

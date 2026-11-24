@@ -2,7 +2,7 @@
 # GENESIS_AGENT_TOKEN first (`openssl rand -hex 24`), then `docker compose up -d --build`.
 
 services:
-  # genesis-serve: the renderer, each app's config, its calls, and the mirror. The only way in.
+  # genesis-serve: the renderer, the app's config, its calls, and the mirror. The only way in.
   serve:
     build: .
     image: genesis-serve

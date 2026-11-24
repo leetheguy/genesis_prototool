@@ -60,6 +60,6 @@ Milestone three ([999](999_todo.md)), in this order, so the rest is built on one
 
 - [x] `serve`: one app from the configs folder at `/`, its routes without the app's name, and the mirror at `state/{client}.json`
 - [x] the desktop window opens `serve`'s `/` (no app argument)
-- [ ] samples, the deployed checks, Compose, and the docs, moved to one app
+- [x] samples, the deployed checks, Compose, and the docs, moved to one app
 - [ ] core: an app from many files, with every name unique ([020](020_config.md))
 - [ ] `stack` becomes `cell`; `heading` becomes `text` with `level` ([040](040_catalog.md))

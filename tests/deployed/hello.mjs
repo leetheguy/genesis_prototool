@@ -1,6 +1,6 @@
 // The hello deployed check (spec 010, its last task): a real genesis-serve, a real browser, real clicks.
 //
-// It starts genesis-serve on samples/ with a fresh state folder, opens /hello/ in headless
+// It starts genesis-serve on samples/hello with a fresh state folder, opens / in headless
 // Chromium, clicks the button three times, and checks that the screen counts them and that the
 // mirror on disk holds the state and every click. Run it with scripts/check-hello.sh, which
 // builds what it needs first.
@@ -44,7 +44,7 @@ function fail(why) {
 
 const serve = spawn(
   join(root, "target/debug/genesis-serve"),
-  ["--configs", join(root, "samples"), "--state", state, "--dist", join(root, "apps/web/dist"), "--listen", `127.0.0.1:${port}`],
+  ["--configs", join(root, "samples/hello"), "--state", state, "--dist", join(root, "apps/web/dist"), "--listen", `127.0.0.1:${port}`],
   { stdio: ["ignore", "inherit", "inherit"] },
 );
 let browser;
@@ -56,7 +56,7 @@ try {
   page.on("console", (message) => message.type() === "error" && consoleErrors.push(message.text()));
   page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
-  await page.goto(`${base}/hello/`);
+  await page.goto(`${base}/`);
   await page.getByRole("heading", { name: "Hello, Genesis" }).waitFor();
   await page.getByText("Clicked 0 times").waitFor();
   const theme = await page.locator("[data-theme]").first().getAttribute("data-theme");
@@ -66,7 +66,7 @@ try {
   for (let i = 0; i < 3; i++) await button.click();
   await page.getByText("Clicked 3 times").waitFor();
 
-  const dir = join(state, "hello");
+  const dir = state;
   const client = await until("the mirror's state file", () => readdirSync(dir).find((f) => f.endsWith(".json")));
   const mirrored = await until("the mirror to count 3 clicks", () => {
     const snapshot = JSON.parse(readFileSync(join(dir, client), "utf8"));

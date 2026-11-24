@@ -7,15 +7,15 @@ This is the source of truth for what Genesis is today. Read it first. It's rewri
 project changes; the numbered specs it links to hold the detail and the reasons behind each decision.
 
 **Milestones one and two are built** ([999](999_todo.md)): the event bus and its workbench; the renderer
-with `stack`, `heading`, `text`, and `button`; `serve` drawing apps in a browser, listing them at `/`,
-reporting them at `/status`, and reloading them live (as many apps, until [120](120_one_app.md) makes it one); connections, the `call` step, and sources, with
+with `stack`, `heading`, `text`, and `button`; `serve` drawing the one app, the configs folder, at `/`
+([120](120_one_app.md)), reporting it at `/status`, and reloading it live; connections, the `call` step, and sources, with
 credentials only `serve` holds; sessions kept on the device; the mirror; Docker Compose with dufs behind
 `/fs/`; and the desktop shell, whose window builds and loads a `serve` page (a person has yet to open it on a
 real desktop, [999](999_todo.md)).
 Everything else here is still design: every numbered spec is a draft, and this page describes the
 design they add up to.
 
-**Milestone three is planned** ([999](999_todo.md)): an agent builds a CRM on its own. It brings one app
+**Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. It brings one app
 ([120](120_one_app.md)), the atoms, components, display logic, and what agents need from `serve`: a guide,
 one log, and a webhook ([110](110_agents.md)).
 
