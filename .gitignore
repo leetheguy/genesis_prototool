@@ -10,3 +10,4 @@ node_modules/
 /tests/deployed/node_modules/
 /configs/
 /state/
+/apps/desktop/gen/

@@ -19,8 +19,8 @@ specific to Genesis.
 | **copies** | none yet |
 | **branching** | a branch per piece of work, merged into `main` locally when asked; the user pushes |
 
-Milestones one and two are built; [000](specs/000_overview.md) says what exists. The **run** binding's Tauri part waits on
-WebKitGTK being installed ([999](specs/999_todo.md)). `scripts/check-compose.sh` checks the Docker stack; run it after
+Milestones one and two are built; [000](specs/000_overview.md) says what exists. The desktop window builds with
+`cargo build -p genesis-desktop --features app`; with no screen, run it under `xvfb-run`. `scripts/check-compose.sh` checks the Docker stack; run it after
 any change to the Dockerfile, `docker-compose.yml`, or `/fs/`.
 
 **Browser checks:** `scripts/check-hello.sh` builds the bundle and `serve`, then drives the hello app in headless

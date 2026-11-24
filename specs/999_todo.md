@@ -15,10 +15,9 @@ came from.
 - **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
   no action, a bad template, all caught when the app loads, not only when they run. The bus already fails them
   loudly at runtime ([100](100_events.md)); these checks move the failure to load time, with a line number.
-- **The desktop window, built.** `genesis-desktop`'s window (the `app` feature) needs WebKitGTK and its friends
-  (`libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`) to build; they
-  aren't installed on the dev box yet. Then `cargo tauri build`, and a person opens it on a desktop. The rest of
-  milestone two is built. From [010](010_architecture.md).
+- **The desktop window, opened by a person.** `genesis-desktop`'s window (the `app` feature) builds on the dev
+  box, and on a virtual display (Xvfb) it loads a `serve` page and holds its config stream open. Left: a person
+  opens it on a real desktop, and `cargo tauri build` packages it. From [010](010_architecture.md).
 - **Then:** Table, Detail, Form, and display logic ([040](040_catalog.md), [080](080_display_logic.md)); partials
   ([090](090_components.md)); signing in ([050](050_state.md), [070](070_secrets.md)); and the CRM hello world.
 - **Streams** for sources: tickers, live dashboards, and streamed AI answers ([030](030_connections.md), [050](050_state.md)).

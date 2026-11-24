@@ -10,7 +10,8 @@ project changes; the numbered specs it links to hold the detail and the reasons 
 with `stack`, `heading`, `text`, and `button`; `serve` drawing apps in a browser, listing them at `/`,
 reporting them at `/status`, and reloading them live; connections, the `call` step, and sources, with
 credentials only `serve` holds; sessions kept on the device; the mirror; Docker Compose with dufs behind
-`/fs/`; and the desktop shell's logic (its window still needs WebKitGTK to build, [999](999_todo.md)).
+`/fs/`; and the desktop shell, whose window builds and loads a `serve` page (a person has yet to open it on a
+real desktop, [999](999_todo.md)).
 Everything else here is still design: every numbered spec is a draft, and this page describes the
 design they add up to.
 

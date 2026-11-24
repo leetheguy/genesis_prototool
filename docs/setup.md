@@ -17,6 +17,10 @@ cargo binstall --no-confirm cargo-machete cargo-llvm-cov cargo-mutants cargo-aud
 # The browser build: trunk (bundles the wasm) and Tailwind's standalone binary (no Node needed).
 # apps/web/build-css.sh fetches daisyUI's plugin file itself, at the version it pins.
 cargo binstall --no-confirm trunk@0.22.2
+
+# The desktop window (genesis-desktop's `app` feature): WebKitGTK and the libraries Tauri 2 links.
+# Xvfb lets it run on a box with no screen.
+sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb
 mkdir -p ~/.local/bin
 curl -sSL -o ~/.local/bin/tailwindcss \
   https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/tailwindcss-linux-x64
