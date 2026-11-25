@@ -9,7 +9,7 @@
 // scripts/check-hello.sh.
 
 import { spawn } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -171,6 +171,12 @@ try {
   // What the screen showed when it failed: its text, toasts and all.
   const shown = await page?.locator("body").innerText().catch(() => "");
   if (shown) console.error(`the screen showed:\n${shown}`);
+  // And the screen's last events, from the mirror.
+  const state = join(work, "state");
+  for (const file of existsSync(state) ? readdirSync(state).filter((f) => f.endsWith(".events.ndjson")) : []) {
+    const lines = readFileSync(join(state, file), "utf8").trim().split("\n").slice(-40);
+    console.error(`its last events:\n${lines.map((l) => l.slice(0, 160)).join("\n")}`);
+  }
   process.exitCode = 1;
 } finally {
   await browser?.close();
