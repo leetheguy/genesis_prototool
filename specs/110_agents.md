@@ -113,5 +113,6 @@ Milestone three ([999](999_todo.md)):
 
 - 2026-11-25: `BASE` is the scheme and host a proxy in front passes on (`X-Forwarded-Proto`, `X-Forwarded-Host`),
   else `http` and `Host`, since `serve` sits behind one in Compose ([010](010_architecture.md)). A host header
-  that isn't a host name, with an optional port, falls back to `serve`'s own `--listen` address, so a request
-  can't put a link to anywhere else in the guide it gets.
+  that isn't a host name, with an optional port, falls back to `serve`'s own `--listen` address, so nothing
+  but an address ever goes into the guide. The guide goes only to the one who asked, so the host they sent is
+  theirs to get back.
