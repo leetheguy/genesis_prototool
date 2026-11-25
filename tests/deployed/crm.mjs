@@ -48,10 +48,11 @@ const serve = spawn(
   { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, GENESIS_CREDS_CRM_TOKEN: token } },
 );
 let browser;
+let page;
 try {
   await until("serve's /health", async () => (await fetch(`${base}/health`)).ok);
   browser = await chromium.launch({ executablePath: chrome });
-  const page = await browser.newPage();
+  page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(`${base}/`);
@@ -167,6 +168,9 @@ try {
   console.log("ok: the CRM searched, added, checked, edited, asked before deleting, failed loudly, and kept its data");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
+  // What the screen showed when it failed: its text, toasts and all.
+  const shown = await page?.locator("body").innerText().catch(() => "");
+  if (shown) console.error(`the screen showed:\n${shown}`);
   process.exitCode = 1;
 } finally {
   await browser?.close();
