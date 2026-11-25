@@ -51,7 +51,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **MCP adapter for the configs folder**: PurpleFlow spec 270's tools, rebuilt in `serve`, so Claude can
   edit the app as a connector ([010](010_architecture.md)).
 - **Mobile**: the Tauri shell on Android, on a `serve` URL ([010](010_architecture.md)).
-- **CI.** `.github/workflows/ci.yml`, now that the repo is on GitHub.
 - **Brand themes.** A custom daisyUI theme (colors, fonts, radius) declared in `[app]`, so a prototype
   can wear a client's branding. `sys.theme` can select it like any other theme ([050](050_state.md)).
 

@@ -13,7 +13,7 @@ specific to Genesis.
 | **mutation** | `cargo mutants --in-diff <(git diff)` on the lines a change touches; `cargo mutants -f FILE` to harden a whole file. **Skipped during early development** (the user's call: it costs too much for now); run it only when asked, and with `-j 1` on the dev box, where it once filled the disk |
 | **security** | `cargo audit` (known vulnerabilities) and gitleaks (secrets in history), both in CI |
 | **run** | `docker compose up -d --build` (`serve` and `files`); `cargo tauri dev` for the desktop shell; `genesis-bench APP_DIR` for the bus alone |
-| **CI** | `.github/workflows/ci.yml` (GitHub Actions), once the repo has a remote |
+| **CI** | `.github/workflows/ci.yml` (GitHub Actions), on every pull request and push to `main`: precommit and coverage, the security scans, `scripts/check-hello.sh` in headless Chromium, and `scripts/check-compose.sh`. No mutation testing, and no secrets |
 | **doc tool** | rustdoc: `//!` for modules, `///` for items, and doctests. precommit builds them with warnings as errors |
 | **docs** | the specs, `README.md`, `docs/authoring.md` (the guide for agents writing Genesis TOML) |
 | **copies** | `configs/AGENTS.md` ← `docs/authoring.md`, by the user (it's what `GET /agents` serves, [110](specs/110_agents.md)) |
