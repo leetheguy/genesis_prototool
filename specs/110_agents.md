@@ -107,7 +107,7 @@ Milestone three ([999](999_todo.md)):
 - [x] the log: `load` and `call` lines, `log_lines`, and the logs folder in Compose
 - [x] the log: `run` lines from the mirror
 - [x] `GET /api/log`, with `since` and `tail`
-- [ ] the push route, over the config stream, with its `push` lines and a deployed check
+- [x] the push route, over the config stream, with its `push` lines and a deployed check
 
 ## Log
 

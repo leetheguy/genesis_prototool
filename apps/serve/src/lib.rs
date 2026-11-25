@@ -9,10 +9,11 @@
 //! | `GET /agents` | the configs folder's `AGENTS.md`, the guide for agents, with `BASE` filled in ([spec 110](../../../specs/110_agents.md)) |
 //! | `GET /status` | `{"status": "loaded"}`, or `"failed"` with its `problems`, as JSON, so an agent can check its change took |
 //! | `GET /_genesis/*` | the renderer's bundle (`trunk build` output) |
-//! | `GET /api/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
+//! | `GET /api/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN`; and `push`, `{"name", "payload"}`, for each push |
 //! | `POST /api/call` | makes a call to one of the app's operations: `{"op", "params", "headers"}` in, `{"status", "body"}` or `{"error"}` out |
 //! | `POST /api/call/files` | the same, as `multipart/form-data`: the call as JSON in a `call` part, and each file a part named by its reference's ID |
 //! | `GET /api/log` | the log, as plain text, for agents with the agent token; `?since=TIME` and `?tail=N` narrow it |
+//! | `POST /api/push/{name}` | fires `push.{name}` in every open client, with the JSON body as its payload, for agents with the agent token; answers `{"delivered": N}` |
 //! | `POST /api/mirror` | a client's state and trail entries, written to the state folder |
 //! | `/fs/*` | the files service (dufs), for agents with `Authorization: Bearer GENESIS_AGENT_TOKEN` |
 //! | `GET /health` | `200` when the server is up |
@@ -211,6 +212,8 @@ struct Server {
     changes: broadcast::Sender<()>,
     /// Every failure, one line each.
     log: log::Log,
+    /// Each push, as the `push` event's data, for every open config stream.
+    pushes: broadcast::Sender<String>,
     /// Held while a mirror is compared and written, so no error is logged twice.
     mirroring: tokio::sync::Mutex<()>,
 }
@@ -220,6 +223,7 @@ impl Server {
         Server {
             log: log::Log::new(&settings.logs),
             mirroring: tokio::sync::Mutex::new(()),
+            pushes: broadcast::channel(64).0,
             settings,
             http: reqwest::Client::new(),
             changes: broadcast::channel(changes).0,
@@ -336,6 +340,7 @@ fn routes(server: Arc<Server>) -> Router {
         .route("/api/mirror", post(mirror))
         .route("/api/call", post(call))
         .route("/api/log", get(read_log))
+        .route("/api/push/{name}", post(push))
         // Files can be big; how big is the app's call (each `file` control's `max_size`).
         .route(
             "/api/call/files",
@@ -476,8 +481,11 @@ async fn page(State(server): Shared) -> Response {
 
 async fn config(State(server): Shared) -> Response {
     let configs = server.settings.configs.clone();
-    // Listen before the first load, so a change during it isn't missed.
+    // Listen before the first load, so a change or a push during it isn't missed.
     let news = BroadcastStream::new(server.changes.subscribe());
+    let pushes = BroadcastStream::new(server.pushes.subscribe())
+        .filter_map(|push| async move { push.ok() })
+        .map(|push| Event::default().event("push").data(push));
     let first = {
         let configs = configs.clone();
         stream::once(async move { app_event(&configs).await })
@@ -489,7 +497,11 @@ async fn config(State(server): Shared) -> Response {
         let configs = configs.clone();
         async move { app_event(&configs).await }
     });
-    Sse::new(first.chain(later).map(Ok::<_, Infallible>)).into_response()
+    let events = first.chain(stream::select(later, pushes));
+    // A comment now and then finds a closed tab, so it stops counting as a client.
+    Sse::new(events.map(Ok::<_, Infallible>))
+        .keep_alive(axum::response::sse::KeepAlive::default())
+        .into_response()
 }
 
 /// The event the configs folder makes now: `config` with the app, or `problems`.
@@ -1000,6 +1012,58 @@ async fn read_log(
         text,
     )
         .into_response()
+}
+
+/// Fires `push.{name}` in every open client, with the JSON body as its payload.
+async fn push(
+    State(server): Shared,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let refused = |status: StatusCode, why: String| {
+        let server = server.clone();
+        let name = name.clone();
+        async move {
+            server
+                .log
+                .write("push", &format!("{name}: {} {why}", status.as_u16()))
+                .await;
+            refuse(status, why)
+        }
+    };
+    if agent(&server.settings, &headers).is_none() {
+        return refused(
+            StatusCode::UNAUTHORIZED,
+            "/api/push needs Authorization: Bearer GENESIS_AGENT_TOKEN".into(),
+        )
+        .await;
+    }
+    let named = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    if !named {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "a push's name is lowercase letters, digits, and _".into(),
+        )
+        .await;
+    }
+    let payload = match serde_json::from_slice::<Value>(&body) {
+        Ok(payload @ Value::Object(_)) => payload,
+        _ => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "the body isn't a JSON object".into(),
+            )
+            .await;
+        }
+    };
+    let push = serde_json::json!({ "name": name, "payload": payload }).to_string();
+    // Sending fails only when no one is listening: no screen is open, which isn't an error.
+    let delivered = server.pushes.send(push).unwrap_or(0);
+    Json(serde_json::json!({ "delivered": delivered })).into_response()
 }
 
 /// Whether two tokens are the same, taking as long whatever their first difference, so timing

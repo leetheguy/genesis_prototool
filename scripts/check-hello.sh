@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The deployed checks (specs 010, 030, and 060): builds the browser bundle and genesis-serve, then
+# The deployed checks (specs 010, 030, 060, and 110): builds the browser bundle and genesis-serve, then
 # drives the sample apps in headless Chromium: clicks and the mirror (hello.mjs), live edits
-# (reload.mjs), calls to a mock API and PurpleFlow (calls.mjs), grid layout (layout.mjs), media (media.mjs), each (each.mjs), controls (controls.mjs), forms (form.mjs), files (file.mjs), dialogs (dialog.mjs), markdown (markdown.mjs), and components (components.mjs).
+# (reload.mjs), calls to a mock API and PurpleFlow (calls.mjs), grid layout (layout.mjs), media (media.mjs), each (each.mjs), controls (controls.mjs), forms (form.mjs), files (file.mjs), dialogs (dialog.mjs), markdown (markdown.mjs), components (components.mjs), and pushes from an agent (push.mjs).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 (cd apps/web && PATH="$HOME/.local/bin:$PATH" trunk build --quiet)
@@ -19,3 +19,4 @@ node tests/deployed/file.mjs
 node tests/deployed/dialog.mjs
 node tests/deployed/markdown.mjs
 node tests/deployed/components.mjs
+node tests/deployed/push.mjs

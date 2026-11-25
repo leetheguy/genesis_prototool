@@ -601,3 +601,139 @@ async fn api_log_answers_nothing_before_anything_is_logged() {
         (StatusCode::OK, String::new())
     );
 }
+
+/// A serve with the agent token `agent-check-token`, to push through.
+fn pushing(folders: &Folders) -> axum::Router {
+    router(Settings {
+        agent_token: Some("agent-check-token".into()),
+        ..folders.settings()
+    })
+}
+
+/// Pushes `body` to `/api/push/{name}`, with `token`: the status and the answer.
+async fn push(
+    serve: &axum::Router,
+    name: &str,
+    token: Option<&str>,
+    body: &str,
+) -> (StatusCode, String) {
+    let mut request = Request::post(format!("/api/push/{name}"));
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    let response = serve
+        .clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&body).into_owned())
+}
+
+#[tokio::test]
+async fn a_push_reaches_every_open_config_stream_and_answers_how_many() {
+    let folders = Folders::new("push");
+    let serve = pushing(&folders);
+    let body = r#"{"contact": {"id": 42, "name": "Ada"}, "note": "Ready for review"}"#;
+    // No screen open: delivered to none, which isn't an error.
+    assert_eq!(
+        push(&serve, "review_ready", Some("agent-check-token"), body).await,
+        (StatusCode::OK, r#"{"delivered":0}"#.to_string())
+    );
+    let mut streams = Vec::new();
+    for _ in 0..2 {
+        let response = serve
+            .clone()
+            .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let mut body = response.into_body();
+        let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert!(String::from_utf8_lossy(&first).starts_with("event: config\n"));
+        streams.push(body);
+    }
+    assert_eq!(
+        push(&serve, "review_ready", Some("agent-check-token"), body).await,
+        (StatusCode::OK, r#"{"delivered":2}"#.to_string())
+    );
+    for mut stream in streams {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), stream.frame())
+            .await
+            .expect("a push")
+            .unwrap()
+            .unwrap()
+            .into_data()
+            .unwrap();
+        let frame = String::from_utf8_lossy(&frame).into_owned();
+        let data = frame
+            .strip_prefix("event: push\ndata: ")
+            .unwrap_or_else(|| panic!("{frame}"));
+        let push: Value = serde_json::from_str(data.trim_end()).unwrap();
+        assert_eq!(
+            push,
+            json!({ "name": "review_ready", "payload": { "contact": { "id": 42, "name": "Ada" }, "note": "Ready for review" } })
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_refused_push_says_why_and_is_logged() {
+    let folders = Folders::new("push-refused");
+    let serve = pushing(&folders);
+    let cases = [
+        ("review_ready", None, "{}", StatusCode::UNAUTHORIZED),
+        (
+            "review_ready",
+            Some("wrong-token"),
+            "{}",
+            StatusCode::UNAUTHORIZED,
+        ),
+        (
+            "Review-Ready",
+            Some("agent-check-token"),
+            "{}",
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            "review_ready",
+            Some("agent-check-token"),
+            "[1, 2]",
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            "review_ready",
+            Some("agent-check-token"),
+            "not json",
+            StatusCode::BAD_REQUEST,
+        ),
+    ];
+    for (name, token, body, want) in cases {
+        let (status, why) = push(&serve, name, token, body).await;
+        assert_eq!(status, want, "{name} {token:?} {body}: {why}");
+    }
+    // A serve with no agent token keeps pushing shut.
+    let shut = router(folders.settings());
+    assert_eq!(
+        push(&shut, "review_ready", Some("agent-check-token"), "{}")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let log: Vec<String> = std::fs::read_to_string(folders.path("logs/genesis.log"))
+        .unwrap()
+        .lines()
+        .map(|line| line.split_once(' ').unwrap().1.to_string())
+        .collect();
+    assert_eq!(
+        log,
+        [
+            "push review_ready: 401 /api/push needs Authorization: Bearer GENESIS_AGENT_TOKEN",
+            "push review_ready: 401 /api/push needs Authorization: Bearer GENESIS_AGENT_TOKEN",
+            "push Review-Ready: 400 a push's name is lowercase letters, digits, and _",
+            "push review_ready: 400 the body isn't a JSON object",
+            "push review_ready: 400 the body isn't a JSON object",
+            "push review_ready: 401 /api/push needs Authorization: Bearer GENESIS_AGENT_TOKEN",
+        ]
+    );
+}

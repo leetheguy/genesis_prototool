@@ -44,13 +44,26 @@ pub fn start() {
             }
         })
     };
+    let on_push = {
+        let running = running.clone();
+        // A push fires `push.{name}` in the running app (spec 110); with no app yet, there's nowhere to.
+        Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+            let text = event.data().as_string().unwrap_or_default();
+            let push: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+            if let (Some(host), Some(name)) = (running.borrow().as_ref(), push["name"].as_str()) {
+                host.fire(&format!("push.{name}"), push["payload"].clone());
+            }
+        })
+    };
     let on_problems = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
         problems(&running, &event.data().as_string().unwrap_or_default());
     });
     let _ = source.add_event_listener_with_callback("config", on_config.as_ref().unchecked_ref());
     let _ =
         source.add_event_listener_with_callback("problems", on_problems.as_ref().unchecked_ref());
+    let _ = source.add_event_listener_with_callback("push", on_push.as_ref().unchecked_ref());
     // The listeners live as long as the page does.
+    on_push.forget();
     on_config.forget();
     on_problems.forget();
 }
