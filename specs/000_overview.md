@@ -143,7 +143,7 @@ Built so far, then planned ([010](010_architecture.md)):
 | `apps/desktop` | the Tauri shell: which `serve` page the window opens (the window itself is behind the `app` feature) |
 | `.github/workflows/ci.yml` | CI on every pull request and push to `main`: precommit, coverage, `cargo audit`, gitleaks, and the deployed checks (browser and Docker) |
 | `Dockerfile`, `docker-compose.yml` | `serve` and `files` (dufs), as PurpleFlow runs its files service |
-| `docs/authoring.md` | *planned:* the guide for agents, copied into the configs folder as `AGENTS.md` and served at `/agents` |
+| `docs/authoring.md` | the guide for agents and the people they work with, copied into the configs folder as `AGENTS.md` and served at `/agents` |
 
 ## Dependencies
 

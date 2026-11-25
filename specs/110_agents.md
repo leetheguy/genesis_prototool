@@ -98,6 +98,8 @@ Authorization: Bearer $GENESIS_AGENT_TOKEN
 - a push without the agent token is `401`; with a body that isn't an object, or a bad name, `400`
 - a pushed event shows in the client's trail and mirror
 - deployed: an agent's `curl` to the push route changes an open screen in a real browser
+- every whole-app example in `docs/authoring.md` loads, and its patterns (picking from a list, saving a form,
+  branching by event, pages, debounce, polling, timeout, auto-dismiss, push) do what the guide says
 
 ## Tasks
 
@@ -108,6 +110,7 @@ Milestone three ([999](999_todo.md)):
 - [x] the log: `run` lines from the mirror
 - [x] `GET /api/log`, with `since` and `tail`
 - [x] the push route, over the config stream, with its `push` lines and a deployed check
+- [x] the guide, `docs/authoring.md`, with a test that its examples load and work
 
 ## Log
 
@@ -140,3 +143,11 @@ Milestone three ([999](999_todo.md)):
   its problems screen, with no app loaded, has nothing to fire it in, and drops it. The stream sends a comment
   every 15 seconds, so a closed tab stops counting soon after. The token is checked before the name and the body,
   so without it the answer gives nothing away; each refusal is logged as `push NAME: STATUS why`.
+- 2026-11-25: The guide follows PurpleFlow's: what it's for, `BASE` and `TOKEN`, the files table, comments for
+  people, each piece with an example, then patterns, checking a change, guidelines, try it, and rules. It's
+  written for people as well as agents. Its patterns are whole apps, so a test can load them: a ` ```toml `
+  block whose first line is `# app.toml` starts one, and each file block after it joins it. The patterns cover
+  what Genesis leaves to events and actions rather than building in: pages through `go`, debounce, polling,
+  timeouts and auto-dismiss through timers, components that only fire events, branching by event name, and
+  `log`. What's specified but not built (display logic, `confirm`, `toast`, signing in, streams) is listed
+  under "Not built yet", and no example uses it.
