@@ -33,6 +33,15 @@ impl Log {
         self.keep.store(lines, Ordering::Relaxed);
     }
 
+    /// The whole log, or nothing before anything is logged.
+    pub(crate) async fn read(&self) -> std::io::Result<String> {
+        let _held = self.failed.lock().await;
+        match tokio::fs::read_to_string(&self.file).await {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            read => read,
+        }
+    }
+
     /// Logs a load: each of its problems, or `load ok` if it's clean after one that wasn't.
     pub(crate) async fn load(&self, problems: Option<&str>) {
         let mut failed = self.failed.lock().await;
@@ -95,6 +104,19 @@ fn one_line(text: &str) -> String {
         .join(" ")
 }
 
+/// Whether `text` is a time in the log's own form, `2026-11-24T10:00:00Z`.
+pub(crate) fn is_time(text: &str) -> bool {
+    let b = text.as_bytes();
+    b.len() == 20
+        && b.iter().enumerate().all(|(i, &c)| match i {
+            4 | 7 => c == b'-',
+            10 => c == b'T',
+            13 | 16 => c == b':',
+            19 => c == b'Z',
+            _ => c.is_ascii_digit(),
+        })
+}
+
 /// Now, in UTC, to the second: `2026-11-24T10:02:11Z`. Lines in this form sort by time as text.
 pub(crate) fn now() -> String {
     let secs = SystemTime::now()
@@ -132,6 +154,19 @@ mod tests {
         assert_eq!(stamp(0), "1970-01-01T00:00:00Z");
         assert_eq!(stamp(951_782_400), "2000-02-29T00:00:00Z");
         assert_eq!(stamp(1_795_515_731), "2026-11-24T10:22:11Z");
+    }
+
+    #[test]
+    fn a_time_is_in_the_logs_own_form() {
+        assert!(is_time("2026-11-24T10:00:00Z"));
+        for bad in [
+            "2026-11-24",
+            "2026-11-24T10:00:00",
+            "2026-11-24 10:00:00Z",
+            "2026-11-24T10:00:0xZ",
+        ] {
+            assert!(!is_time(bad), "{bad}");
+        }
     }
 
     #[test]

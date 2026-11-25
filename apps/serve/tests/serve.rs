@@ -499,3 +499,105 @@ async fn a_run_failure_a_client_reports_through_the_mirror_is_logged_once() {
         ]
     );
 }
+
+/// `GET uri` with `token` as the bearer token, from a serve whose agent token is `agent-check-token`.
+async fn get_with(folders: &Folders, uri: &str, token: Option<&str>) -> (StatusCode, String) {
+    let mut request = Request::get(uri);
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    let settings = Settings {
+        agent_token: Some("agent-check-token".into()),
+        ..folders.settings()
+    };
+    let response = router(settings)
+        .oneshot(request.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&body).into_owned())
+}
+
+const LOG: &str = "\
+2026-11-24T09:59:59Z load app.toml:3:1: unknown field `colour`
+2026-11-24T10:00:00Z load ok
+2026-11-24T10:05:03Z call crm.contacts.update 422 {\"error\":\"email taken\"}
+2026-11-24T10:07:30Z run  client c1: save_btn.click: app.nope isn't declared
+";
+
+#[tokio::test]
+async fn api_log_needs_the_agent_token() {
+    let folders = Folders::new("api-log-token");
+    std::fs::create_dir_all(folders.path("logs")).unwrap();
+    std::fs::write(folders.path("logs/genesis.log"), LOG).unwrap();
+    for token in [None, Some("wrong-token")] {
+        let (status, body) = get_with(&folders, "/api/log", token).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{token:?}");
+        assert!(!body.contains("colour"), "{body}");
+    }
+    // A serve with no agent token keeps it shut.
+    assert_eq!(get(&folders, "/api/log").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        get_with(&folders, "/api/log", Some("agent-check-token")).await,
+        (StatusCode::OK, LOG.to_string())
+    );
+}
+
+#[tokio::test]
+async fn api_log_narrows_by_since_and_tail() {
+    let folders = Folders::new("api-log-narrow");
+    std::fs::create_dir_all(folders.path("logs")).unwrap();
+    std::fs::write(folders.path("logs/genesis.log"), LOG).unwrap();
+    let lines = |from: usize, to: usize| -> String {
+        LOG.lines()
+            .skip(from)
+            .take(to - from)
+            .map(|l| format!("{l}\n"))
+            .collect()
+    };
+    let read = |query: &'static str| {
+        let folders = &folders;
+        async move {
+            get_with(
+                folders,
+                &format!("/api/log{query}"),
+                Some("agent-check-token"),
+            )
+            .await
+        }
+    };
+    assert_eq!(
+        read("?since=2026-11-24T10:00:00Z").await,
+        (StatusCode::OK, lines(1, 4))
+    );
+    assert_eq!(read("?tail=2").await, (StatusCode::OK, lines(2, 4)));
+    assert_eq!(read("?tail=0").await, (StatusCode::OK, String::new()));
+    assert_eq!(read("?tail=100").await, (StatusCode::OK, LOG.to_string()));
+    assert_eq!(
+        read("?since=2026-11-24T10:00:00Z&tail=1").await,
+        (StatusCode::OK, lines(3, 4))
+    );
+    assert_eq!(
+        read("?since=2027-01-01T00:00:00Z").await,
+        (StatusCode::OK, String::new())
+    );
+    for bad in [
+        "?since=yesterday",
+        "?since=2026-11-24",
+        "?tail=-1",
+        "?tail=lots",
+    ] {
+        let (status, body) = read(bad).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}: {body}");
+    }
+}
+
+#[tokio::test]
+async fn api_log_answers_nothing_before_anything_is_logged() {
+    let folders = Folders::new("api-log-empty");
+    assert_eq!(
+        get_with(&folders, "/api/log", Some("agent-check-token")).await,
+        (StatusCode::OK, String::new())
+    );
+}

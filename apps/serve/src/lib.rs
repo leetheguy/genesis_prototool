@@ -12,6 +12,7 @@
 //! | `GET /api/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
 //! | `POST /api/call` | makes a call to one of the app's operations: `{"op", "params", "headers"}` in, `{"status", "body"}` or `{"error"}` out |
 //! | `POST /api/call/files` | the same, as `multipart/form-data`: the call as JSON in a `call` part, and each file a part named by its reference's ID |
+//! | `GET /api/log` | the log, as plain text, for agents with the agent token; `?since=TIME` and `?tail=N` narrow it |
 //! | `POST /api/mirror` | a client's state and trail entries, written to the state folder |
 //! | `/fs/*` | the files service (dufs), for agents with `Authorization: Bearer GENESIS_AGENT_TOKEN` |
 //! | `GET /health` | `200` when the server is up |
@@ -334,6 +335,7 @@ fn routes(server: Arc<Server>) -> Router {
         .route("/api/config", get(config))
         .route("/api/mirror", post(mirror))
         .route("/api/call", post(call))
+        .route("/api/log", get(read_log))
         // Files can be big; how big is the app's call (each `file` control's `max_size`).
         .route(
             "/api/call/files",
@@ -865,13 +867,7 @@ async fn files(State(server): Shared, request: axum::extract::Request) -> Respon
             "this serve has no files service".into(),
         );
     };
-    let token = settings.agent_token.as_deref().filter(|t| !t.is_empty());
-    let sent = request
-        .headers()
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
-    let Some(token) = token.filter(|t| sent.is_some_and(|s| same(s, t))) else {
+    let Some(token) = agent(settings, request.headers()) else {
         return refuse(
             StatusCode::UNAUTHORIZED,
             "/fs/ needs Authorization: Bearer GENESIS_AGENT_TOKEN".into(),
@@ -930,6 +926,80 @@ async fn files(State(server): Shared, request: axum::extract::Request) -> Respon
                 "the files service's answer didn't read".into(),
             )
         })
+}
+
+/// The agent token, when `headers` carry it as `Authorization: Bearer TOKEN`. `None` when they
+/// don't, or serve has none.
+fn agent<'a>(settings: &'a Settings, headers: &axum::http::HeaderMap) -> Option<&'a str> {
+    let token = settings.agent_token.as_deref().filter(|t| !t.is_empty());
+    let sent = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    token.filter(|t| sent.is_some_and(|s| same(s, t)))
+}
+
+/// The log, for an agent holding the agent token: from `since` on, and the last `tail` lines.
+async fn read_log(
+    State(server): Shared,
+    headers: axum::http::HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<BTreeMap<String, String>>,
+) -> Response {
+    if agent(&server.settings, &headers).is_none() {
+        return refuse(
+            StatusCode::UNAUTHORIZED,
+            "/api/log needs Authorization: Bearer GENESIS_AGENT_TOKEN".into(),
+        );
+    }
+    let since = query.get("since");
+    if let Some(since) = since.filter(|s| !log::is_time(s)) {
+        return refuse(
+            StatusCode::BAD_REQUEST,
+            format!("since takes a time like 2026-11-24T10:00:00Z, not {since:?}"),
+        );
+    }
+    let tail = match query.get("tail").map(|t| t.parse::<usize>()) {
+        None => None,
+        Some(Ok(tail)) => Some(tail),
+        Some(Err(_)) => {
+            return refuse(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "tail takes a whole number of lines, not {:?}",
+                    query["tail"]
+                ),
+            );
+        }
+    };
+    let text = match server.log.read().await {
+        Ok(text) => text,
+        Err(e) => {
+            return refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("the log couldn't be read: {e}"),
+            );
+        }
+    };
+    // Each line starts with its time, in a form that sorts as text.
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|line| {
+            since.is_none_or(|since| line.get(..20).is_some_and(|t| t >= since.as_str()))
+        })
+        .collect();
+    let lines = &lines[lines.len().saturating_sub(tail.unwrap_or(usize::MAX))..];
+    let text = lines
+        .iter()
+        .map(|line| format!("{line}\n"))
+        .collect::<String>();
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )],
+        text,
+    )
+        .into_response()
 }
 
 /// Whether two tokens are the same, taking as long whatever their first difference, so timing
