@@ -15,7 +15,7 @@
 //! Leptos terms in a few words: a *view* is a piece of the page; a *signal* is a value the page
 //! watches, so whatever read it redraws when it changes.
 
-use genesis_core::bus::{Call, Effect, Machine, Reply};
+use genesis_core::bus::{Call, Effect, Machine, Reply, Within};
 use genesis_core::config::{App, Node, body_place, child_place};
 use genesis_core::style::Placed;
 use genesis_core::template;
@@ -124,8 +124,26 @@ impl Host {
 
     /// Fires an event from a node drawn in `row` of an `each` ([`Machine::fire_at`]).
     pub fn fire_at(&self, name: &str, payload: Value, row: Option<&str>) {
-        let effects = self.machine().fire_at(name, payload, row);
+        self.fire_within(name, payload, row, None);
+    }
+
+    /// Fires an event from a node drawn inside a component ([`Machine::fire_within`]).
+    pub fn fire_within(
+        &self,
+        name: &str,
+        payload: Value,
+        row: Option<&str>,
+        within: Option<Within>,
+    ) {
+        let effects = self.machine().fire_within(name, payload, row, within);
         self.after(effects);
+    }
+
+    /// A component instance's `local.NAME` ([`Machine::local`]). Reading it inside a view makes
+    /// that part of the view redraw when state changes.
+    pub fn local(&self, instance: &str, row: Option<&str>, name: &str) -> Option<Value> {
+        self.changes.track();
+        self.machine().local(instance, row, name)
     }
 
     /// Moves the machine's clock on by `ms` milliseconds, running timers that fall due.
@@ -249,6 +267,8 @@ pub struct Wired {
 pub(crate) struct Scope {
     /// The `use` node's name.
     name: String,
+    /// The row of an `each` the `use` node is drawn in: with its name, which instance it is.
+    row: Option<String>,
     /// Its props, as written: templates.
     props: serde_json::Map<String, Value>,
     /// What the props are filled from: the element the `use` node is drawn for, if any...
@@ -267,9 +287,16 @@ pub(crate) struct FormAt {
 }
 
 impl Wired {
-    /// Fires `NAME.event` with `payload`; inside an `each`, the payload carries the element as `item`.
+    /// Fires `NAME.event` with `payload`; inside an `each`, the payload carries the element as
+    /// `item`. Inside a component it's the element of the nearest `each`, the component's own or
+    /// the one its `use` node is in, so instances tell themselves apart.
     pub fn fire(&self, event: &str, mut payload: Value) {
-        if let (Some(item), Value::Object(fields)) = (&self.item, &mut payload) {
+        let mut scopes = std::iter::successors(self.scope.as_ref(), |s| s.parent.as_ref());
+        let item = self
+            .item
+            .as_ref()
+            .or_else(|| scopes.find_map(|s| s.item.as_ref()));
+        if let (Some(item), Value::Object(fields)) = (item, &mut payload) {
             fields.insert("item".into(), item.clone());
         }
         // A control in a form fires from its form's row, which is the draft it fills.
@@ -277,8 +304,19 @@ impl Wired {
             Some(form) => form.row.as_deref(),
             None => self.row.as_deref(),
         };
+        let within = self.scope.as_ref().map(|scope| Within {
+            name: scope.name.clone(),
+            row: scope.row.clone(),
+            props: Value::Object(
+                scope
+                    .props
+                    .iter()
+                    .map(|(key, prop)| (key.clone(), fill(&self.host, scope, prop)))
+                    .collect(),
+            ),
+        });
         self.host
-            .fire_at(&format!("{}.{event}", self.name), payload, row);
+            .fire_within(&format!("{}.{event}", self.name), payload, row, within);
     }
 
     /// Display text with its templates filled from the current state (and `item.*` inside an
@@ -382,6 +420,7 @@ impl Wired {
     ) -> Vec<AnyView> {
         let scope = Arc::new(Scope {
             name: self.name.clone(),
+            row: self.row.clone(),
             props: props.clone(),
             item: self.item.clone(),
             parent: self.scope.clone(),
@@ -471,8 +510,8 @@ impl Wired {
     }
 }
 
-/// Looks `path` up: `item` and `item.*` in the element being drawn, `props.*` in the component
-/// it's inside, anything else in state.
+/// Looks `path` up: `item` and `item.*` in the element being drawn, `props.*` and `local.*` in
+/// the component it's inside, anything else in state.
 fn look(
     host: &Host,
     item: Option<&Value>,
@@ -485,6 +524,13 @@ fn look(
     };
     let base = match (head, item, scope) {
         ("item", Some(item), _) => item.clone(),
+        ("local", _, Some(scope)) => {
+            let (key, rest) = match rest?.split_once('.') {
+                Some((key, rest)) => (key, Some(rest)),
+                None => (rest?, None),
+            };
+            return dig(&host.local(&scope.name, scope.row.as_deref(), key)?, rest);
+        }
         ("props", _, Some(scope)) => match rest {
             None => Value::Object(
                 scope

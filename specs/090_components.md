@@ -75,6 +75,10 @@ props = { contact = "{{ item }}" }
   so it's used inside a `form`. One that holds a form of its own isn't used inside another.
 - A `use` node without an `id` is named by its place, like any node.
 - Inside, `props.*` is read-only, and `local.*` is that instance's own: ten cards have ten `expanded`s.
+  An instance is its `use` node and the row of the `each` it's drawn in, so its locals are kept on the device
+  and survive a reload by them, as a form's draft does ([050](050_state.md)). A change to one fires under the
+  `use` node, like every event inside it: `card.local.expanded.changed`.
+- Inside a component, `each`, a form's `data`, and a select's `options` may read `props.*` and `local.*`.
 - A component can use other components. Using one in a loop (A uses B uses A) is a config error.
 - Props can carry steps: a caller can pass `on_open = [{ go = "contact" }]`, and the component
   runs it with `on_click = "{{ props.on_open }}"`. The steps still run in the app, against its state.
@@ -92,7 +96,11 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 ## Tests
 
 - a component in any folder loads and draws with its props, by its file name
-- each instance has its own local state
+- each instance has its own local state, kept on the device and across a config reload while its component
+  still declares it (in a real browser: `tests/deployed/components.mjs`)
+- a named control inside a component fills the form it's used in, and a form inside one starts from
+  `props.*` or `local.*`
+- an undeclared `local.*`, or a `props.*` the component doesn't take, is a config error
 - `props.*` is read-only; writing it is a config error
 - a missing required prop, an unknown prop, an unknown component, and a loop of components are config errors
 - a passed step list runs against the app's state
@@ -111,5 +119,5 @@ Milestone three ([999](999_todo.md)):
 - [x] core: component files, `[component]` and its props, and the `use` node, with the load checks, drawn
   with `props.*` (what's inside a component draws but isn't wired yet: its events and named controls come
   with the next task)
-- [ ] local state per instance, and events named under the `use` node's `id`
+- [x] local state per instance, and events named under the `use` node's `id`
 - [ ] props that carry steps

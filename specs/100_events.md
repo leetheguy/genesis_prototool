@@ -72,7 +72,7 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 |---|---|---|
 | `{ set = "app.x", to = "..." }` | sets a variable | `app.x.changed` |
 | `{ step = "app.page", by = 1, min = 1, max = 99 }` | adds to a number, within optional bounds | `app.page.changed` |
-| `{ toggle = "local.open" }` | flips a boolean | `local.open.changed` |
+| `{ toggle = "local.open" }` | flips a boolean | `local.open.changed`; inside a component, under its `use` node: `card.local.open.changed` ([090](090_components.md)) |
 | `{ go = "contact" }` | sets `sys.view` | `sys.view.changed` |
 | `{ call = "crm.contacts.update", params = {...}, into = {...}, event = "/ptr" }` | calls an operation ([030](030_connections.md)); waits for the reply | `crm.contacts.update.ok` / `.failed` / `.{status}` |
 | `{ reload = ["app.contacts"] }` | calls those sources again ([050](050_state.md)) | their calls' events |

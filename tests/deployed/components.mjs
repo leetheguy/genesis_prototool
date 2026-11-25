@@ -1,6 +1,8 @@
 // The components deployed check (spec 090): in a real browser, a component in a folder of its own
 // draws once per element of an each with its own props, draws again when the state its props come
-// from changes, and every place that uses it redraws when its file is edited.
+// from changes, keeps each instance's local state apart (and across a reload of the page), fires
+// its events under the use node for the app to hear, and every place that uses it redraws when its
+// file is edited.
 //
 // It runs genesis-serve on a temporary app of its own. Run it with scripts/check-hello.sh.
 
@@ -28,11 +30,19 @@ name = "Components"
 
 [state]
 contacts = [{ name = "Ada", email = "ada@example.com" }, { name = "Lin", email = "lin@example.com" }]
+picked = "nobody"
+
+[on]
+"card.more.click" = [{ set = "app.picked", to = "{{ event.item.name }}" }]
 
 [[body]]
 type = "button"
 label = "Rename"
 on_click = [{ set = "app.contacts", to = [{ name = "Grace", email = "grace@example.com" }, { name = "Lin", email = "lin@example.com" }] }]
+
+[[body]]
+type = "text"
+text = "Picked {{ app.picked }}"
 
 [[body]]
 type = "cell"
@@ -51,9 +61,18 @@ const card = (greeting) => `# A contact's card: its name and email, used once pe
 [component]
 props = ["contact"]
 
+[state]
+clicks = 0
+
 [[body]]
 type = "text"
-text = "${greeting} {{ props.contact.name }} at {{ props.contact.email }}"
+text = "${greeting} {{ props.contact.name }} at {{ props.contact.email }}, {{ local.clicks }} clicks"
+
+[[body]]
+type = "button"
+id = "more"
+label = "More on {{ props.contact.name }}"
+on_click = [{ step = "local.clicks" }]
 `;
 writeFileSync(join(configs, "views", "contact_card.toml"), card("Card:"));
 
@@ -86,18 +105,28 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(`${base}/`);
-  await page.getByText("Card: Ada at ada@example.com").waitFor();
-  await page.getByText("Card: Lin at lin@example.com").waitFor();
+  await page.getByText("Card: Ada at ada@example.com, 0 clicks").waitFor();
+  await page.getByText("Card: Lin at lin@example.com, 0 clicks").waitFor();
+  // Each instance has its own local state, and the app hears its event with its item.
+  await page.getByRole("button", { name: "More on Lin" }).click();
+  await page.getByRole("button", { name: "More on Lin" }).click();
+  await page.getByText("Card: Lin at lin@example.com, 2 clicks").waitFor();
+  await page.getByText("Card: Ada at ada@example.com, 0 clicks").waitFor();
+  await page.getByText("Picked Lin").waitFor();
+  // Locals are kept on the device, so they're back after a reload of the page.
+  await page.waitForTimeout(500);
+  await page.reload();
+  await page.getByText("Card: Lin at lin@example.com, 2 clicks").waitFor();
   // Its props come from the app's state where it's used, so a change there draws it again.
   await page.getByRole("button", { name: "Rename" }).click();
-  await page.getByText("Card: Grace at grace@example.com").waitFor();
-  // Editing the component's file redraws every place that uses it.
+  await page.getByText("Card: Grace at grace@example.com, 0 clicks").waitFor();
+  // Editing the component's file redraws every place that uses it, and its locals stay.
   writeFileSync(join(configs, "views", "contact_card.toml"), card("Contact:"));
-  await page.getByText("Contact: Grace at grace@example.com").waitFor();
-  await page.getByText("Contact: Lin at lin@example.com").waitFor();
+  await page.getByText("Contact: Grace at grace@example.com, 0 clicks").waitFor();
+  await page.getByText("Contact: Lin at lin@example.com, 2 clicks").waitFor();
 
   if (errors.length) throw new Error(`the page threw: ${errors.join(" / ")}`);
-  console.log("ok: a component drew per element with its props, redrew with its state, and redrew when its file changed");
+  console.log("ok: a component drew per element with its props and its own locals, fired under its use node, and redrew when its file changed");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;
