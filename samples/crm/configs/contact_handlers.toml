@@ -1,0 +1,36 @@
+# contact_handlers.toml: what the contacts page, a company's contact list, and the contact forms do.
+[on]
+"contacts.search.change" = [{ set = "app.contact_query", to = "{{ event.value }}" }]
+"contacts.add.click" = [{ set = "app.new_contact", to = {} }, { set = "app.adding_contact", to = true }]
+"contacts.edit.click" = ["edit_contact"]
+"contacts.delete.click" = ["delete_contact"]
+
+# From a company's page, a new contact starts at that company.
+"company.add_contact.click" = [{ set = "app.new_contact", to = { company_id = "{{ app.company.id }}" } }, { set = "app.adding_contact", to = true }]
+"company.edit_contact.click" = ["edit_contact"]
+"company.delete_contact.click" = ["delete_contact"]
+
+"new_contact.submit" = [
+  { call = "crm.contacts.create", params = { name = "{{ event.form.name }}", email = "{{ event.form.email }}", phone = "{{ event.form.phone }}", company_id = "{{ event.form.company_id }}" } },
+  { set = "app.adding_contact", to = false },
+  "reload_all",
+  { toast = "Added {{ event.form.name }}.", variant = "success" },
+]
+"contact_changes.submit" = [
+  { call = "crm.contacts.update", params = { id = "{{ app.contact.id }}", name = "{{ event.form.name }}", email = "{{ event.form.email }}", phone = "{{ event.form.phone }}", company_id = "{{ event.form.company_id }}" } },
+  { set = "app.editing_contact", to = false },
+  "reload_all",
+  { toast = "Saved {{ event.form.name }}.", variant = "success" },
+]
+
+# Both lists of contacts share these: the row's contact is in event.item, wherever it was clicked.
+[actions.edit_contact]
+do = [{ set = "app.contact", to = "{{ event.item }}" }, { set = "app.editing_contact", to = true }]
+
+[actions.delete_contact]
+do = [
+  { confirm = "Delete {{ event.item.name }}?", yes = "Delete", no = "Keep" },
+  { call = "crm.contacts.delete", params = { id = "{{ event.item.id }}" } },
+  "reload_all",
+  { toast = "Deleted {{ event.item.name }}.", variant = "success" },
+]

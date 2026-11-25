@@ -26,7 +26,7 @@ any change to the Dockerfile, `docker-compose.yml`, or `/fs/`.
 **Browser checks:** `scripts/check-hello.sh` builds the bundle and `serve`, then drives the hello app in headless
 Chromium: clicks and the mirror (`tests/deployed/hello.mjs`), live edits (`tests/deployed/reload.mjs`), calls
 through `serve` to a mock API and PurpleFlow (`tests/deployed/calls.mjs`; `GENESIS_PF_HOOKS` points it at another
-PurpleFlow), grid layout (`tests/deployed/layout.mjs`), media (`tests/deployed/media.mjs`), `each` (`tests/deployed/each.mjs`), the controls (`tests/deployed/controls.mjs`), forms (`tests/deployed/form.mjs`), files (`tests/deployed/file.mjs`), dialogs (`tests/deployed/dialog.mjs`), markdown (`tests/deployed/markdown.mjs`), and components (`tests/deployed/components.mjs`). Run it after any change to the renderer, `apps/web`, or `serve`.
+PurpleFlow), grid layout (`tests/deployed/layout.mjs`), media (`tests/deployed/media.mjs`), `each` (`tests/deployed/each.mjs`), the controls (`tests/deployed/controls.mjs`), forms (`tests/deployed/form.mjs`), files (`tests/deployed/file.mjs`), dialogs (`tests/deployed/dialog.mjs`), markdown (`tests/deployed/markdown.mjs`), components (`tests/deployed/components.mjs`), `show` and `disabled` (`tests/deployed/show.mjs`), checks on controls (`tests/deployed/checks.mjs`), formats (`tests/deployed/format.mjs`), toast and confirm (`tests/deployed/confirm.mjs`), pushes from an agent (`tests/deployed/push.mjs`), and the CRM sample against its own API (`samples/crm/api.test.mjs`, then `tests/deployed/crm.mjs`). Run it after any change to the renderer, `apps/web`, or `serve`.
 
 ## Genesis rules
 

@@ -1,0 +1,94 @@
+# company.toml: the company in app.company, and its contacts.
+[component]
+
+[[body]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 3
+
+[[body.children]]
+type = "button"
+id = "back"
+label = "All companies"
+variant = "ghost"
+size = "sm"
+
+[[body]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 3
+margin_y = 4
+
+[[body.children]]
+type = "cell"
+grow = true
+
+[[body.children.children]]
+type = "text"
+text = "{{ app.company.name }}"
+level = 1
+
+[[body.children.children]]
+type = "link"
+text = "{{ app.company.website }}"
+href = "{{ app.company.website }}"
+show = { var = "app.company.website", empty = false }
+
+[[body.children]]
+type = "button"
+id = "edit"
+label = "Edit company"
+variant = "ghost"
+
+[[body.children]]
+type = "button"
+id = "add_contact"
+label = "Add contact"
+variant = "primary"
+
+[[body]]
+type = "cell"
+each = "app.company_contacts"
+empty = "No contacts here yet."
+gap = 2
+
+[[body.children]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 2
+pad = 3
+bg = "base-100"
+border = true
+radius = "box"
+
+[[body.children.children]]
+type = "cell"
+grow = true
+
+[[body.children.children.children]]
+type = "text"
+text = "{{ item.name }}"
+weight = "semibold"
+
+[[body.children.children.children]]
+type = "text"
+text = "{{ item.email }} {{ item.phone }}"
+color = "muted"
+size = "sm"
+
+[[body.children.children]]
+type = "button"
+id = "edit_contact"
+label = "Edit"
+size = "sm"
+variant = "ghost"
+
+[[body.children.children]]
+type = "button"
+id = "delete_contact"
+label = "Delete"
+size = "sm"
+variant = "ghost"

@@ -1,0 +1,75 @@
+# contacts.toml: every contact, searchable by name, email or company.
+[component]
+
+[state]
+query = ""
+
+[[body]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 3
+
+[[body.children]]
+type = "text"
+text = "Contacts"
+level = 1
+grow = true
+
+[[body.children]]
+type = "button"
+id = "add"
+label = "Add contact"
+variant = "primary"
+
+[[body]]
+type = "input"
+id = "search"
+var = "local.query"
+kind = "search"
+placeholder = "Search contacts"
+
+[[body]]
+type = "cell"
+each = "app.contacts"
+empty = "No contacts match."
+gap = 2
+
+[[body.children]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 2
+pad = 3
+bg = "base-100"
+border = true
+radius = "box"
+
+[[body.children.children]]
+type = "cell"
+grow = true
+
+[[body.children.children.children]]
+type = "text"
+text = "{{ item.name }}"
+weight = "semibold"
+
+[[body.children.children.children]]
+type = "text"
+text = "{{ item.email }} at {{ item.company }}"
+color = "muted"
+size = "sm"
+
+[[body.children.children]]
+type = "button"
+id = "edit"
+label = "Edit"
+size = "sm"
+variant = "ghost"
+
+[[body.children.children]]
+type = "button"
+id = "delete"
+label = "Delete"
+size = "sm"
+variant = "ghost"

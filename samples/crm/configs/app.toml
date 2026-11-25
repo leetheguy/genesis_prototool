@@ -1,0 +1,161 @@
+# app.toml: the CRM. A bar that stays, the page below it, and the forms that add and edit, each in a
+# dialog over whatever page is open.
+#
+# The API is ../api.mjs. To run it:
+#   node samples/crm/api.mjs 4020 /tmp/crm-data.json crm-test-token &
+#   GENESIS_CREDS_CRM_TOKEN=crm-test-token cargo run -p genesis-serve -- --configs samples/crm/configs
+# then open http://127.0.0.1:8080/.
+
+[app]
+name = "CRM"
+
+[state]
+adding_company = false
+editing_company = false
+adding_contact = false
+editing_contact = false
+
+[[body]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 2
+pad_x = 6
+pad_y = 3
+bg = "base-200"
+
+[[body.children]]
+type = "text"
+text = "CRM"
+size = "xl"
+weight = "bold"
+grow = true
+
+[[body.children]]
+type = "button"
+id = "to_companies"
+label = "Companies"
+variant = "ghost"
+disabled = { var = "sys.outlet", is = "companies" }
+on_click = { go = "companies" }
+
+[[body.children]]
+type = "button"
+id = "to_contacts"
+label = "Contacts"
+variant = "ghost"
+disabled = { var = "sys.outlet", is = "contacts" }
+on_click = { go = "contacts" }
+
+[[body]]
+type = "cell"
+pad = 6
+max_width = "4xl"
+margin_x = "auto"
+
+[[body.children]]
+type = "outlet"
+default = "companies"
+
+# Adding a company.
+[[body]]
+type = "dialog"
+id = "adding_company"
+open = "app.adding_company"
+title = "Add a company"
+
+[[body.children]]
+type = "form"
+id = "new_company"
+
+[[body.children.children]]
+type = "cell"
+gap = 3
+
+[[body.children.children.children]]
+type = "use"
+component = "company_fields"
+
+[[body.children.children.children]]
+type = "button"
+label = "Add company"
+variant = "primary"
+submit = true
+
+# Editing the company in app.company.
+[[body]]
+type = "dialog"
+id = "editing_company"
+open = "app.editing_company"
+title = "Edit {{ app.company.name }}"
+
+[[body.children]]
+type = "form"
+id = "company_changes"
+data = "app.company"
+
+[[body.children.children]]
+type = "cell"
+gap = 3
+
+[[body.children.children.children]]
+type = "use"
+component = "company_fields"
+
+[[body.children.children.children]]
+type = "button"
+label = "Save"
+variant = "primary"
+submit = true
+
+# Adding a contact, starting from app.new_contact (its company, when there is one).
+[[body]]
+type = "dialog"
+id = "adding_contact"
+open = "app.adding_contact"
+title = "Add a contact"
+
+[[body.children]]
+type = "form"
+id = "new_contact"
+data = "app.new_contact"
+
+[[body.children.children]]
+type = "cell"
+gap = 3
+
+[[body.children.children.children]]
+type = "use"
+component = "contact_fields"
+
+[[body.children.children.children]]
+type = "button"
+label = "Add contact"
+variant = "primary"
+submit = true
+
+# Editing the contact in app.contact.
+[[body]]
+type = "dialog"
+id = "editing_contact"
+open = "app.editing_contact"
+title = "Edit {{ app.contact.name }}"
+
+[[body.children]]
+type = "form"
+id = "contact_changes"
+data = "app.contact"
+
+[[body.children.children]]
+type = "cell"
+gap = 3
+
+[[body.children.children.children]]
+type = "use"
+component = "contact_fields"
+
+[[body.children.children.children]]
+type = "button"
+label = "Save"
+variant = "primary"
+submit = true

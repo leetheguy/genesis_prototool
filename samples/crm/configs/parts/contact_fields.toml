@@ -1,0 +1,31 @@
+# contact_fields.toml: a contact's fields, for the forms that add and edit one. It fills the form it's in.
+# The company picker lists every company; app.toml draws this, so it reads app.company_names itself.
+[component]
+
+[[body]]
+type = "input"
+name = "name"
+label = "Name"
+required = "A contact needs a name."
+
+[[body]]
+type = "input"
+name = "email"
+kind = "email"
+label = "Email"
+required = "A contact needs an email."
+checks = [{ matches = "^[^@ ]+@[^@ ]+$", message = "That doesn't look like an email." }]
+
+[[body]]
+type = "input"
+name = "phone"
+label = "Phone"
+
+[[body]]
+type = "select"
+name = "company_id"
+label = "Company"
+options = "app.company_names"
+option_label = "/name"
+option_value = "/id"
+required = "Pick their company."

@@ -1,0 +1,15 @@
+# company_fields.toml: a company's fields, for the forms that add and edit one. It fills the form it's in.
+[component]
+
+[[body]]
+type = "input"
+name = "name"
+label = "Name"
+required = "A company needs a name."
+
+[[body]]
+type = "input"
+name = "website"
+label = "Website"
+placeholder = "https://"
+checks = [{ matches = "^https?://", message = "A website starts with http:// or https://." }]

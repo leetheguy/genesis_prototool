@@ -83,7 +83,8 @@ Set up the toolchain once ([`docs/setup.md`](docs/setup.md)), then:
 cargo run -p genesis-serve -- --configs samples/hello    # then open http://127.0.0.1:8080/
 ```
 
-`scripts/check-hello.sh` does all that headless and clicks the button for you. The whole stack, with
+`scripts/check-hello.sh` does all that headless and clicks the button for you. `samples/crm/` is a whole
+CRM, with its own small API; the top of its `app.toml` says how to run it. The whole stack, with
 dufs for agents at `/fs/`:
 
 ```bash
