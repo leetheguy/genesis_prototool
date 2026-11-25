@@ -60,12 +60,15 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   connection timeouts; `toast` isn't built, and a connection's `timeout` runs on the server, per connection
   ([030](030_connections.md)). Open: each built-in's name and length, and whether `timers.toml` may set a
   built-in's `ms` or use its name. From [100](100_events.md), "Timers".
-- **The outlet's details, built the smaller way.** Lee settled `app.toml` as the top-level page, one `outlet`,
-  `go`, and the outlet's `default`. Built without a decision: `sys.outlet` isn't kept on the device, so every
-  open starts at the `default`; `go` takes a component's name written out, not a template; a name `go` can't
-  use (no such component, one that needs props, or no outlet) fails when the step runs, not at load; the
-  component in the outlet gets no props; a component's locals stay while it's away; and an outlet inside a
-  `form` or an `each` is a config error. From [100](100_events.md), "Going".
+- **What `go` names, as read.** Lee: "Go's target should be a TOML page." Built as: `go` names a component's
+  TOML file by the name it goes by, its file name without `.toml` (`{ go = "contacts" }` for
+  `views/contacts.toml`), written out, not a template, and not a path. Any component without required props
+  can be that page. To check with Lee. From [100](100_events.md), "Going".
+- **When a bad `go` fails.** A name `go` can't use (no such component, one that needs props, or no outlet)
+  fails when the step runs, not at load. Being confirmed with Lee. From [100](100_events.md), "Going".
+- **The outlet's other details, built the smaller way.** The component in the outlet gets no props, and an
+  outlet inside a `form` or an `each` is a config error. Decided by Lee: `sys.outlet` is kept on the device,
+  and a component keeps its locals while it's out of the outlet ([050](050_state.md)).
 - **How a stream is stopped.** [050](050_state.md) had a `cancel` naming the source, and `cancel` is gone.
 
 - **Sessions across `serve` restarts and replicas.** Sessions live in `serve`'s memory, so a restart signs

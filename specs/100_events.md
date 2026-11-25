@@ -116,8 +116,10 @@ default = "home"
 - The component is drawn with no props, so one that needs props can't go in the outlet. Its nodes fire
   under the component's own name: `contacts.save_btn.click`, `contacts.local.query.changed`.
 - `sys.outlet` holds the name of the component in the outlet, and changes only by `go`, which fires
-  `sys.outlet.changed` with `value` and `was`. It isn't kept: a reload opens on the `default`.
-- A component's local state stays while the app runs, so going back to one finds it as it was left.
+  `sys.outlet.changed` with `value` and `was`. It's kept on the device, so the app reopens on the
+  component it was closed on ([050](050_state.md)), while `go` can still put that one there.
+- A component's local state stays while it's out of the outlet, so going back to one finds it as it was
+  left. Like any instance's locals, it's kept on the device ([090](090_components.md)).
 - `go` naming no component, or one that needs props, fails, like a step naming no action. So does `go`
   in an app with no outlet. A component's own steps can't `go` ([090](090_components.md)): it fires an
   event, and the app's handler goes.
@@ -218,6 +220,7 @@ makes is printed as `{"call": ...}`; with `--mock mocks.toml` (`[[mock]]` tables
   nothing; `go` naming no component, one that needs props, or with no outlet fails; a template in `go` is
   a config error; a component's own `go` is a config error
 - the component in the outlet is wired under its own name, and keeps its local state while away
+- `sys.outlet` is kept, and the app reopens on it, unless `go` can no longer put that component there
 - every `*.failed` lands in `sys.errors` and the trail; with no matching handler it also toasts
 - a step failing in a handler's own list is logged under the event's name and toasted
 - `sys.bus` lists every pattern with its handlers and every event the config can fire
@@ -266,3 +269,8 @@ Milestone three ([999](999_todo.md)):
   Built minimally, and open in [999](999_todo.md): `sys.outlet` isn't kept on the device, `go` takes no
   template, and a name `go` can't use fails when the step runs. The timer details built one way are now
   decided. Lee: "Everything with timers sounds good."
+- 2026-11-25: `sys.outlet` is kept on the device, and a component keeps its locals while it's out of the
+  outlet. Lee: "Current outlet should be saved in the app state. I definitely want this app to be able to reopen to its exact configuration because it's all one app." And: "Yes to components maintaining their own state while out of the outlet as
+  well." On what `go` names: "Go's target should be a TOML page." Read as: `go` names a component's TOML
+  file, by the name it goes by (`contacts` for `views/contacts.toml`), written out; logged in [999](999_todo.md)
+  for him to check.
