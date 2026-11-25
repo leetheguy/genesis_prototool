@@ -1016,7 +1016,7 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
                 wire_node(child, &child_place(place, i), handlers, events);
             }
         }
-        Node::Text(_) | Node::Image(_) | Node::Link(_) => {}
+        Node::Text(_) | Node::Image(_) | Node::Link(_) | Node::Svg(_) | Node::Divider(_) => {}
     }
 }
 

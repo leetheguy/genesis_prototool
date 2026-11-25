@@ -250,6 +250,12 @@ impl Classes for keys::ButtonSize {
     }
 }
 
+impl Classes for keys::LineColor {
+    fn of(value: Self::Value) -> String {
+        format!("border-{}", color(value))
+    }
+}
+
 /// Collects classes, skipping keys that aren't set.
 #[derive(Default)]
 pub(crate) struct ClassList(Vec<String>);
@@ -360,6 +366,7 @@ pub fn vocabulary() -> Vec<String> {
         every::<keys::MaxWidth>().collect(),
         every::<keys::Variant>().collect(),
         every::<keys::ButtonSize>().collect(),
+        every::<keys::LineColor>().collect(),
     ];
     let mut seen = std::collections::BTreeSet::new();
     all.into_iter()

@@ -5,8 +5,8 @@
 
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
-use genesis_core::config::{Button, Cell, Image, Link, Text};
-use genesis_core::style::{BySize, TextSize, Variant, Weight, keys};
+use genesis_core::config::{Button, Cell, Divider, Image, Link, Svg, Text};
+use genesis_core::style::{BySize, Color, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
 
 impl Component for Cell {
@@ -113,5 +113,32 @@ impl Component for Link {
         let rel = move || leaves.get().then_some("noopener noreferrer");
         let class = wired.class(ClassList::default().raw("link"));
         view! { <a href=href target=target rel=rel class=class>{text}</a> }.into_any()
+    }
+}
+
+impl Component for Svg {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        // With a label it's an image with that name; without one, decoration screen readers skip.
+        let label = self.label.clone();
+        let role = label.is_some().then_some("img");
+        let hidden = label.is_none().then_some("true");
+        let class = wired.class(ClassList::default().raw("inline-flex").typed(self.typed()));
+        let markup = self.svg.as_str().to_string();
+        view! { <span role=role aria-label=label aria-hidden=hidden class=class inner_html=markup></span> }
+            .into_any()
+    }
+}
+
+impl Component for Divider {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let color = self
+            .color
+            .unwrap_or(keys::LineColor(BySize::base(Color::Base300)));
+        let class = wired.class(ClassList::default().add(Some(color)).boxed(self.boxed()));
+        view! { <hr class=class /> }.into_any()
     }
 }

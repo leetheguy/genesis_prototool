@@ -112,6 +112,10 @@ pub enum Node {
     Image(Image),
     /// A link to another page.
     Link(Link),
+    /// An inline drawing, checked at load.
+    Svg(Svg),
+    /// A rule between sections.
+    Divider(Divider),
 }
 
 impl Node {
@@ -123,6 +127,8 @@ impl Node {
             Node::Button(n) => n.placed(),
             Node::Image(n) => n.placed(),
             Node::Link(n) => n.placed(),
+            Node::Svg(n) => n.placed(),
+            Node::Divider(n) => n.placed(),
         }
     }
 
@@ -134,6 +140,8 @@ impl Node {
             Node::Button(n) => n.id.as_deref(),
             Node::Image(n) => n.id.as_deref(),
             Node::Link(n) => n.id.as_deref(),
+            Node::Svg(n) => n.id.as_deref(),
+            Node::Divider(n) => n.id.as_deref(),
         }
     }
 
@@ -256,6 +264,39 @@ styled! {
         pub text: String,
         /// Where it goes; may hold templates.
         pub href: String,
+    }
+}
+
+styled! {
+    [typed, placed]
+    /// `type = "svg"`: a drawing, inline, so it takes the theme's colors (`currentColor` follows
+    /// `color`) and `size`. Its markup is checked at load ([`crate::svg`]).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Svg {
+        /// The node's name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The markup: one `<svg>` element, cleaned.
+        pub svg: crate::svg::SvgMarkup,
+        /// What it shows, for screen readers. Without it, it's decoration.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+    }
+}
+
+styled! {
+    [boxed, placed]
+    /// `type = "divider"`: a plain `hr`, a rule between sections.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Divider {
+        /// The node's name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The line's theme color; the theme's own border color unless it says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub color: Option<crate::style::keys::LineColor>,
     }
 }
 

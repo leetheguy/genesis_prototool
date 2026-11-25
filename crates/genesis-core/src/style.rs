@@ -557,6 +557,8 @@ pub mod keys {
         Variant(super::Variant) = "variant";
         /// `size` on a button: its size.
         ButtonSize(super::ButtonSize) = "size";
+        /// `color` on a divider: its line's theme color.
+        LineColor(super::Color) = "color";
     }
 }
 

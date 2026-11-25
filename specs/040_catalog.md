@@ -32,8 +32,8 @@ never a composite.
 | `cell` | `div` | `children`, `each`, the style keys, `on_click` |
 | `text` | `p`, or `h1`–`h3` with `level` | `text` (with templates), `format`, `level`, the type and box keys |
 | `image` | `img` | `src` (with templates), `alt` (required: `""` for decoration), the box keys |
-| `svg` | inline `svg`, cleaned | `svg` (the markup), `label`, the type keys |
-| `divider` | `hr` | `color`, the box keys |
+| `svg` | inline `svg`, checked at load | `svg` (the markup), `label`, the type keys |
+| `divider` | `hr` | `color` (a theme color), the box keys |
 | `audio` | `audio` | `src`, `controls`, `autoplay`, `loop`, `muted` |
 | `video` | `video` | as `audio`, plus `poster` |
 | `iframe` | `iframe`, sandboxed | `src`, `title`, `sandbox`, `height` |
@@ -57,10 +57,14 @@ unless its own keys say otherwise. `markdown` is for longer prose, and for strea
 ### Media and embeds
 
 - **`svg`** draws its markup inline, so it can take the theme's colors (`currentColor` follows `color`) and the
-  type keys' `size`. It's cleaned as `markdown` is: no `script`, no `on*` attributes, no `foreignObject`, and no
-  links out. With `label` it's an image with that name for screen readers; without one it's decoration.
-  Markup that isn't one `svg` element is a config error.
-- **`divider`** is a plain `hr`, for a rule between sections.
+  type keys' `size`: with no `width` or `height` of its own, it's 1em square. The markup is read as XML at load
+  and may hold only shapes, text, and paint (`path`, `circle`, `rect`, `g`, `text`, gradients, and the like):
+  anything else (`script`, `foreignObject`, `a`, animation), an `on*` attribute, a `javascript:` URL, or a link
+  out of the svg (`href` not starting with `#`, `url(...)` in `style`) is a config error at the key's line,
+  never silently dropped. Markup that isn't one well-formed `svg` element is too. What's drawn is Genesis's own
+  copy, written out from the checked tree. With `label` it's an image with that name for screen readers;
+  without one it's decoration they skip.
+- **`divider`** is a plain `hr`, for a rule between sections, in the theme's border color unless `color` names another.
 - **`audio`** and **`video`** play `src` (with templates). `controls` defaults to `true`; `autoplay`, `loop`,
   and `muted` default to `false` (browsers play on their own only when muted).
 - **`iframe`** embeds another page by `src` (with templates). `title` is required: it's what a screen reader
@@ -261,8 +265,8 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - an `image` without `alt` is a config error
 - `button`'s `variant` and `size` give daisyUI's classes, by screen size too
 - `markdown` draws Markdown and escapes raw HTML
-- `svg` draws its markup inline and strips scripts, `on*` attributes, `foreignObject`, and outside links; with `label` it's a named image; markup that isn't one `svg` is a config error
-- `divider` is an `hr`
+- `svg` draws Genesis's own copy of its markup inline; anything that could run or reach outside it (an element outside the list, an `on*` attribute, a `javascript:` URL, an outside `href` or `url()`) is a config error at its line; with `label` it's a named image, without one it's hidden from screen readers; markup that isn't one `svg` is a config error
+- `divider` is an `hr`, in the theme's border color or its own
 - `audio` and `video` take `src` with templates and default to controls on, autoplay off; they fire `.play`, `.pause`, and `.ended`
 - `iframe` is sandboxed unless `sandbox = false`; one with no `title` is a config error
 - radios with one `name` in a form, or one `var`, are one group: picking one sets the group's value to its `value`, with its JSON type, and unpicks the rest
@@ -291,7 +295,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] screen sizes for every style key, and the whole style vocabulary in the built CSS
 - [x] placement keys on every node
 - [x] `image` and `link`; `button`'s variants and sizes
-- [ ] `divider` and `svg`
+- [x] `divider` and `svg`
 - [ ] `audio`, `video`, and `iframe`
 - [ ] `each`, with its faces in `Wired`, and `item.*`
 - [ ] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups
