@@ -238,6 +238,18 @@ impl Classes for keys::MaxWidth {
     }
 }
 
+impl Classes for keys::Variant {
+    fn of(value: Self::Value) -> String {
+        format!("btn-{}", value.word())
+    }
+}
+
+impl Classes for keys::ButtonSize {
+    fn of(value: Self::Value) -> String {
+        format!("btn-{}", value.word())
+    }
+}
+
 /// Collects classes, skipping keys that aren't set.
 #[derive(Default)]
 pub(crate) struct ClassList(Vec<String>);
@@ -346,6 +358,8 @@ pub fn vocabulary() -> Vec<String> {
         every::<keys::Grow>().collect(),
         every::<keys::Width>().collect(),
         every::<keys::MaxWidth>().collect(),
+        every::<keys::Variant>().collect(),
+        every::<keys::ButtonSize>().collect(),
     ];
     let mut seen = std::collections::BTreeSet::new();
     all.into_iter()

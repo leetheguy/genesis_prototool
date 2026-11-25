@@ -5,8 +5,8 @@
 
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
-use genesis_core::config::{Button, Cell, Text};
-use genesis_core::style::{BySize, TextSize, Weight, keys};
+use genesis_core::config::{Button, Cell, Image, Link, Text};
+use genesis_core::style::{BySize, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
 
 impl Component for Cell {
@@ -70,7 +70,48 @@ impl Component for Button {
 
     fn view(&self, wired: Wired) -> AnyView {
         let label = wired.text(&self.label);
-        let class = wired.class(ClassList::default().raw("btn btn-primary"));
+        let variant = self
+            .variant
+            .unwrap_or(keys::Variant(BySize::base(Variant::Primary)));
+        let class = wired.class(
+            ClassList::default()
+                .raw("btn")
+                .add(Some(variant))
+                .add(self.size),
+        );
         view! { <button class=class on:click=move |_| wired.fire("click", nothing())>{label}</button> }.into_any()
+    }
+}
+
+impl Component for Image {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let (src, alt) = (wired.text(&self.src), self.alt.clone());
+        let class = wired.class(ClassList::default().boxed(self.boxed()));
+        view! { <img src=src alt=alt class=class /> }.into_any()
+    }
+}
+
+/// Whether `href` leaves the app: a full URL, or one that starts with `//`.
+fn outside(href: &str) -> bool {
+    ["http://", "https://", "//"]
+        .iter()
+        .any(|start| href.starts_with(start))
+}
+
+impl Component for Link {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let (text, href) = (wired.text(&self.text), wired.text(&self.href));
+        let leaves = {
+            let href = wired.text(&self.href);
+            Signal::derive(move || outside(&href()))
+        };
+        let target = move || leaves.get().then_some("_blank");
+        let rel = move || leaves.get().then_some("noopener noreferrer");
+        let class = wired.class(ClassList::default().raw("link"));
+        view! { <a href=href target=target rel=rel class=class>{text}</a> }.into_any()
     }
 }

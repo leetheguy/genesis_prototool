@@ -31,13 +31,13 @@ never a composite.
 |---|---|---|
 | `cell` | `div` | `children`, `each`, the style keys, `on_click` |
 | `text` | `p`, or `h1`–`h3` with `level` | `text` (with templates), `format`, `level`, the type and box keys |
-| `image` | `img` | `src`, `alt` |
+| `image` | `img` | `src` (with templates), `alt` (required: `""` for decoration), the box keys |
 | `svg` | inline `svg`, cleaned | `svg` (the markup), `label`, the type keys |
 | `divider` | `hr` | `color`, the box keys |
 | `audio` | `audio` | `src`, `controls`, `autoplay`, `loop`, `muted` |
 | `video` | `video` | as `audio`, plus `poster` |
 | `iframe` | `iframe`, sandboxed | `src`, `title`, `sandbox`, `height` |
-| `link` | `a` | `text`, `href` (with templates); an outside link opens in a new tab |
+| `link` | `a` | `text`, `href` (with templates); an outside link (`http://`, `https://`, or `//`) opens in a new tab |
 | `button` | `button` | `label`, `disabled`, `submit`, `variant`, `size` |
 | `input` | `input` | `name` or `var`, `kind` (`text`, `email`, `password`, `number`, `date`, `search`), `label`, `placeholder`, `disabled`, checks |
 | `textarea` | `textarea` | as `input`, without `kind`, plus `rows` |
@@ -126,7 +126,7 @@ A `button` with `submit = true` submits the form it's in. The form fires `.submi
 inside it passes; otherwise `.invalid`, and each failing control shows its message.
 
 `button` takes `variant` (`"primary"`, `"secondary"`, `"accent"`, `"neutral"`, `"ghost"`, `"link"`, `"error"`)
-and `size` (`"xs"`, `"sm"`, `"md"`, `"lg"`), daisyUI's own. Controls are drawn as daisyUI's controls.
+and `size` (`"xs"`, `"sm"`, `"md"`, `"lg"`), daisyUI's own. Like the style keys, either can take a table by screen size. Controls are drawn as daisyUI's controls.
 
 Values in text with no `format` are shown as text: strings as they are, numbers and booleans in their
 JSON form, `null` as empty, and arrays and objects as compact JSON.
@@ -257,7 +257,9 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a cell with `each` shows loading, the loud failure (with detail even when `error` is set), `empty`, and its children, as its source moves through each status
 - value display with no `format`: string, number, boolean, `null`, array, object
 - `dialog` opens with its variable, and closing it sets the variable false and fires `.close`
-- `link` opens an outside URL in a new tab
+- `link` opens an outside URL in a new tab, and any other in the same one
+- an `image` without `alt` is a config error
+- `button`'s `variant` and `size` give daisyUI's classes, by screen size too
 - `markdown` draws Markdown and escapes raw HTML
 - `svg` draws its markup inline and strips scripts, `on*` attributes, `foreignObject`, and outside links; with `label` it's a named image; markup that isn't one `svg` is a config error
 - `divider` is an `hr`
@@ -288,7 +290,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `cell` with the layout and box keys, replacing `stack`; `text` with `level` and the type keys, replacing `heading` ([120](120_one_app.md))
 - [x] screen sizes for every style key, and the whole style vocabulary in the built CSS
 - [x] placement keys on every node
-- [ ] `image` and `link`; `button`'s variants and sizes
+- [x] `image` and `link`; `button`'s variants and sizes
 - [ ] `divider` and `svg`
 - [ ] `audio`, `video`, and `iframe`
 - [ ] `each`, with its faces in `Wired`, and `item.*`

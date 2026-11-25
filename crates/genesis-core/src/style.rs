@@ -440,6 +440,24 @@ words! {
     }
 }
 
+words! {
+    /// A button's look: daisyUI's own.
+    Variant {
+        Primary = "primary",
+        Secondary = "secondary",
+        Accent = "accent",
+        Neutral = "neutral",
+        Ghost = "ghost",
+        Link = "link",
+        Error = "error",
+    }
+}
+
+words! {
+    /// A button's size: daisyUI's own.
+    ButtonSize { Xs = "xs", Sm = "sm", Md = "md", Lg = "lg" }
+}
+
 /// One type per style key, each holding its value and knowing its own name.
 pub mod keys {
     use super::{BySize, StyleKey, read};
@@ -535,6 +553,10 @@ pub mod keys {
         Width(super::Width) = "width";
         /// `max_width`: caps its width.
         MaxWidth(super::MaxWidth) = "max_width";
+        /// `variant`: a button's look.
+        Variant(super::Variant) = "variant";
+        /// `size` on a button: its size.
+        ButtonSize(super::ButtonSize) = "size";
     }
 }
 

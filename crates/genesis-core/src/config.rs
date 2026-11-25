@@ -108,6 +108,10 @@ pub enum Node {
     Text(Text),
     /// A button.
     Button(Button),
+    /// A picture.
+    Image(Image),
+    /// A link to another page.
+    Link(Link),
 }
 
 impl Node {
@@ -117,6 +121,8 @@ impl Node {
             Node::Cell(n) => n.placed(),
             Node::Text(n) => n.placed(),
             Node::Button(n) => n.placed(),
+            Node::Image(n) => n.placed(),
+            Node::Link(n) => n.placed(),
         }
     }
 
@@ -126,6 +132,8 @@ impl Node {
             Node::Cell(n) => n.id.as_deref(),
             Node::Text(n) => n.id.as_deref(),
             Node::Button(n) => n.id.as_deref(),
+            Node::Image(n) => n.id.as_deref(),
+            Node::Link(n) => n.id.as_deref(),
         }
     }
 
@@ -207,9 +215,47 @@ styled! {
         pub id: Option<String>,
         /// The button's text.
         pub label: String,
+        /// Its look: `"primary"` unless it says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub variant: Option<crate::style::keys::Variant>,
+        /// Its size: daisyUI's `"md"` unless it says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub size: Option<crate::style::keys::ButtonSize>,
         /// Shortcut for a handler on this button's `.click`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub on_click: Option<Vec<Step>>,
+    }
+}
+
+styled! {
+    [boxed, placed]
+    /// `type = "image"`: a picture ([spec 040](../../../specs/040_catalog.md)).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Image {
+        /// The node's name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// Where the picture is; may hold templates.
+        pub src: String,
+        /// What it shows, for screen readers and when it can't load; `""` for decoration. Required.
+        pub alt: String,
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "link"`: a link to another page. One outside the app opens in a new tab.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Link {
+        /// The node's name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The words; may hold templates.
+        pub text: String,
+        /// Where it goes; may hold templates.
+        pub href: String,
     }
 }
 

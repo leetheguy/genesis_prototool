@@ -252,6 +252,8 @@ fn draw(node: &Node, place: String, host: &Host) -> AnyView {
         Node::Cell(n) => n.view(wired),
         Node::Text(n) => n.view(wired),
         Node::Button(n) => n.view(wired),
+        Node::Image(n) => n.view(wired),
+        Node::Link(n) => n.view(wired),
     }
 }
 
