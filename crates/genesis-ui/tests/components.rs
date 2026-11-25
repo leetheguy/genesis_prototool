@@ -151,3 +151,29 @@ text = "{{ props.pair.1 }} {{ props }}"
         "{out}"
     );
 }
+
+#[test]
+fn a_component_repeats_a_list_it_is_given() {
+    let list = r#"
+[component]
+props = ["names"]
+
+[[body]]
+type = "cell"
+each = "props.names"
+empty = "No one."
+
+[[body.children]]
+type = "text"
+text = "<{{ item }}>"
+"#;
+    let out = html(
+        "[state]\nwho = [\"Ada\", \"Lin\"]\n[[body]]\ntype = \"use\"\ncomponent = \"list\"\nprops = { names = \"{{ app.who }}\" }\n[[body]]\ntype = \"use\"\ncomponent = \"list\"\nprops = { names = [] }\n",
+        &[("list.toml", list)],
+    );
+    assert!(
+        out.contains("&lt;Ada&gt;") && out.contains("&lt;Lin&gt;"),
+        "{out}"
+    );
+    assert!(out.contains("No one."), "{out}");
+}

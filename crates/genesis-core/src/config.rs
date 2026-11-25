@@ -1807,7 +1807,7 @@ fn check_node(
         if in_form_here {
             problem("a form can't hold another form".into());
         }
-        if let Some(data) = form.data.as_deref().filter(|d| !is_list_path(d)) {
+        if let Some(data) = form.data.as_deref().filter(|d| !is_list_path(d, inside)) {
             problem(format!(
                 "`data` is a variable's path, like \"app.contact\" or \"item\", not {data:?}"
             ));
@@ -1824,7 +1824,7 @@ fn check_node(
     }
     if let Node::Select(select) = node {
         match &select.options {
-            Options::From(path) if !is_list_path(path) => problem(format!(
+            Options::From(path) if !is_list_path(path, inside) => problem(format!(
                 "`options` is a list, or a variable's path like \"app.companies\", not {path:?}"
             )),
             Options::From(_) => {}
@@ -1845,7 +1845,7 @@ fn check_node(
             problem("a cell lays out by `flow` or by `grid`, not both".into());
         }
         match &cell.each {
-            Some(path) if !is_list_path(path) => problem(format!(
+            Some(path) if !is_list_path(path, inside) => problem(format!(
                 "`each` is a variable's path, like \"app.contacts\" or \"item.tags\", not {path:?}"
             )),
             Some(_) => {}
@@ -1923,8 +1923,8 @@ fn is_writable_path(path: &str) -> bool {
 }
 
 /// Whether `path` names a variable an `each` can repeat over: `item`, or a dotted path under
-/// `app.` or `item.` of plain names.
-fn is_list_path(path: &str) -> bool {
+/// `app.` or `item.` of plain names, and `inside` a component, under `props.` too.
+fn is_list_path(path: &str, inside: bool) -> bool {
     let mut parts = path.split('.');
     let plain = |part: &str| {
         !part.is_empty()
@@ -1934,7 +1934,7 @@ fn is_list_path(path: &str) -> bool {
     };
     match parts.next() {
         Some("item") => parts.all(plain),
-        Some("app") => {
+        Some(root) if root == "app" || (inside && root == "props") => {
             let rest: Vec<&str> = parts.collect();
             !rest.is_empty() && rest.into_iter().all(plain)
         }
