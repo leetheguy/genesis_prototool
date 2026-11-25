@@ -1,0 +1,97 @@
+# CI (AGENTS.md, CI binding): every pull request and every push to main gets the same checks as
+# scripts/precommit.sh, plus coverage, the security scans, and the deployed checks in a real browser
+# and in Docker. Mutation testing is left out while Genesis is being built (the user's call).
+# CI holds no secrets: the deployed checks make their own throwaway tokens.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # .cargo/config.toml caps jobs at 2 for a small dev box; runners have room for more.
+  CARGO_BUILD_JOBS: 4
+  TRUNK_VERSION: 0.22.2
+  TAILWIND_VERSION: 4.3.5
+
+jobs:
+  precommit:
+    name: precommit and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt, llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete,cargo-llvm-cov
+      - name: trunk and Tailwind (the versions docs/setup.md pins)
+        run: scripts/ci-tools.sh
+      - name: scripts/precommit.sh
+        run: scripts/precommit.sh
+      - name: scripts/coverage.sh (90% line floor)
+        run: scripts/coverage.sh
+
+  security:
+    name: security (cargo audit, gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # gitleaks scans the whole history, not just the last commit.
+          fetch-depth: 0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,gitleaks
+      - name: cargo audit
+        run: cargo audit
+      - name: gitleaks
+        run: gitleaks git --redact --verbose .
+
+  browser:
+    name: deployed checks in a browser (scripts/check-hello.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: trunk and Tailwind
+        run: scripts/ci-tools.sh
+      - name: Chromium for playwright-core
+        working-directory: tests/deployed
+        run: |
+          npm ci
+          npx playwright-core install --with-deps chromium-headless-shell
+          chrome="$(find "$HOME/.cache/ms-playwright" -type f -name chrome-headless-shell | head -n 1)"
+          test -x "$chrome"
+          echo "GENESIS_CHROME=$chrome" >> "$GITHUB_ENV"
+      - name: scripts/check-hello.sh
+        run: scripts/check-hello.sh
+
+  compose:
+    name: deployed check in Docker (scripts/check-compose.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: scripts/check-compose.sh
+        run: scripts/check-compose.sh

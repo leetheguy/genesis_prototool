@@ -35,3 +35,10 @@ Then:
 
 `.cargo/config.toml` caps builds at two parallel jobs, because the first box had about 1.5 GB of free
 memory. Raise it on a bigger machine.
+
+## CI
+
+`.github/workflows/ci.yml` sets up the same toolchain on GitHub's runners: Rust stable with the wasm
+target, `cargo-machete` and `cargo-llvm-cov` (prebuilt, through `taiki-e/install-action`), and trunk and
+Tailwind at the versions above (`scripts/ci-tools.sh`). The browser checks get Chromium from
+`npx playwright-core install --with-deps chromium-headless-shell` and find it through `GENESIS_CHROME`.
