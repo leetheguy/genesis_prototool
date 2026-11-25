@@ -13,12 +13,23 @@ impl Component for Cell {
     const EVENTS: &'static [&'static str] = &[];
 
     fn view(&self, wired: Wired) -> AnyView {
-        let children: Vec<AnyView> = self
-            .children
-            .iter()
-            .enumerate()
-            .map(|(i, child)| wired.child(i, child))
-            .collect();
+        let children = match &self.each {
+            Some(path) => wired
+                .each(
+                    path,
+                    self.empty.as_deref(),
+                    self.error.as_deref(),
+                    &self.children,
+                )
+                .into_any(),
+            None => self
+                .children
+                .iter()
+                .enumerate()
+                .map(|(i, child)| wired.child(i, child))
+                .collect_view()
+                .into_any(),
+        };
         let class = wired.class(
             ClassList::default()
                 .layout(self.layout())

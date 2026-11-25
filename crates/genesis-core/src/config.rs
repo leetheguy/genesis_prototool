@@ -188,6 +188,16 @@ styled! {
         /// The nodes inside it.
         #[serde(default)]
         pub children: Vec<Node>,
+        /// A variable holding a list (`app.contacts`, or `item.tags` inside another `each`): draws
+        /// the children once per element, with `item.*` set to it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub each: Option<String>,
+        /// With `each`, what it shows when the list is empty; "Nothing here." unless it says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub empty: Option<String>,
+        /// With `each`, a line of its own above the detail when its source fails.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
     }
 }
 
@@ -1032,15 +1042,50 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
 /// since it may have no `id`.
 fn check_node(node: &Node, place: &str, problems: &mut Vec<ConfigError>) {
     if let Node::Cell(cell) = node {
+        let mut problem =
+            |message: String| problems.push(problem_in("app.toml", format!("{place}: {message}")));
         if cell.flow.is_some() && cell.grid.is_some() {
-            problems.push(problem_in(
-                "app.toml",
-                format!("{place}: a cell lays out by `flow` or by `grid`, not both"),
-            ));
+            problem("a cell lays out by `flow` or by `grid`, not both".into());
+        }
+        match &cell.each {
+            Some(path) if !is_list_path(path) => problem(format!(
+                "`each` is a variable's path, like \"app.contacts\" or \"item.tags\", not {path:?}"
+            )),
+            Some(_) => {}
+            None => {
+                for (key, set) in [
+                    ("empty", cell.empty.is_some()),
+                    ("error", cell.error.is_some()),
+                ] {
+                    if set {
+                        problem(format!("`{key}` goes with `each`"));
+                    }
+                }
+            }
         }
         for (i, child) in cell.children.iter().enumerate() {
             check_node(child, &child_place(place, i), problems);
         }
+    }
+}
+
+/// Whether `path` names a variable an `each` can repeat over: `item`, or a dotted path under
+/// `app.` or `item.` of plain names.
+fn is_list_path(path: &str) -> bool {
+    let mut parts = path.split('.');
+    let plain = |part: &str| {
+        !part.is_empty()
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    };
+    match parts.next() {
+        Some("item") => parts.all(plain),
+        Some("app") => {
+            let rest: Vec<&str> = parts.collect();
+            !rest.is_empty() && rest.into_iter().all(plain)
+        }
+        _ => false,
     }
 }
 

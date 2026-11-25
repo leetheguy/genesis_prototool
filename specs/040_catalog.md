@@ -96,8 +96,11 @@ It follows the variable:
 - When it's `failed`, the cell shows a loud error in its place: the operation, the status, and the message.
   `error = "..."` adds a line of its own on top; it can't hide the detail.
 - When the list is `null` or `[]`, the cell shows `empty = "..."` (default "Nothing here.").
+- When the variable holds something that isn't a list, the cell shows a loud error saying so.
 
-The `Wired` wrapper draws these faces, so they look the same everywhere.
+The `Wired` wrapper draws these faces, so they look the same everywhere. `each` is a variable's path:
+`app.*`, or `item` and `item.*` inside another `each` (the inner element shadows the outer). Anything
+else, or `empty` or `error` on a cell without `each`, is a config error naming the cell's place.
 
 ### Controls
 
@@ -258,7 +261,9 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - `grid = 12` with children of `span = 4` lays them three to a row; `offset` skips columns; `"fit"` fits columns; a span by screen size changes with the window (in a real browser: `tests/deployed/layout.mjs`)
 - every node takes the placement keys, drawn after its own classes
 - a `text` with `level` is a heading element
-- a cell with `each` draws its children once per element, each seeing its own element as `item.*`
+- a cell with `each` draws its children once per element, each seeing its own element as `item.*`; a nested `each` over `item.*` sees its own
+- a click inside an `each` carries its element as `event.item` (in a real browser: `tests/deployed/each.mjs`)
+- a value that isn't a list shows a loud failure; a bad `each` path, or `empty` or `error` without `each`, is a config error
 - a cell with `each` shows loading, the loud failure (with detail even when `error` is set), `empty`, and its children, as its source moves through each status
 - value display with no `format`: string, number, boolean, `null`, array, object
 - `dialog` opens with its variable, and closing it sets the variable false and fires `.close`
@@ -298,7 +303,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `image` and `link`; `button`'s variants and sizes
 - [x] `divider` and `svg`
 - [x] `audio`, `video`, and `iframe`
-- [ ] `each`, with its faces in `Wired`, and `item.*`
+- [x] `each`, with its faces in `Wired`, and `item.*`
 - [ ] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups
 - [ ] `form`, controls with `name`, and the `submit` button
 - [ ] `file`, and calls that send files as multipart through `serve`

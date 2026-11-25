@@ -215,18 +215,24 @@ pub struct Wired {
     place: String,
     /// Where it sits in its parent: its placement keys, the same for every type.
     placed: Placed,
+    /// Inside an `each`, the element it's drawn for: `item.*`.
+    item: Option<Value>,
 }
 
 impl Wired {
-    /// Fires `NAME.event` with `payload`.
-    pub fn fire(&self, event: &str, payload: Value) {
+    /// Fires `NAME.event` with `payload`; inside an `each`, the payload carries the element as `item`.
+    pub fn fire(&self, event: &str, mut payload: Value) {
+        if let (Some(item), Value::Object(fields)) = (&self.item, &mut payload) {
+            fields.insert("item".into(), item.clone());
+        }
         self.host.fire(&format!("{}.{event}", self.name), payload);
     }
 
-    /// Display text with its templates filled from the current state; redraws as state changes.
+    /// Display text with its templates filled from the current state (and `item.*` inside an
+    /// `each`); redraws as state changes.
     pub fn text(&self, text: &str) -> impl Fn() -> String + Send + Sync + 'static {
-        let (host, text) = (self.host.clone(), text.to_string());
-        move || template::text(&text, |path| host.get(path))
+        let (host, item, text) = (self.host.clone(), self.item.clone(), text.to_string());
+        move || template::text(&text, |path| look(&host, item.as_ref(), path))
     }
 
     /// The `class` for the node's element: `own` (its component's classes), then its placement.
@@ -236,17 +242,139 @@ impl Wired {
 
     /// Draws the `i`th child of this node.
     pub fn child(&self, i: usize, node: &Node) -> AnyView {
-        draw(node, child_place(&self.place, i), &self.host)
+        draw(
+            node,
+            child_place(&self.place, i),
+            &self.host,
+            self.item.clone(),
+        )
+    }
+
+    /// Draws `children` once per element of the list at `path`, each seeing its element as
+    /// `item.*`, or the face for where the list stands: loading or failed (when its variable is a
+    /// source), empty, or not a list at all. The faces look the same everywhere.
+    pub(crate) fn each(
+        &self,
+        path: &str,
+        empty: Option<&str>,
+        error: Option<&str>,
+        children: &[Node],
+    ) -> impl IntoView + use<> {
+        let (host, item, place) = (self.host.clone(), self.item.clone(), self.place.clone());
+        let (path, children) = (path.to_string(), children.to_vec());
+        let empty = empty.unwrap_or("Nothing here.").to_string();
+        let error = error.map(String::from);
+        move || {
+            if let Some(face) = source_face(&host, &path, error.as_deref()) {
+                return face;
+            }
+            match look(&host, item.as_ref(), &path) {
+                None | Some(Value::Null) => empty_face(&empty),
+                Some(Value::Array(elements)) if elements.is_empty() => empty_face(&empty),
+                Some(Value::Array(elements)) => elements
+                    .into_iter()
+                    .flat_map(|element| {
+                        children
+                            .iter()
+                            .enumerate()
+                            .map(|(i, child)| {
+                                draw(child, child_place(&place, i), &host, Some(element.clone()))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect_view()
+                    .into_any(),
+                Some(other) => failed_face(
+                    None,
+                    &format!("each needs a list, and {path} is {}", kind(&other)),
+                ),
+            }
+        }
     }
 }
 
-/// Draws one node through its wiring.
-fn draw(node: &Node, place: String, host: &Host) -> AnyView {
+/// Looks `path` up: `item` and `item.*` in the element being drawn, anything else in state.
+fn look(host: &Host, item: Option<&Value>, path: &str) -> Option<Value> {
+    let Some(item) = item else {
+        return host.get(path);
+    };
+    if path == "item" {
+        return Some(item.clone());
+    }
+    match path.strip_prefix("item.") {
+        Some(rest) => rest
+            .split('.')
+            .try_fold(item, |value, key| match value {
+                Value::Array(list) => list.get(key.parse::<usize>().ok()?),
+                _ => value.get(key),
+            })
+            .cloned(),
+        None => host.get(path),
+    }
+}
+
+/// The loading or failed face for a list that's a source (`app.NAME`) while it's loading or
+/// has failed; `None` otherwise.
+fn source_face(host: &Host, path: &str, error: Option<&str>) -> Option<AnyView> {
+    let name = path.strip_prefix("app.").filter(|n| !n.contains('.'))?;
+    let call = host.machine().app().sources.get(name)?.call.clone();
+    match host.get(&format!("sys.sources.{name}"))?.as_str()? {
+        "loading" => Some(
+            view! { <span class="loading loading-spinner" role="status" aria-label="Loading"></span> }
+                .into_any(),
+        ),
+        "failed" => {
+            // The detail is the newest failure of its operation; `error` can't hide it.
+            let failed = format!("{call}.failed");
+            let message = host
+                .get("sys.errors")
+                .and_then(|errors| {
+                    errors.as_array()?.iter().find(|e| e["name"] == failed.as_str()).cloned()
+                })
+                .and_then(|e| e["message"].as_str().map(String::from));
+            let detail = match message {
+                Some(message) => format!("{call} failed: {message}"),
+                None => format!("{call} failed"),
+            };
+            Some(failed_face(error, &detail))
+        }
+        _ => None,
+    }
+}
+
+/// The loud face: an error alert with the cell's own line, if it has one, above the detail.
+fn failed_face(line: Option<&str>, detail: &str) -> AnyView {
+    let line = line.map(|line| view! { <p class="font-bold">{line.to_string()}</p> });
+    let detail = detail.to_string();
+    view! { <div role="alert" class="alert alert-error"><div>{line}<p>{detail}</p></div></div> }
+        .into_any()
+}
+
+/// The face for an empty list.
+fn empty_face(text: &str) -> AnyView {
+    let text = text.to_string();
+    view! { <p class="text-base-content/60">{text}</p> }.into_any()
+}
+
+/// A value's kind, in words, for a failure.
+fn kind(value: &Value) -> &'static str {
+    match value {
+        Value::Object(_) => "a table",
+        Value::String(_) => "text",
+        Value::Number(_) => "a number",
+        Value::Bool(_) => "true or false",
+        Value::Array(_) | Value::Null => "a list",
+    }
+}
+
+/// Draws one node through its wiring; inside an `each`, `item` is the element it's drawn for.
+fn draw(node: &Node, place: String, host: &Host, item: Option<Value>) -> AnyView {
     let wired = Wired {
         host: host.clone(),
         name: node.name(&place),
         place,
         placed: node.placed(),
+        item,
     };
     match node {
         Node::Cell(n) => n.view(wired),
@@ -272,7 +400,7 @@ pub fn app_view(host: Host) -> AnyView {
             let body = host.machine().app().body.clone();
             body.iter()
                 .enumerate()
-                .map(|(i, node)| draw(node, body_place(i), &host))
+                .map(|(i, node)| draw(node, body_place(i), &host, None))
                 .collect_view()
         }
     };
