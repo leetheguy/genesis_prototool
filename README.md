@@ -65,7 +65,7 @@ folder, at `/`, and most of the atoms are built (cells with style keys and `each
 buttons, dividers, svg, audio, video, iframes, the controls (inputs, textareas, selects, checkboxes,
 toggles, and radios), forms, file pickers, whose files go out with a call as multipart, dialogs, and Markdown).
 Components are built too: TOML files of atoms, used by name with their props, each instance with its own
-local state. Next come display logic and what
+local state. A component's own steps fire events, and the app's handlers for them can do anything. Next come display logic and what
 agents need to build a screen on their own. The design is in
 [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 

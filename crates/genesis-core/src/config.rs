@@ -1734,6 +1734,31 @@ fn check_component(component: &Component, checks: &Checks, problems: &mut Vec<Co
     }
     for (i, node) in component.body.iter().enumerate() {
         check_node(node, &body_place(i), false, checks, problems);
+        reaches(node, &body_place(i), &mut |m| {
+            problems.push(problem_in(checks.file, m))
+        });
+    }
+}
+
+/// Looks through a component's own steps for one that reaches past it: a custom action, a `call`,
+/// or a `reload`. A component's steps work on its own `local.*`, run its props' steps, and fire
+/// events; the app's handlers for those events can do anything ([spec 090](../../../specs/090_components.md)).
+fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
+    for step in node.shortcuts() {
+        let what = match step {
+            Step::Run(name) if prop_steps(name).is_none() && !name.contains("{{") => {
+                format!("runs the custom action `{name}`")
+            }
+            Step::Call { call, .. } => format!("calls `{call}`"),
+            Step::Reload { .. } => "reloads a source".to_string(),
+            _ => continue,
+        };
+        problem(format!(
+            "{place}: a component's own steps only fire events, so this step, which {what}, won't work here; fire an event and handle it in the app, or take the steps as a prop"
+        ));
+    }
+    for (i, child) in node.children().iter().enumerate() {
+        reaches(child, &child_place(place, i), problem);
     }
 }
 

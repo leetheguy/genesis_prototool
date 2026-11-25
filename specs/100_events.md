@@ -60,7 +60,8 @@ actually changes.
 - **Shortcut:** a step that's a plain string runs that action: `"sign_out"`. A node's `on_*` takes one step
   alone as well as a list: `on_click = "sign_out"`.
 - Inside a component, the step `"{{ props.NAME }}"` runs the steps its caller passed in as that prop
-  ([090](090_components.md)).
+  ([090](090_components.md)). A component's own steps fire events and reach nothing else: no custom action,
+  `call`, or `reload`. The app's handlers for its events can do anything.
 
 Handlers never test anything. To branch, fire different events. A call's status already does that
 (`.ok` and `.failed`), and so does `event = "/outcome"` when the API should pick the branch.

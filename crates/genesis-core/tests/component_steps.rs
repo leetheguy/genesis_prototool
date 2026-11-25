@@ -276,3 +276,64 @@ fn one_step_alone_works_as_any_shortcut() {
     m.fire("f.submit", json!({}));
     assert_eq!(m.get("app.n"), Some(json!(2)));
 }
+
+#[test]
+fn a_components_own_steps_that_reach_past_it_are_config_errors() {
+    let card = r#"
+[component]
+props = ["contact", "on_open"]
+
+[[body]]
+type = "button"
+label = "Cheer"
+on_click = "cheer"
+
+[[body]]
+type = "form"
+on_submit = [{ call = "api.contacts.create" }]
+
+[[body.children]]
+type = "button"
+label = "Again"
+on_click = [{ reload = ["app.contacts"] }]
+"#;
+    let out = problems(&[("app.toml", APP), ("contact_card.toml", card)]);
+    assert!(
+        out.contains("contact_card.toml: body.0: a component's own steps only fire events, so this step, which runs the custom action `cheer`"),
+        "{out}"
+    );
+    assert!(out.contains("body.1: a component's own steps only fire events, so this step, which calls `api.contacts.create`"), "{out}");
+    assert!(out.contains("body.1.children.0: a component's own steps only fire events, so this step, which reloads a source"), "{out}");
+}
+
+#[test]
+fn a_component_fires_any_event_and_the_apps_handlers_do_the_rest() {
+    let app = APP.replace(
+        "opened = \"\"",
+        "opened = \"\"\n\n[on]\n\"contact.picked\" = [{ set = \"app.opened\", to = \"{{ event.who }}\" }, { go = \"contact\" }]",
+    );
+    let card = r#"
+[component]
+props = ["contact", "on_open"]
+
+[[body]]
+type = "button"
+id = "pick"
+label = "Pick"
+on_click = [{ fire = "contact.picked", with = { who = "{{ props.contact.name }}" } }]
+"#;
+    let mut m = Machine::new(load(&[("app.toml", &app), ("contact_card.toml", card)]).unwrap());
+    m.fire_within(
+        "card.pick.click",
+        json!({ "item": { "name": "Lin" } }),
+        Some("1"),
+        Some(Within {
+            name: "card".into(),
+            row: Some("1".into()),
+            props: json!({ "contact": { "name": "Lin" } }),
+            outer: None,
+        }),
+    );
+    assert_eq!(m.get("app.opened"), Some(json!("Lin")));
+    assert_eq!(m.get("sys.view"), Some(json!("contact")));
+}

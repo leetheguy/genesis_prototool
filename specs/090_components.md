@@ -93,6 +93,11 @@ props = { contact = "{{ item }}" }
   unique in the app. Every instance in an `each` fires the same name, and the payload's `item` tells them apart.
 - A component sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
   screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
+- **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
+  props' steps, and `fire` events. A custom action, a `call`, or a `reload` written in a component is a config
+  error. Events are universal, though: an event a component fires keeps the name it's given, and the app's
+  handlers for it can do anything. Genesis sets no structure on event names. Any scoping a user wants is a
+  naming convention they choose.
 
 ## What a component isn't
 
@@ -115,6 +120,8 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
   that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
 - `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
+- a custom action, a `call`, or a `reload` in a component's own steps is a config error; its `fire` keeps the
+  event's name, and the app's handlers for it run
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
 - a component with named controls or a submit button used outside a form, and one holding a form used inside
   a form, are config errors
@@ -130,3 +137,9 @@ Milestone three ([999](999_todo.md)):
   with the next task)
 - [x] local state per instance, and events named under the `use` node's `id`
 - [x] props that carry steps
+
+## Log
+
+- 2026-11-25: a component's own steps fire events and reach nothing else. Lee: "They can just call events.
+  But the events can in turn reach anything." Events are universal, and Genesis doesn't tell people how to
+  structure them; any structure can be a naming convention. This was an open question in [999](999_todo.md).
