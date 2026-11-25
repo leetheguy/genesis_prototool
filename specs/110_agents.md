@@ -116,3 +116,13 @@ Milestone three ([999](999_todo.md)):
   that isn't a host name, with an optional port, falls back to `serve`'s own `--listen` address, so nothing
   but an address ever goes into the guide. The guide goes only to the one who asked, so the host they sent is
   theirs to get back.
+- 2026-11-25: How the log is written, worked out building it:
+  - `serve` loads the app once at start and once after each change goes quiet, and logs that load: each
+    problem, or `load ok` when it loads clean after a failed load. A clean start logs nothing. `/status` and
+    each config stream load too, but don't log, or every poll would add the same lines.
+  - A failed call is one that answers `{"error"}`, a status of 400 or more, or names an operation the app
+    doesn't declare. The client sends its ID (`client`) and the event that started the chain (`from`) with
+    each call, and the line shows both. The API's answer is written as one line of JSON, with any
+    credential's value redacted.
+  - Each entry is one line: a line break inside one is written as a space.
+  - `log_lines` is read from the app as it last loaded clean, else the default.
