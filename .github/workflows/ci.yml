@@ -22,6 +22,7 @@ env:
   CARGO_BUILD_JOBS: 4
   TRUNK_VERSION: 0.22.2
   TAILWIND_VERSION: 4.3.5
+  GITLEAKS_VERSION: 8.30.1
 
 jobs:
   precommit:
@@ -54,11 +55,14 @@ jobs:
           fetch-depth: 0
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit,gitleaks
+          tool: cargo-audit
       - name: cargo audit
         run: cargo audit
       - name: gitleaks
-        run: gitleaks git --redact --verbose .
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose .
 
   browser:
     name: deployed checks in a browser (scripts/check-hello.sh)
