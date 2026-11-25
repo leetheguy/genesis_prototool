@@ -135,3 +135,8 @@ Milestone three ([999](999_todo.md)):
   `since` and `tail`, it's the last `tail` lines from `since` on. A `since` that isn't a time in the log's own
   form (`2026-11-24T10:00:00Z`), or a `tail` that isn't a whole number, is a `400` saying so. Before anything
   is logged, it answers nothing, not a `404`.
+- 2026-11-25: How a push travels: the config stream sends it as a `push` event holding `{"name", "payload"}`, and
+  the client fires `push.{name}` with the payload. `delivered` counts the open config streams. A client still on
+  its problems screen, with no app loaded, has nothing to fire it in, and drops it. The stream sends a comment
+  every 15 seconds, so a closed tab stops counting soon after. The token is checked before the name and the body,
+  so without it the answer gives nothing away; each refusal is logged as `push NAME: STATUS why`.
