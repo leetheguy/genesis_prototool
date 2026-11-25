@@ -15,9 +15,10 @@ use std::ops::Range;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
-/// The `sys.*` names a template or a path may read.
-const SYS: [&str; 8] = [
-    "theme", "outlet", "errors", "events", "bus", "sources", "toasts", "asking",
+/// The `sys.*` names a template or a path may read. `auth` is read before signing in is built, and
+/// shows nothing until then (Lee: "Allow sys.auth").
+const SYS: [&str; 9] = [
+    "theme", "outlet", "auth", "errors", "events", "bus", "sources", "toasts", "asking",
 ];
 
 /// Keys on a node whose value is a variable's path rather than a template.

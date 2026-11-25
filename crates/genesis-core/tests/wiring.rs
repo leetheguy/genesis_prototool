@@ -114,7 +114,7 @@ fn a_template_that_isnt_a_plain_lookup_or_reads_nothing_is_refused_where_its_wri
         ),
         (
             "Hi {{ sys.now }}",
-            "`sys.now` isn't one of Genesis's own variables: `sys.theme`, `sys.outlet`, `sys.errors`, `sys.events`, `sys.bus`, `sys.sources`, `sys.toasts`, `sys.asking`",
+            "`sys.now` isn't one of Genesis's own variables: `sys.theme`, `sys.outlet`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus`, `sys.sources`, `sys.toasts`, `sys.asking`",
         ),
         (
             "Hi {{ event.name }}",
@@ -201,7 +201,7 @@ each = "app.rows"
 show = { var = "app.page", is = 1 }
 [[body.children]]
 type = "text"
-text = "{{ item.name }} on {{ app.page }} in {{ sys.theme }}"
+text = "{{ item.name }} on {{ app.page }} in {{ sys.theme }}, signed {{ sys.auth }}"
 [[body]]
 type = "button"
 label = "Next"

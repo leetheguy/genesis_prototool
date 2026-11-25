@@ -176,3 +176,5 @@ isn't there ([100](100_events.md)), and a value missing inside a variable that i
   isn't there where it's written. A `go` to a page that isn't there is left out, as Lee decided ("When it
   runs"), and so is anything else that could be right later. The bus still fails each of them on its own,
   for an app that reached it some other way.
+- 2026-11-25: a template may read `sys.auth` before signing in is built; it shows nothing until then. Lee:
+  "Allow sys.auth".
