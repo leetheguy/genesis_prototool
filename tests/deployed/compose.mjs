@@ -4,6 +4,7 @@
 //
 // - agents edit the app through /fs/ only, with the token; what they write there is live at once
 // - the mirror is readable at /fs/.state/ and not writable through it
+// - the guide an agent puts at the top of the configs folder is served, open, at /agents
 // - serve can't write the configs folder, and the files service holds no credentials
 // - dufs isn't published on any host port
 //
@@ -72,6 +73,14 @@ try {
   await until("/status to say the fixed app loaded", async () => (await status()) === "loaded", 10_000);
   expect("the app's page isn't served", (await fetch(`${base}/`)).ok);
 
+  // The guide: open at /agents once AGENTS.md is in the configs folder, with BASE filled in.
+  expect("/agents without AGENTS.md isn't 404", (await fetch(`${base}/agents`)).status === 404);
+  const guide = await fetch(`${base}/fs/AGENTS.md`, { method: "PUT", headers: agent, body: "Start at BASE/status.\n" });
+  expect(`writing AGENTS.md through /fs/ answered ${guide.status}`, guide.ok);
+  const served = await fetch(`${base}/agents`);
+  const text = await served.text();
+  expect(`/agents answered ${served.status}: ${text}`, served.ok && text === `Start at ${base}/status.\n`);
+
   // The mirror is readable through /fs/.state/, and not writable.
   const mirrored = await fetch(`${base}/api/mirror`, {
     method: "POST",
@@ -107,7 +116,7 @@ try {
   }
   expect(`dufs is published on the host at ${published}`, published === "");
 
-  console.log("ok: /fs/ needs the token; what an agent wrote there went live; the mirror reads but doesn't write; serve can't write configs; files holds no credentials and isn't published");
+  console.log("ok: /fs/ needs the token; what an agent wrote there went live; /agents serves the guide; the mirror reads but doesn't write; serve can't write configs; files holds no credentials and isn't published");
 } catch (error) {
   console.error(`FAIL: ${error.message}${error.stderr ? `\n${error.stderr}` : ""}`);
   process.exitCode = 1;

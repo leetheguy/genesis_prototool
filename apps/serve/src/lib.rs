@@ -6,6 +6,7 @@
 //! | Route | What |
 //! |---|---|
 //! | `GET /` | the renderer's page, drawing the app |
+//! | `GET /agents` | the configs folder's `AGENTS.md`, the guide for agents, with `BASE` filled in ([spec 110](../../../specs/110_agents.md)) |
 //! | `GET /status` | `{"status": "loaded"}`, or `"failed"` with its `problems`, as JSON, so an agent can check its change took |
 //! | `GET /_genesis/*` | the renderer's bundle (`trunk build` output) |
 //! | `GET /api/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
@@ -260,6 +261,7 @@ fn routes(server: Arc<Server>) -> Router {
         .route("/health", get(|| async { "ok" }))
         .route("/", get(page))
         .route("/status", get(status))
+        .route("/agents", get(agents))
         .route("/api/config", get(config))
         .route("/api/mirror", post(mirror))
         .route("/api/call", post(call))
@@ -288,6 +290,97 @@ fn plain(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// The guide for agents: `AGENTS.md` from the top of the configs folder, with each `BASE` as a
+/// word of its own replaced by the address the request came to. Open, since an agent reads it
+/// before it has a token.
+async fn agents(State(server): Shared, headers: axum::http::HeaderMap) -> Response {
+    let guide = match tokio::fs::read_to_string(server.settings.configs.join("AGENTS.md")).await {
+        Ok(guide) => guide,
+        Err(_) => {
+            return refuse(
+                StatusCode::NOT_FOUND,
+                "No agent instructions here yet: add AGENTS.md to the top of the configs folder (a copy of docs/authoring.md).".into(),
+            );
+        }
+    };
+    let base = base(&headers, &server.settings.listen);
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/markdown; charset=utf-8",
+        )],
+        fill_base(&guide, &base),
+    )
+        .into_response()
+}
+
+/// The address a request came to: the scheme and host a proxy passes on, else `http` and `Host`.
+/// A host that isn't a host name (with an optional port) falls back to `listen`.
+fn base(headers: &axum::http::HeaderMap, listen: &str) -> String {
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    };
+    let scheme = match header("x-forwarded-proto") {
+        Some(p) if p.eq_ignore_ascii_case("https") => "https",
+        _ => "http",
+    };
+    let host = header("x-forwarded-host")
+        .or_else(|| header("host"))
+        .filter(|h| host_name(h))
+        .unwrap_or(listen);
+    format!("{scheme}://{host}")
+}
+
+/// A host name or IPv4 address, with an optional port: nothing that could carry anything else.
+fn host_name(host: &str) -> bool {
+    let (name, port) = match host.rsplit_once(':') {
+        Some((name, port)) => (name, Some(port)),
+        None => (host, None),
+    };
+    let name_ok = !name.is_empty()
+        && name.len() <= 253
+        && name.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        });
+    let port_ok = port.is_none_or(|p| !p.is_empty() && p.len() <= 5 && p.parse::<u16>().is_ok());
+    name_ok && port_ok
+}
+
+/// `text` with each `BASE` that stands as a word of its own replaced by `base`.
+fn fill_base(text: &str, base: &str) -> String {
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut before: Option<char> = None;
+    while let Some(at) = rest.find("BASE") {
+        let (head, tail) = rest.split_at(at);
+        out.push_str(head);
+        let prev = head
+            .chars()
+            .next_back()
+            .or(if head.is_empty() { before } else { None });
+        let next = tail["BASE".len()..].chars().next();
+        if word(prev) || word(next) {
+            out.push_str("BASE");
+        } else {
+            out.push_str(base);
+        }
+        before = Some('E');
+        rest = &tail["BASE".len()..];
+    }
+    out.push_str(rest);
+    out
 }
 
 async fn status(State(server): Shared) -> Json<Value> {
