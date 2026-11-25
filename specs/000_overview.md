@@ -20,7 +20,8 @@ design they add up to.
 (layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
 and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; the controls (`input`, `textarea`,
 `select`, `checkbox`, `toggle`, and `radio` groups), with `var` or with `name` in a `form`, and the `submit`
-button; `file`, whose picked files go out with a call as multipart, through `serve`; `dialog`; and `markdown`. That's every atom on 040's task list. Components
+button; `file`, whose picked files go out with a call as multipart, through `serve`; `dialog`; `markdown`; and the
+`outlet`, which `go` fills. That's every atom on 040's task list. Components
 ([090](090_components.md)) are built: component files, the `use` node, `props.*` (steps too), each instance's
 `local.*`, and events inside a component. A component's own steps fire events (no `call`, `reload`, or custom action),
 and the app's handlers for them do the rest. Still to come are display logic and what
@@ -55,8 +56,9 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
    plain HTML: `cell` (a `div`) for layout, and `text`, `image`, `svg`, `divider`, `audio`, `video`, `iframe`,
    `link`, `button`, each form control (including `radio` and `file`), `form`, and `dialog`. Cells take closed style keys (no CSS classes) for layout, placement, box, and type, with
    screen sizes. Stacks, grids, cards, and tables are built from cells ([040](040_catalog.md)). Which parts
-   show depends on variables ([080](080_display_logic.md)). There are no pages: moving from one screen to
-   another is hiding one stack of nodes and showing another.
+   show depends on variables ([080](080_display_logic.md)). There's no list of pages: `app.toml` is the
+   top-level page, and its one `outlet` draws the component `go` last named. Every other component is a
+   partial, and within a screen it's all show and hide.
 3. **Every value comes from the state machine.** Components read immutable state; the screen always
    shows its current state. See [050](050_state.md).
 4. **Everything runs on one bus.** Actions do things. Every interaction and every completed action
@@ -65,8 +67,8 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
    different event. One queue, one event at a time, a chain-depth limit, and named timers
    (`timers.toml`, run with `start` and `stop`) for anything on a clock. `sys.bus` shows who listens to what, and `sys.events` shows what happened. See [100](100_events.md).
 5. **Variables have scopes:** `app.*` for the whole app, `local.*` for one node or component,
-   `sys.*` for Genesis's own (`theme`, `auth`, `errors`), plus `item.*`, `form.*`, and `props.*` where they apply.
-   **A session persists:** what the user did (`app.*`, `sys.*`, locals, drafts) is kept on the device;
+   `sys.*` for Genesis's own (`theme`, `outlet`, `auth`, `errors`), plus `item.*`, `form.*`, and `props.*` where they apply.
+   **A session persists:** what the user did (`app.*`, most of `sys.*`, locals, drafts) is kept on the device;
    what an API said (sources, call results, whether you're signed in) is fetched fresh on every open. Each client
    also mirrors its state and event trail to files that agents read through dufs. See [050](050_state.md).
 6. **Sources feed variables from APIs**, by a call or a stream. They call again when the variables in

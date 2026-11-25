@@ -16,12 +16,16 @@ Components never know where a value came from: a starting value, a click, a call
 | sources | `[sources.NAME]` | app variables an operation or stream fills; any action can also write one, and its next load replaces it |
 | local variables | `state = { ... }` on a node or component | `open = false` |
 | form drafts | each `form` | the values typed and not yet submitted |
-| system variables | Genesis | `sys.theme`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus` |
+| system variables | Genesis | `sys.theme`, `sys.outlet`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus` |
 
 ### System variables
 
 - **`sys.theme`**: the daisyUI theme. It starts at `[app] theme`, can be set like any variable (a
   theme picker is a Select bound to it), and is kept on this device.
+- **`sys.outlet`**: the name of the component in the `outlet`, or `null` in an app without one. It starts
+  at the outlet's `default`, changes only by `go` ([100](100_events.md), "Going"), and isn't kept: every
+  open starts at the `default`. Over a config reload it stays, unless the component it names is gone or
+  now needs props; then it's the `default` again.
 - **`sys.errors`**: every loud failure, newest first: `{ at, op, status, message }`. It's read-only,
   and a cell with `each` can show it.
 - **`sys.events`** and **`sys.bus`**: the event trail and who listens to what ([100](100_events.md)).
@@ -145,6 +149,7 @@ start at their starting values. Removed variables are dropped. A source whose `c
 - with `[app.auth]`, `serve` refuses every call but `login` and `check` until signed in
 - a `password` input's value never appears in state, storage, or logs
 - after a config reload: kept, new, and removed variables; a changed source calls again
+- `sys.outlet` starts at the outlet's `default`, isn't kept, and stays over a config reload while its component can still go there
 
 ## Tasks
 
@@ -160,3 +165,6 @@ Milestone two ([999](999_todo.md)):
   (`app.view`) and shows and hides on it ([080](080_display_logic.md)). A `sys.view` kept on a device from
   before is ignored. Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."
 - 2026-11-25: `cancel` is gone ([100](100_events.md), "Timers"), so how a stream is stopped is open again ([999](999_todo.md)).
+- 2026-11-25: `sys.outlet` names the component in the `outlet`, which `go` fills ([100](100_events.md), "Going").
+  It isn't kept on the device, the smaller choice, and that's open in [999](999_todo.md). Lee: "Yes to app.toml
+  and outlet." "Yes to a default component named on the outlet."

@@ -94,12 +94,21 @@ props = { contact = "{{ item }}" }
 - A component sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
   screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
 - **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
-  props' steps, and `fire` events. A custom action, a `call`, a `reload`, a timer's `start` or `stop`, or a
-  `log` written in a component is a config error. To change what's shown, a component fires an event and the app's handler for it sets the app's
+  props' steps, and `fire` events. A custom action, a `call`, a `reload`, a `go`, a timer's `start` or
+  `stop`, or a `log` written in a component is a config error. To change what's shown, a component fires an event and the app's handler for it sets the app's
   variables, so all of an app's navigation can sit in one file if its author wants that (a convention, not
   part of Genesis). Events are universal, though: an event a component fires keeps the name it's given, and the app's
   handlers for it can do anything. Genesis sets no structure on event names. Any scoping a user wants is a
   naming convention they choose.
+
+## The outlet
+
+`app.toml` is the top-level page, and its body may hold one `outlet` ([040](040_catalog.md)). The outlet
+draws one component at a time, its `default` first, and `{ go = "NAME" }` swaps in another
+([100](100_events.md), "Going"). Any component without required props can go there; every other use of a
+component is a partial, drawn by a `use` node. In the outlet, a component is drawn as if by a `use` node
+named after it, with no props: its nodes fire as `contacts.save_btn.click`, and its locals stay while the
+app runs, as `contacts.local.*`.
 
 ## What a component isn't
 
@@ -122,11 +131,13 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
   that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
 - `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
-- a custom action, a `call`, a `reload`, a `start`, a `stop`, or a `log` in a component's own steps is a config error; its `fire` keeps the
+- a custom action, a `call`, a `reload`, a `go`, a `start`, a `stop`, or a `log` in a component's own steps is a config error; its `fire` keeps the
   event's name, and the app's handlers for it run
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
 - a component with named controls or a submit button used outside a form, and one holding a form used inside
   a form, are config errors
+- the outlet draws its `default`, and after `go`, the component named, wired under its own name (in a
+  real browser: `tests/deployed/hello.mjs`)
 - editing a component redraws every place that uses it ([060](060_hot_reload.md)) (in a real browser:
   `tests/deployed/components.mjs`)
 
@@ -139,6 +150,7 @@ Milestone three ([999](999_todo.md)):
   with the next task)
 - [x] local state per instance, and events named under the `use` node's `id`
 - [x] props that carry steps
+- [x] the `outlet`, which `go` fills
 
 ## Log
 
@@ -151,3 +163,8 @@ Milestone three ([999](999_todo.md)):
   navigation just fired from." There's no `go` step at all now ([100](100_events.md)). Timers and `log` are next: Lee calls them system components ([999](999_todo.md)).
 - 2026-11-25: a component's own steps can't `start` or `stop` a timer or `log`; they fire events and the app's
   handlers do the rest ([100](100_events.md), "Timers"). Lee, on the question: "Yes to number five."
+- 2026-11-25: the `outlet`. `app.toml` is the top-level page, and its one `outlet` draws the component `go`
+  last named, its `default` at first; every other component is a partial. A component's own steps can't
+  `go`: it fires an event, and the app's handler goes. Lee: "We don't need a list of pages. We need a
+  top-level page and a partial." "Let's just make it a special component that's only available in that
+  top-level page." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."

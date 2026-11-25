@@ -60,9 +60,12 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   connection timeouts; `toast` isn't built, and a connection's `timeout` runs on the server, per connection
   ([030](030_connections.md)). Open: each built-in's name and length, and whether `timers.toml` may set a
   built-in's `ms` or use its name. From [100](100_events.md), "Timers".
-- **Timer details built one way, not decided.** A running timer started again starts over; `stop` on one that
-  isn't running fires nothing; `repeat` is on or off, with no count; nothing starts a timer by itself (no
-  start when the app opens); and its events carry an empty payload. From [100](100_events.md), "Timers".
+- **The outlet's details, built the smaller way.** Lee settled `app.toml` as the top-level page, one `outlet`,
+  `go`, and the outlet's `default`. Built without a decision: `sys.outlet` isn't kept on the device, so every
+  open starts at the `default`; `go` takes a component's name written out, not a template; a name `go` can't
+  use (no such component, one that needs props, or no outlet) fails when the step runs, not at load; the
+  component in the outlet gets no props; a component's locals stay while it's away; and an outlet inside a
+  `form` or an `each` is a config error. From [100](100_events.md), "Going".
 - **How a stream is stopped.** [050](050_state.md) had a `cancel` naming the source, and `cancel` is gone.
 
 - **Sessions across `serve` restarts and replicas.** Sessions live in `serve`'s memory, so a restart signs
@@ -75,8 +78,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 
 ## Ideas
 
-- **`go`, as a convenience.** There's no `go` step: there are no pages, only showing and hiding. Lee: "We may
-  create it as a convenience down the road, but for now it's not necessary." From [100](100_events.md).
 - **Compiled plugin components.** Agent-written Leptos components, built into the renderer by a
   separate build step and loaded as plugins. They can't hot-reload the way TOML does, and they'd be agent
   code running in users' browsers, so this waits for real demand. From [090](090_components.md).
