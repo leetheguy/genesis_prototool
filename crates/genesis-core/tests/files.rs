@@ -203,7 +203,9 @@ fn body_outside_app_toml_is_a_problem_where_it_is() {
     .unwrap_err();
     assert_eq!(
         messages(&problems),
-        ["views/extra.toml:1:1: [[body]] goes only in app.toml, at the top of the configs folder"]
+        [
+            "views/extra.toml:1:1: [[body]] goes only in app.toml, at the top of the configs folder, or in a component"
+        ]
     );
 }
 
@@ -269,7 +271,7 @@ fn app_and_body_subtables_outside_app_toml_are_problems_where_their_headers_are(
         messages(&problems),
         [
             "a.toml:4:3: [app] goes only in app.toml, at the top of the configs folder",
-            "b.toml:1:1: [[body]] goes only in app.toml, at the top of the configs folder",
+            "b.toml:1:1: [[body]] goes only in app.toml, at the top of the configs folder, or in a component",
         ]
     );
 }

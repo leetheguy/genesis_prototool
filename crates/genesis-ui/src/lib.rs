@@ -240,6 +240,21 @@ pub struct Wired {
     row: Option<String>,
     /// Inside a `form`, that form.
     form: Option<FormAt>,
+    /// Inside a component, where it's used: its props, and its name for the nodes inside.
+    scope: Option<Arc<Scope>>,
+}
+
+/// Where a component is drawn: the `use` node's name, which the names of the nodes inside it go
+/// under, and its props as written, filled from where the `use` node sits.
+pub(crate) struct Scope {
+    /// The `use` node's name.
+    name: String,
+    /// Its props, as written: templates.
+    props: serde_json::Map<String, Value>,
+    /// What the props are filled from: the element the `use` node is drawn for, if any...
+    item: Option<Value>,
+    /// ...and the component it's inside, if any.
+    parent: Option<Arc<Scope>>,
 }
 
 /// The form a node is inside: its name, the row it's drawn in, and the variable its controls
@@ -269,8 +284,13 @@ impl Wired {
     /// Display text with its templates filled from the current state (and `item.*` inside an
     /// `each`); redraws as state changes.
     pub fn text(&self, text: &str) -> impl Fn() -> String + Clone + Send + Sync + 'static {
-        let (host, item, text) = (self.host.clone(), self.item.clone(), text.to_string());
-        move || template::text(&text, |path| look(&host, item.as_ref(), path))
+        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let text = text.to_string();
+        move || {
+            template::text(&text, |path| {
+                look(&host, item.as_ref(), scope.as_ref(), path)
+            })
+        }
     }
 
     /// The current value at `path` (and `item.*` inside an `each`); redraws as state changes.
@@ -278,8 +298,9 @@ impl Wired {
         &self,
         path: &str,
     ) -> impl Fn() -> Option<Value> + Clone + Send + Sync + 'static + use<> {
-        let (host, item, path) = (self.host.clone(), self.item.clone(), path.to_string());
-        move || look(&host, item.as_ref(), &path)
+        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let path = path.to_string();
+        move || look(&host, item.as_ref(), scope.as_ref(), &path)
     }
 
     /// A control's current value: its `var`'s, or, with `name` inside a form, what's typed into
@@ -348,7 +369,49 @@ impl Wired {
             self.item.clone(),
             self.row.clone(),
             self.form.clone(),
+            self.scope.clone(),
         )
+    }
+
+    /// Draws `component`'s body where this `use` node is, with `props` filled from here. Inside,
+    /// `props.*` reads them, `item` starts over, and names go under this node's.
+    pub(crate) fn component(
+        &self,
+        component: &genesis_core::config::Component,
+        props: &serde_json::Map<String, Value>,
+    ) -> Vec<AnyView> {
+        let scope = Arc::new(Scope {
+            name: self.name.clone(),
+            props: props.clone(),
+            item: self.item.clone(),
+            parent: self.scope.clone(),
+        });
+        component
+            .body
+            .iter()
+            .enumerate()
+            .map(|(i, node)| {
+                draw(
+                    node,
+                    body_place(i),
+                    &self.host,
+                    None,
+                    self.row.clone(),
+                    self.form.clone(),
+                    Some(scope.clone()),
+                )
+            })
+            .collect()
+    }
+
+    /// The app's component named `name`.
+    pub(crate) fn find_component(&self, name: &str) -> Option<genesis_core::config::Component> {
+        self.host.machine().app().components.get(name).cloned()
+    }
+
+    /// Whether the node has any placement keys.
+    pub(crate) fn is_placed(&self) -> bool {
+        self.placed != Placed::default()
     }
 
     /// Draws `children` once per element of the list at `path`, each seeing its element as
@@ -362,7 +425,7 @@ impl Wired {
         children: &[Node],
     ) -> impl IntoView + use<> {
         let (host, item, place) = (self.host.clone(), self.item.clone(), self.place.clone());
-        let (form, row) = (self.form.clone(), self.row.clone());
+        let (form, row, scope) = (self.form.clone(), self.row.clone(), self.scope.clone());
         let (path, children) = (path.to_string(), children.to_vec());
         let empty = empty.unwrap_or("Nothing here.").to_string();
         let error = error.map(String::from);
@@ -370,7 +433,7 @@ impl Wired {
             if let Some(face) = source_face(&host, &path, error.as_deref()) {
                 return face;
             }
-            match look(&host, item.as_ref(), &path) {
+            match look(&host, item.as_ref(), scope.as_ref(), &path) {
                 None | Some(Value::Null) => empty_face(&empty),
                 Some(Value::Array(elements)) if elements.is_empty() => empty_face(&empty),
                 Some(Value::Array(elements)) => elements
@@ -392,6 +455,7 @@ impl Wired {
                                     Some(element.clone()),
                                     row.clone(),
                                     form.clone(),
+                                    scope.clone(),
                                 )
                             })
                             .collect::<Vec<_>>()
@@ -407,23 +471,75 @@ impl Wired {
     }
 }
 
-/// Looks `path` up: `item` and `item.*` in the element being drawn, anything else in state.
-fn look(host: &Host, item: Option<&Value>, path: &str) -> Option<Value> {
-    let Some(item) = item else {
-        return host.get(path);
+/// Looks `path` up: `item` and `item.*` in the element being drawn, `props.*` in the component
+/// it's inside, anything else in state.
+fn look(
+    host: &Host,
+    item: Option<&Value>,
+    scope: Option<&Arc<Scope>>,
+    path: &str,
+) -> Option<Value> {
+    let (head, rest) = match path.split_once('.') {
+        Some((head, rest)) => (head, Some(rest)),
+        None => (path, None),
     };
-    if path == "item" {
-        return Some(item.clone());
-    }
-    match path.strip_prefix("item.") {
-        Some(rest) => rest
-            .split('.')
-            .try_fold(item, |value, key| match value {
-                Value::Array(list) => list.get(key.parse::<usize>().ok()?),
-                _ => value.get(key),
+    let base = match (head, item, scope) {
+        ("item", Some(item), _) => item.clone(),
+        ("props", _, Some(scope)) => match rest {
+            None => Value::Object(
+                scope
+                    .props
+                    .iter()
+                    .map(|(key, prop)| (key.clone(), fill(host, scope, prop)))
+                    .collect(),
+            ),
+            Some(rest) => {
+                let (key, rest) = match rest.split_once('.') {
+                    Some((key, rest)) => (key, Some(rest)),
+                    None => (rest, None),
+                };
+                let prop = fill(host, scope, scope.props.get(key)?);
+                return dig(&prop, rest);
+            }
+        },
+        _ => return host.get(path),
+    };
+    dig(&base, rest)
+}
+
+/// The value at `path` (dotted keys, and indexes into lists) inside `value`; all of it with none.
+fn dig(value: &Value, path: Option<&str>) -> Option<Value> {
+    let Some(path) = path else {
+        return Some(value.clone());
+    };
+    path.split('.')
+        .try_fold(value, |value, key| match value {
+            Value::Array(list) => list.get(key.parse::<usize>().ok()?),
+            _ => value.get(key),
+        })
+        .cloned()
+}
+
+/// A prop, filled from where its `use` node sits. A prop that's one template and names nothing
+/// set is `null`; one with text around its templates shows what's missing as empty, as display
+/// text does.
+fn fill(host: &Host, scope: &Arc<Scope>, prop: &Value) -> Value {
+    let look = |path: &str| look(host, scope.item.as_ref(), scope.parent.as_ref(), path);
+    match prop {
+        Value::String(text) => {
+            template::value(prop, look).unwrap_or_else(|_| match template::paths(text).as_slice() {
+                [_] if text.trim().starts_with("{{") && text.trim().ends_with("}}") => Value::Null,
+                _ => Value::String(template::text(text, look)),
             })
-            .cloned(),
-        None => host.get(path),
+        }
+        Value::Array(items) => Value::Array(items.iter().map(|v| fill(host, scope, v)).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), fill(host, scope, v)))
+                .collect(),
+        ),
+        other => other.clone(),
     }
 }
 
@@ -482,7 +598,8 @@ fn kind(value: &Value) -> &'static str {
 }
 
 /// Draws one node through its wiring; inside an `each`, `item` is the element it's drawn for and
-/// `row` where, and inside a `form`, `form` is that form.
+/// `row` where, inside a `form`, `form` is that form, and inside a component, `scope` is where
+/// it's used. A node inside a component is named under its `use` node: `card.more`.
 fn draw(
     node: &Node,
     place: String,
@@ -490,15 +607,21 @@ fn draw(
     item: Option<Value>,
     row: Option<String>,
     form: Option<FormAt>,
+    scope: Option<Arc<Scope>>,
 ) -> AnyView {
+    let name = match &scope {
+        Some(scope) => format!("{}.{}", scope.name, node.name(&place)),
+        None => node.name(&place),
+    };
     let wired = Wired {
         host: host.clone(),
-        name: node.name(&place),
+        name,
         place,
         placed: node.placed(),
         item,
         row,
         form,
+        scope,
     };
     match node {
         Node::Cell(n) => n.view(wired),
@@ -521,6 +644,7 @@ fn draw(
         Node::File(n) => n.view(wired),
         Node::Dialog(n) => n.view(wired),
         Node::Markdown(n) => n.view(wired),
+        Node::Use(n) => n.view(wired),
     }
 }
 
@@ -534,7 +658,7 @@ pub fn app_view(host: Host) -> AnyView {
             let body = host.machine().app().body.clone();
             body.iter()
                 .enumerate()
-                .map(|(i, node)| draw(node, body_place(i), &host, None, None, None))
+                .map(|(i, node)| draw(node, body_place(i), &host, None, None, None, None))
                 .collect_view()
         }
     };

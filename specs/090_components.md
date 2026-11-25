@@ -64,7 +64,16 @@ component = "contact_card"
 props = { contact = "{{ item }}" }
 ```
 
-- `props` values are templates. A whole-string template passes the value itself, so `{{ item }}` passes the whole element.
+- `props` values are templates, filled where the `use` node is. A whole-string template passes the value itself, so
+  `{{ item }}` passes the whole element; one that names nothing set passes `null`. A prop may be a table or a list
+  of templates, and `{{ props }}` reads them all.
+- The `use` node takes the placement keys. Without them, the component's body sits straight in the parent's
+  layout, as if it were written there; with them, it sits in a box placed like any node.
+- Inside a component, `item` starts over: the component's own `each` sets it, and an `item` from where it's
+  used reaches it only as a prop.
+- A component with controls that have `name`, a file picker, or a `submit` button fills the form it's used in,
+  so it's used inside a `form`. One that holds a form of its own isn't used inside another.
+- A `use` node without an `id` is named by its place, like any node.
 - Inside, `props.*` is read-only, and `local.*` is that instance's own: ten cards have ten `expanded`s.
 - A component can use other components. Using one in a loop (A uses B uses A) is a config error.
 - Props can carry steps: a caller can pass `on_open = [{ go = "contact" }]`, and the component
@@ -88,13 +97,19 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 - a missing required prop, an unknown prop, an unknown component, and a loop of components are config errors
 - a passed step list runs against the app's state
 - a node inside a component fires its events under the `use` node's `id`
-- `app.*` inside a component is a config error
-- editing a component redraws every place that uses it ([060](060_hot_reload.md))
+- `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
+- a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
+- a component with named controls or a submit button used outside a form, and one holding a form used inside
+  a form, are config errors
+- editing a component redraws every place that uses it ([060](060_hot_reload.md)) (in a real browser:
+  `tests/deployed/components.mjs`)
 
 ## Tasks
 
 Milestone three ([999](999_todo.md)):
 
-- [ ] core: component files, `[component]` and its props, and the `use` node, with the load checks
+- [x] core: component files, `[component]` and its props, and the `use` node, with the load checks, drawn
+  with `props.*` (what's inside a component draws but isn't wired yet: its events and named controls come
+  with the next task)
 - [ ] local state per instance, and events named under the `use` node's `id`
 - [ ] props that carry steps

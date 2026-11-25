@@ -1319,6 +1319,9 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
         | Node::Video(_)
         | Node::Iframe(_)
         | Node::Markdown(_) => {}
+        // What's inside a component is wired with its local state, under the `use` node's name
+        // (spec 090's second task); for now a component only draws.
+        Node::Use(_) => {}
     }
     let form = if matches!(node, Node::Form(_)) {
         Some(name.as_str())
