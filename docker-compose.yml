@@ -21,6 +21,8 @@ services:
       # Configs read-only: serve never writes an app. The state folder is where it writes the mirror.
       - ${CONFIGS_PATH:-./configs}:/app/configs:ro
       - ${STATE_PATH:-./state}:/app/state
+      # The log of every failure (spec 110). Only serve mounts it; agents read it through serve.
+      - ${LOGS_PATH:-./logs}:/app/logs
     user: "${PUID:-1000}:${PGID:-1000}"
     init: true
     networks:

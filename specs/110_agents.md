@@ -104,7 +104,7 @@ Authorization: Bearer $GENESIS_AGENT_TOKEN
 Milestone three ([999](999_todo.md)):
 
 - [x] `GET /agents`, as PurpleFlow's
-- [ ] the log: `load` and `call` lines, `log_lines`, and the logs folder in Compose
+- [x] the log: `load` and `call` lines, `log_lines`, and the logs folder in Compose
 - [ ] the log: `run` lines from the mirror
 - [ ] `GET /api/log`, with `since` and `tail`
 - [ ] the push route, over the config stream, with its `push` lines and a deployed check

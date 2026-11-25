@@ -10,4 +10,5 @@ node_modules/
 /tests/deployed/node_modules/
 /configs/
 /state/
+/logs/
 /apps/desktop/gen/

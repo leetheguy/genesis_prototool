@@ -26,6 +26,7 @@ impl Folders {
         Settings {
             configs: self.0.join("configs"),
             state: self.0.join("state"),
+            logs: self.0.join("logs"),
             dist: self.0.join("dist"),
             debounce: Duration::from_millis(100),
             ..Settings::default()
@@ -147,4 +148,80 @@ async fn a_change_to_any_file_in_any_folder_reloads_the_app() {
     stream.next(SOON).await.unwrap();
     folders.write("configs/views/notes.txt", "hi");
     assert!(stream.next(SOON).await.expect("a reload").contains("First"));
+}
+
+impl Folders {
+    /// The log's lines, without their times.
+    fn log(&self) -> Vec<String> {
+        std::fs::read_to_string(self.0.join("logs").join(genesis_serve::LOG_FILE))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| line.split_once(' ').unwrap().1.to_string())
+            .collect()
+    }
+
+    /// The log once it has `n` lines.
+    async fn log_of(&self, n: usize) -> Vec<String> {
+        let deadline = tokio::time::Instant::now() + SOON;
+        while self.log().len() < n && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        self.log()
+    }
+}
+
+#[tokio::test]
+async fn a_load_problem_is_logged_with_where_it_is_and_a_clean_load_after_it_logs_load_ok() {
+    let folders = Folders::new("log-load");
+    folders.write("configs/app.toml", "[app]\nname = \"x\"\ncolour = 1\n");
+    let (router, _watching) = live_router(folders.settings()).unwrap();
+    let lines = folders.log_of(1).await;
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].starts_with("load app.toml:3:1: unknown field `colour`"),
+        "{lines:?}"
+    );
+    let mut stream = Stream::open(&router).await;
+    stream.next(SOON).await.unwrap();
+    folders.write("configs/app.toml", "[app]\nname = \"Fixed\"\n");
+    stream.next(SOON).await.expect("a config");
+    assert_eq!(folders.log_of(2).await[1], "load ok");
+    // Clean again: nothing more to say.
+    folders.write("configs/app.toml", "[app]\nname = \"Again\"\n");
+    stream.next(SOON).await.expect("a config");
+    assert_eq!(folders.log().len(), 2);
+}
+
+#[tokio::test]
+async fn a_clean_start_logs_nothing() {
+    let folders = Folders::new("log-clean");
+    let (router, _watching) = live_router(folders.settings()).unwrap();
+    Stream::open(&router).await.next(SOON).await.unwrap();
+    tokio::time::sleep(QUIET).await;
+    assert!(folders.log().is_empty());
+}
+
+#[tokio::test]
+async fn the_log_keeps_only_its_last_log_lines_lines() {
+    let folders = Folders::new("log-lines");
+    let app = "[app]\nname = \"x\"\nlog_lines = 3\n";
+    folders.write("configs/app.toml", app);
+    let (router, _watching) = live_router(folders.settings()).unwrap();
+    let mut stream = Stream::open(&router).await;
+    stream.next(SOON).await.unwrap();
+    // A bad load, another, a clean one, and a third bad one: four lines, of which three are kept.
+    for (blank, bad) in [(0, true), (1, true), (9, false), (2, true)] {
+        let text = match blank {
+            9 => app.to_string(),
+            _ => format!("{app}{}colour = 1\n", "\n".repeat(blank)),
+        };
+        folders.write("configs/app.toml", &text);
+        let event = stream.next(SOON).await.expect("a reload");
+        assert_eq!(event.contains("problems"), bad, "{event}");
+    }
+    let lines = folders.log();
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert!(lines[0].starts_with("load app.toml:5:1:"), "{lines:?}");
+    assert_eq!(lines[1], "load ok");
+    assert!(lines[2].starts_with("load app.toml:6:1:"), "{lines:?}");
 }

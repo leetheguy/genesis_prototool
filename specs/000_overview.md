@@ -25,8 +25,9 @@ button; `file`, whose picked files go out with a call as multipart, through `ser
 ([090](090_components.md)) are built: component files, the `use` node, `props.*` (steps too), each instance's
 `local.*`, and events inside a component. A component's own steps fire events (no `call`, `reload`, or custom action),
 and the app's handlers for them do the rest. Of what agents need from `serve` ([110](110_agents.md)), `GET /agents`
-is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. Still to come are display logic, the
-log, and the webhook.
+is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. So is the log's start: each load's
+problems and each failed call go into `genesis.log` in the logs folder. Still to come are display logic, the log's
+`run` lines and `GET /api/log`, and the webhook.
 
 ## What this is
 
@@ -137,7 +138,7 @@ Built so far, then planned ([010](010_architecture.md)):
 | `samples/` | sample apps (`hello`, `contacts`), each a whole configs folder; the real configs folder is the user's |
 | `tests/deployed/` | checks against a real `serve` and a real browser (`scripts/check-hello.sh`) |
 | `state/` | the mirror: each client's state and event trail (read-only to agents at `/fs/.state/`) |
-| `logs/` | *planned:* `genesis.log`, every failure, read at `/api/log` ([110](110_agents.md)) |
+| `logs/` | `genesis.log`: every load problem and failed call, one line each ([110](110_agents.md)); `run` lines and reading it at `/api/log` are planned |
 | `apps/desktop` | the Tauri shell: which `serve` page the window opens (the window itself is behind the `app` feature) |
 | `.github/workflows/ci.yml` | CI on every pull request and push to `main`: precommit, coverage, `cargo audit`, gitleaks, and the deployed checks (browser and Docker) |
 | `Dockerfile`, `docker-compose.yml` | `serve` and `files` (dufs), as PurpleFlow runs its files service |

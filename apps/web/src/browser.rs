@@ -119,11 +119,16 @@ fn keep(host: Host) {
 /// file references goes as a multipart form, the call as its `call` part and each file as a part
 /// named by its ID, so serve can send the bytes on (spec 040, "file").
 fn caller(host: Host) {
+    let client = client_id();
     let replies = host.clone();
     host.set_caller(move |call| {
         let host = replies.clone();
+        let client = client.clone();
         leptos::task::spawn_local(async move {
-            let body = json!({ "op": call.op, "params": call.params, "headers": call.headers });
+            let body = json!({
+                "op": call.op, "params": call.params, "headers": call.headers,
+                "client": client, "from": call.from,
+            });
             let ids: Vec<String> = call
                 .params
                 .as_object()

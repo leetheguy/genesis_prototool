@@ -168,6 +168,7 @@ path = "/echo/x"
         Settings {
             configs: self.0.join("configs"),
             state: self.0.join("state"),
+            logs: self.0.join("logs"),
             dist: self.0.join("dist"),
             creds: creds.into(),
             ..Settings::default()
@@ -537,4 +538,78 @@ fn credentials_come_from_genesis_creds_environment_variables() {
     .map(|(k, v)| (k.to_string(), v.to_string()));
     let creds = genesis_serve::Creds::from_vars(vars);
     assert_eq!(creds.names(), ["PF_TOKEN"]);
+}
+
+/// The log's lines, without their times.
+fn log(folders: &Folders) -> Vec<String> {
+    std::fs::read_to_string(folders.0.join("logs").join(genesis_serve::LOG_FILE))
+        .unwrap_or_default()
+        .lines()
+        .map(|line| {
+            let (time, rest) = line.split_once(' ').unwrap();
+            assert!(
+                time.len() == 20 && time.ends_with('Z') && time.as_bytes()[10] == b'T',
+                "{line}"
+            );
+            rest.to_string()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_failed_call_is_logged_with_its_op_status_answer_client_and_starting_event() {
+    let folders = Folders::new("log-status").await;
+    call(
+        &folders,
+        json!({ "op": "api.missing", "params": {}, "headers": {}, "client": "7f3a", "from": "save_btn.click" }),
+    )
+    .await;
+    assert_eq!(
+        log(&folders),
+        [r#"call api.missing 404 {"error":"nope"} (client 7f3a, from save_btn.click)"#]
+    );
+}
+
+#[tokio::test]
+async fn a_call_that_works_isnt_logged() {
+    let folders = Folders::new("log-ok").await;
+    call(
+        &folders,
+        json!({ "op": "api.echo_get", "params": { "id": 1 }, "headers": {}, "client": "7f3a" }),
+    )
+    .await;
+    assert!(log(&folders).is_empty());
+}
+
+#[tokio::test]
+async fn a_call_that_fails_or_isnt_declared_is_logged_with_why_and_never_a_credential() {
+    let folders = Folders::new("log-why").await;
+    std::fs::write(
+        folders.0.join("configs/app.toml"),
+        "[app]\nname = \"x\"\n[connections.bad]\nbase_url = \"http://s3cret-value.invalid\"\nheaders = { Authorization = \"{{ creds.API_TOKEN }}\" }\n[connections.bad.ops.go]\nmethod = \"GET\"\npath = \"/\"\n",
+    )
+    .unwrap();
+    let sent = json!({ "params": {}, "headers": { "Authorization": "s3cret-value" }, "client": "c1", "from": "go_btn.click" });
+    let mut go = sent.clone();
+    go["op"] = json!("bad.go");
+    call(&folders, go).await;
+    let mut nope = sent;
+    nope["op"] = json!("bad.nope");
+    call(&folders, nope).await;
+    let lines = log(&folders);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+        lines[0].starts_with("call bad.go: the call to bad.go failed")
+            && lines[0].ends_with("(client c1, from go_btn.click)"),
+        "{}",
+        lines[0]
+    );
+    assert_eq!(
+        lines[1],
+        r#"call bad.nope: the app declares no operation named "bad.nope" (client c1, from go_btn.click)"#
+    );
+    assert!(
+        lines.iter().all(|l| !l.contains("s3cret-value")),
+        "{lines:?}"
+    );
 }

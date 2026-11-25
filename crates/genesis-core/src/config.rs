@@ -136,6 +136,9 @@ struct ComponentHead {
     optional: Vec<String>,
 }
 
+/// How many lines serve's log keeps unless `[app] log_lines` says otherwise.
+pub const LOG_LINES: usize = 10_000;
+
 /// `[app]`: the app's name and its settings, each with a default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -151,6 +154,9 @@ pub struct Info {
     /// How many recent events `sys.events` keeps. Default `200`.
     #[serde(default = "defaults::event_trail")]
     pub event_trail: usize,
+    /// How many lines serve's log keeps ([spec 110](../../../specs/110_agents.md)). Default `10000`.
+    #[serde(default = "defaults::log_lines")]
+    pub log_lines: usize,
     /// App variables a session never keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forget: Vec<String>,
@@ -2558,6 +2564,9 @@ mod defaults {
     }
     pub fn event_trail() -> usize {
         200
+    }
+    pub fn log_lines() -> usize {
+        super::LOG_LINES
     }
     pub fn key() -> String {
         "id".into()

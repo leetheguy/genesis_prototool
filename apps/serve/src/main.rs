@@ -1,4 +1,4 @@
-//! `genesis-serve [--configs DIR] [--state DIR] [--dist DIR] [--listen ADDRESS] [--debounce MS]`.
+//! `genesis-serve [--configs DIR] [--state DIR] [--logs DIR] [--dist DIR] [--listen ADDRESS] [--debounce MS]`.
 //!
 //! See the library's docs for the routes. It listens on `127.0.0.1:8080` unless told otherwise,
 //! and reloads apps live as their files change (`--debounce MS`, default 150). From its environment:
