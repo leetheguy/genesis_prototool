@@ -143,6 +143,31 @@ fn toasts_are_printed_as_effects() {
 }
 
 #[test]
+fn a_question_is_printed_and_answer_answers_the_first_waiting() {
+    let app = AppDir::new(
+        "confirm",
+        "[app]\nname = \"x\"\n[state]\ngone = false\n[on]\n\"wipe\" = [{ confirm = \"Sure?\" }, { set = \"app.gone\", to = true }, { toast = \"Gone.\", variant = \"success\" }]\n",
+    );
+    let out = bench(&app.0, "{\"fire\": \"wipe\"}\n{\"answer\": true}\n");
+    let out = lines(&out);
+    assert!(out.iter().any(|l| l["confirm"] == "Sure?"), "{out:?}");
+    assert!(
+        out.iter()
+            .any(|l| l["toast"] == "Gone." && l["variant"] == "success"),
+        "{out:?}"
+    );
+    assert_eq!(out.last().unwrap()["state"]["app"]["gone"], true);
+}
+
+#[test]
+fn answer_with_no_question_waiting_fails_naming_the_line() {
+    let app = AppDir::new("unasked", HELLO);
+    let out = bench(&app.0, "{\"answer\": true}\n");
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no question is waiting"));
+}
+
+#[test]
 fn it_takes_the_app_toml_file_as_well_as_its_folder() {
     let app = AppDir::new("file", HELLO);
     let out = bench(&app.0.join("app.toml"), "");

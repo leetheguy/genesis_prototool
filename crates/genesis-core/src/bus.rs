@@ -25,8 +25,8 @@
 
 use crate::condition::Check;
 use crate::config::{
-    self, App, Audio, Component, Handler, InputKind, Node, Source, Step, Use, Video, as_steps,
-    body_place, child_place, prop_steps,
+    self, App, Audio, Component, Handler, InputKind, Node, Source, Step, Use, Variant, Video,
+    as_steps, body_place, child_place, prop_steps,
 };
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
@@ -35,9 +35,19 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 /// Something the machine needs its host to do, since the machine itself does no IO.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
-    /// Show a short message. Every failure nobody handles becomes one.
+    /// A short message went up, in `sys.toasts` until it's gone. Every failure nobody handles
+    /// becomes one.
     Toast {
         /// The message.
+        text: String,
+        /// Its color.
+        variant: Variant,
+    },
+    /// A question went up, in `sys.asking` until it's answered with [`Machine::answer`].
+    Confirm {
+        /// Answer with this.
+        id: u64,
+        /// The question.
         text: String,
     },
     /// Make a call to an operation, and answer it with [`Machine::reply`].
@@ -160,6 +170,23 @@ struct Frame {
     back: Option<Option<Scope>>,
 }
 
+/// A toast on screen, until `until` on the clock or a tap.
+struct Shown {
+    id: u64,
+    text: String,
+    variant: Variant,
+    until: u64,
+}
+
+/// A question waiting for an answer, and the run it holds up.
+struct Asking {
+    id: u64,
+    text: String,
+    yes: String,
+    no: String,
+    run: Run,
+}
+
 /// A timer that's running: its name in the registry, and when it completes.
 struct Running {
     name: String,
@@ -193,6 +220,12 @@ pub struct Machine {
     next_call: u64,
     /// Waiting runs and repeating events, in the order they were set.
     timers: Vec<Running>,
+    /// `sys.toasts`: the toasts on screen, oldest first.
+    toasts: Vec<Shown>,
+    /// `sys.asking`: the questions waiting for an answer, oldest first.
+    asking: Vec<Asking>,
+    /// The next toast's or question's id.
+    next_shown: u64,
     /// Trail entries kept for [`Machine::take_tapped`], once [`Machine::tap`] is called.
     tapped: Option<Vec<Value>>,
     /// Milliseconds since the app opened, as the host last said; stamps the trail.
@@ -281,6 +314,9 @@ impl Machine {
             waiting: BTreeMap::new(),
             next_call: 1,
             timers: Vec::new(),
+            toasts: Vec::new(),
+            asking: Vec::new(),
+            next_shown: 1,
             tapped: None,
             now: 0,
         }
@@ -590,6 +626,33 @@ impl Machine {
         std::mem::take(&mut self.effects)
     }
 
+    /// Answers the question `id` ([`Effect::Confirm`]): yes carries its list on from the next
+    /// step, no stops it quietly. Returns what the host must do as a result.
+    pub fn answer(&mut self, id: u64, yes: bool) -> Vec<Effect> {
+        match self.asking.iter().position(|a| a.id == id) {
+            None => {
+                let message = format!("an answer came for question {id}, which isn't waiting");
+                self.fail(
+                    json!({ "name": "answer.unknown", "message": message }),
+                    true,
+                );
+            }
+            Some(i) => {
+                let asking = self.asking.remove(i);
+                if yes {
+                    self.execute(asking.run);
+                }
+            }
+        }
+        self.drain();
+        std::mem::take(&mut self.effects)
+    }
+
+    /// Takes the toast `id` off the screen before its time is up. One already gone is fine.
+    pub fn dismiss(&mut self, id: u64) {
+        self.toasts.retain(|t| t.id != id);
+    }
+
     /// Fires `app.opened`, and handles everything that follows from it.
     pub fn open(&mut self) -> Vec<Effect> {
         self.fire("app.opened", json!({}))
@@ -658,6 +721,7 @@ impl Machine {
             self.drain();
         }
         self.now = until;
+        self.toasts.retain(|t| t.until > until);
         std::mem::take(&mut self.effects)
     }
 
@@ -841,6 +905,24 @@ impl Machine {
                     None => self.enter(&mut run, name),
                 },
                 Step::Go { go } => self.go(go, &run.event),
+                Step::Confirm { confirm, yes, no } => {
+                    let text = template::text(confirm, |path| self.look(path, Some(&run.event)));
+                    let id = self.next_shown;
+                    self.next_shown += 1;
+                    self.effects.push(Effect::Confirm {
+                        id,
+                        text: text.clone(),
+                    });
+                    let (yes, no) = (yes.clone(), no.clone());
+                    self.asking.push(Asking {
+                        id,
+                        text,
+                        yes,
+                        no,
+                        run,
+                    });
+                    return;
+                }
                 Step::Start { start } => self.start_timer(start, &run.event),
                 Step::Stop { stop } => self.stop_timer(stop, &run.event),
                 Step::Call { call, params, .. } => {
@@ -1108,6 +1190,10 @@ impl Machine {
                 let line = template::text(log, |path| self.look(path, Some(event)));
                 self.record(json!({ "at": self.now, "log": line }));
             }
+            Step::Toast { toast, variant, ms } => {
+                let text = template::text(toast, |path| self.look(path, Some(event)));
+                self.toast(text, *variant, *ms);
+            }
             Step::Fire { fire, with } => {
                 let payload = fill(&Value::Object(with.clone()))?;
                 self.enqueue(fire, payload, event);
@@ -1224,6 +1310,23 @@ impl Machine {
         });
     }
 
+    /// Puts a toast up for `ms`, or `[app] toast_ms`.
+    fn toast(&mut self, text: String, variant: Variant, ms: Option<u64>) {
+        let id = self.next_shown;
+        self.next_shown += 1;
+        let until = self.now + ms.unwrap_or(self.app.app.toast_ms);
+        self.effects.push(Effect::Toast {
+            text: text.clone(),
+            variant,
+        });
+        self.toasts.push(Shown {
+            id,
+            text,
+            variant,
+            until,
+        });
+    }
+
     /// Logs a failure in `sys.errors` and, when `show` is set, toasts it.
     fn fail(&mut self, mut error: Value, show: bool) {
         if show {
@@ -1232,7 +1335,7 @@ impl Machine {
                 text_of(&error["name"]),
                 text_of(&error["message"])
             );
-            self.effects.push(Effect::Toast { text });
+            self.toast(text, Variant::Error, None);
         }
         error["at"] = json!(self.now);
         self.state.errors.push_front(error);
@@ -1393,6 +1496,16 @@ impl Machine {
             ("sys", Some("events")) => json!(self.state.events),
             ("sys", Some("errors")) => json!(self.state.errors),
             ("sys", Some("sources")) => json!(self.state.sources),
+            ("sys", Some("toasts")) => self
+                .toasts
+                .iter()
+                .map(|t| json!({ "id": t.id, "text": t.text, "variant": t.variant.name() }))
+                .collect(),
+            ("sys", Some("asking")) => self
+                .asking
+                .iter()
+                .map(|a| json!({ "id": a.id, "text": a.text, "yes": a.yes, "no": a.no }))
+                .collect(),
             ("sys", Some("bus")) => self.bus(),
             _ => return None,
         };

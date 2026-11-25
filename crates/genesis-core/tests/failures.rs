@@ -31,7 +31,7 @@ fn toasts(effects: &[Effect]) -> Vec<String> {
     effects
         .iter()
         .filter_map(|e| match e {
-            Effect::Toast { text } => Some(text.clone()),
+            Effect::Toast { text, .. } => Some(text.clone()),
             _ => None,
         })
         .collect()

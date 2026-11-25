@@ -158,6 +158,10 @@ pub struct Info {
     /// How many lines serve's log keeps ([spec 110](../../../specs/110_agents.md)). Default `10000`.
     #[serde(default = "defaults::log_lines")]
     pub log_lines: usize,
+    /// How long a toast shows, in milliseconds, unless its step says ([spec 100](../../../specs/100_events.md),
+    /// "Toast and confirm"). Default `5000`.
+    #[serde(default = "defaults::toast_ms")]
+    pub toast_ms: u64,
     /// App variables a session never keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forget: Vec<String>,
@@ -1253,6 +1257,26 @@ pub enum Step {
         /// The timer's name.
         stop: String,
     },
+    /// Shows a short message that goes away on its own ([spec 100](../../../specs/100_events.md),
+    /// "Toast and confirm").
+    Toast {
+        /// The message; may hold templates.
+        toast: String,
+        /// Its color.
+        variant: Variant,
+        /// How long it shows, in milliseconds; without it, `[app] toast_ms`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ms: Option<u64>,
+    },
+    /// Asks a question, and waits: yes carries on, no stops the list quietly.
+    Confirm {
+        /// The question; may hold templates.
+        confirm: String,
+        /// The button that carries on. Default `"Yes"`.
+        yes: String,
+        /// The button that stops. Default `"No"`.
+        no: String,
+    },
     /// Calls these sources again: `app.NAME`, each a `[sources.NAME]`.
     Reload {
         /// The sources' variables.
@@ -2001,7 +2025,7 @@ fn check_component(component: &Component, checks: &Checks, problems: &mut Vec<Co
 }
 
 /// Looks through a component's own steps for one that reaches past it: a custom action, a `call`,
-/// a `reload`, a `go`, a timer's `start` or `stop`, or a `log`. A component's steps work on its own `local.*`, run its props' steps, and fire
+/// a `reload`, a `go`, a timer's `start` or `stop`, a `log`, a `toast`, or a `confirm`. A component's steps work on its own `local.*`, run its props' steps, and fire
 /// events; the app's handlers for those events can do anything ([spec 090](../../../specs/090_components.md)).
 fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
     for step in node.shortcuts() {
@@ -2015,6 +2039,8 @@ fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
             Step::Start { start } => format!("starts the timer `{start}`"),
             Step::Stop { stop } => format!("stops the timer `{stop}`"),
             Step::Log { .. } => "writes to the log".to_string(),
+            Step::Toast { .. } => "shows a toast".to_string(),
+            Step::Confirm { .. } => "asks a question".to_string(),
             _ => continue,
         };
         problem(format!(
@@ -2548,9 +2574,37 @@ fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
 }
 
 /// The step kinds, keyed by the TOML key that names each one.
-const STEP_KINDS: [&str; 10] = [
-    "call", "reload", "set", "step", "toggle", "fire", "log", "go", "start", "stop",
+const STEP_KINDS: [&str; 12] = [
+    "call", "reload", "set", "step", "toggle", "fire", "log", "go", "start", "stop", "toast",
+    "confirm",
 ];
+
+/// A toast's color: daisyUI's alert colors.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Variant {
+    /// The default.
+    #[default]
+    Info,
+    /// Something worked.
+    Success,
+    /// Something to watch.
+    Warning,
+    /// Something failed; every failure nobody handles is toasted this way.
+    Error,
+}
+
+impl Variant {
+    /// Its name, as written: `"info"`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Variant::Info => "info",
+            Variant::Success => "success",
+            Variant::Warning => "warning",
+            Variant::Error => "error",
+        }
+    }
+}
 
 impl<'de> Deserialize<'de> for Step {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -2637,6 +2691,25 @@ impl<'de> Deserialize<'de> for Step {
                     .map_err(wrong)?
                     .reload,
             },
+            "toast" => {
+                let s: steps::Toast = serde_json::from_value(fields).map_err(wrong)?;
+                if s.ms == Some(0) {
+                    return Err(de::Error::custom("in a `toast` step: `ms` is at least 1"));
+                }
+                Step::Toast {
+                    toast: s.toast,
+                    variant: s.variant,
+                    ms: s.ms,
+                }
+            }
+            "confirm" => {
+                let s: steps::Confirm = serde_json::from_value(fields).map_err(wrong)?;
+                Step::Confirm {
+                    confirm: s.confirm,
+                    yes: s.yes,
+                    no: s.no,
+                }
+            }
             "call" => {
                 let s: steps::Call = serde_json::from_value(fields).map_err(wrong)?;
                 Step::Call {
@@ -2659,6 +2732,25 @@ impl<'de> Deserialize<'de> for Step {
 mod steps {
     use serde::Deserialize;
     use serde_json::{Map, Value};
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Toast {
+        pub toast: String,
+        #[serde(default)]
+        pub variant: super::Variant,
+        pub ms: Option<u64>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Confirm {
+        pub confirm: String,
+        #[serde(default = "super::defaults::yes_label")]
+        pub yes: String,
+        #[serde(default = "super::defaults::no_label")]
+        pub no: String,
+    }
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -2783,6 +2875,15 @@ mod defaults {
     }
     pub fn event_trail() -> usize {
         200
+    }
+    pub fn toast_ms() -> u64 {
+        5000
+    }
+    pub fn yes_label() -> String {
+        "Yes".into()
+    }
+    pub fn no_label() -> String {
+        "No".into()
     }
     pub fn log_lines() -> usize {
         super::LOG_LINES

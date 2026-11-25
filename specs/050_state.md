@@ -16,7 +16,7 @@ Components never know where a value came from: a starting value, a click, a call
 | sources | `[sources.NAME]` | app variables an operation or stream fills; any action can also write one, and its next load replaces it |
 | local variables | `state = { ... }` on a node or component | `open = false` |
 | form drafts | each `form` | the values typed and not yet submitted |
-| system variables | Genesis | `sys.theme`, `sys.outlet`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus` |
+| system variables | Genesis | `sys.theme`, `sys.outlet`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus`, `sys.toasts`, `sys.asking` |
 
 ### System variables
 
@@ -29,6 +29,8 @@ Components never know where a value came from: a starting value, a click, a call
 - **`sys.errors`**: every loud failure, newest first: `{ at, op, status, message }`. It's read-only,
   and a cell with `each` can show it.
 - **`sys.events`** and **`sys.bus`**: the event trail and who listens to what ([100](100_events.md)).
+- **`sys.toasts`** and **`sys.asking`**: the toasts on screen and the questions waiting for an answer, oldest
+  first ([100](100_events.md), "Toast and confirm"). Read-only, and never kept on the device.
 
 ## Sources
 

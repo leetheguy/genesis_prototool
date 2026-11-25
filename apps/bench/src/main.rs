@@ -9,9 +9,11 @@
 //!
 //! - `{"fire": "hello_btn.click", "payload": {...}}` fires an event (`payload` is optional).
 //! - `{"advance": 250}` moves the clock on 250 milliseconds, running any timers that fall due.
+//! - `{"answer": true}` (or `false`) answers the first `confirm` waiting.
 //!
 //! After each line it prints, one JSON object per line, every trail entry recorded (events with
-//! their handlers, and `log` lines), then any toasts as `{"toast": "..."}`. At the end it prints
+//! their handlers, and `log` lines), then any toasts as `{"toast": "...", "variant": "..."}` and
+//! questions as `{"confirm": "...", "id": N}`. At the end it prints
 //! `{"state": ...}`, the final state.
 //!
 //! A call the app makes is printed as `{"call": {...}}`. With `--mock`, each call is answered from
@@ -171,8 +173,15 @@ fn step(machine: &mut Machine, line: &str) -> Result<Vec<Effect>, String> {
     if let Some(ms) = input.get("advance").and_then(Value::as_u64) {
         return Ok(machine.advance(ms));
     }
+    if let Some(yes) = input.get("answer").and_then(Value::as_bool) {
+        let id = machine
+            .get("sys.asking.0.id")
+            .and_then(|id| id.as_u64())
+            .ok_or_else(|| format!("no question is waiting for an answer, at {line}"))?;
+        return Ok(machine.answer(id, yes));
+    }
     Err(format!(
-        r#"expected {{"fire": "NAME"}} or {{"advance": MILLISECONDS}}, got {line}"#
+        r#"expected {{"fire": "NAME"}}, {{"advance": MILLISECONDS}}, or {{"answer": true}}, got {line}"#
     ))
 }
 
@@ -198,7 +207,7 @@ fn answer(mocks: &[Mock], op: &str) -> Reply {
     }
 }
 
-/// Prints the trail entries recorded since the last report, then the toasts and calls. With
+/// Prints the trail entries recorded since the last report, then the toasts, questions, and calls. With
 /// mocks, each call is answered at once, and whatever follows is printed in turn.
 fn report(
     out: &mut impl Write,
@@ -216,7 +225,12 @@ fn report(
         let mut next = Vec::new();
         for effect in effects {
             match effect {
-                Effect::Toast { text } => print_line(out, &json!({ "toast": text })),
+                Effect::Toast { text, variant } => {
+                    print_line(out, &json!({ "toast": text, "variant": variant.name() }));
+                }
+                Effect::Confirm { id, text } => {
+                    print_line(out, &json!({ "confirm": text, "id": id }));
+                }
                 Effect::Call(call) => {
                     print_line(
                         out,
