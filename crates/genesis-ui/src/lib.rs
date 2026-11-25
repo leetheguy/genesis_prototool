@@ -519,6 +519,7 @@ fn draw(
         Node::Radio(n) => n.view(wired),
         Node::Form(n) => n.view(wired),
         Node::File(n) => n.view(wired),
+        Node::Dialog(n) => n.view(wired),
     }
 }
 

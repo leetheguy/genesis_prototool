@@ -5,7 +5,9 @@
 
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
-use genesis_core::config::{Audio, Button, Cell, Divider, Iframe, Image, Link, Svg, Text, Video};
+use genesis_core::config::{
+    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Svg, Text, Video,
+};
 use genesis_core::style::{BySize, Color, Height, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
 
@@ -229,5 +231,67 @@ impl Component for Iframe {
         }
         let class = wired.class(own.boxed(boxed));
         view! { <iframe src=src title=title sandbox=sandbox class=class></iframe> }.into_any()
+    }
+}
+
+/// Whether a dialog's variable holds it open: anything but `false` or `null` (or nothing yet).
+pub(crate) fn holds_open(value: Option<&serde_json::Value>) -> bool {
+    !matches!(
+        value,
+        None | Some(serde_json::Value::Null | serde_json::Value::Bool(false))
+    )
+}
+
+impl Component for Dialog {
+    const EVENTS: &'static [&'static str] = &["close"];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let read = wired.read(&self.open);
+        let shut = RwSignal::new(());
+        let dialog = NodeRef::<leptos::html::Dialog>::new();
+        // The browser opens a modal only through `showModal()`, so the variable opens and closes it.
+        Effect::new({
+            let read = read.clone();
+            move |_| {
+                shut.track();
+                let Some(element) = dialog.get() else { return };
+                match (holds_open(read().as_ref()), element.open()) {
+                    (true, false) => {
+                        let _ = element.show_modal();
+                    }
+                    (false, true) => element.close(),
+                    _ => {}
+                }
+            }
+        });
+        // The browser closed it (Escape, or a click on the backdrop): if the variable still holds
+        // it open, the person closed it, so `.close` fires and sets the variable `false`.
+        let on_close = {
+            let (wired, read) = (wired.clone(), read.clone());
+            move |_| {
+                if holds_open(read().as_ref()) {
+                    wired.fire("close", serde_json::json!({}));
+                }
+                shut.notify();
+            }
+        };
+        let title = self.title.as_ref().map(|t| {
+            let text = wired.text(t);
+            view! { <h3 class="text-lg font-bold">{text}</h3> }
+        });
+        let children = self
+            .children
+            .iter()
+            .enumerate()
+            .map(|(i, child)| wired.child(i, child))
+            .collect_view();
+        let class = wired.class(ClassList::default().raw("modal"));
+        view! {
+            <dialog node_ref=dialog class=class on:close=on_close>
+                <div class="modal-box">{title}{children}</div>
+                <form method="dialog" class="modal-backdrop"><button>"close"</button></form>
+            </dialog>
+        }
+        .into_any()
     }
 }
