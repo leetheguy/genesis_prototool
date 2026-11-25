@@ -20,7 +20,7 @@ design they add up to.
 (layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
 and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; the controls (`input`, `textarea`,
 `select`, `checkbox`, `toggle`, and `radio` groups), with `var` or with `name` in a `form`, and the `submit`
-button; `file`, whose picked files go out with a call as multipart, through `serve`; and `dialog`. 040's task list says what's next: `markdown`. Still to come after them are components, display logic, and what
+button; `file`, whose picked files go out with a call as multipart, through `serve`; `dialog`; and `markdown`. That's every atom on 040's task list. Still to come are components, display logic, and what
 agents need from `serve`: a guide, one log, and a webhook ([110](110_agents.md)).
 
 ## What this is
@@ -143,6 +143,7 @@ In use now, then planned. Check current versions before adding any.
 | Need | Package |
 |---|---|
 | Config types, TOML, JSON | `serde`, `toml`, `serde_json` |
+| SVG and Markdown, read safely | `roxmltree`, `pulldown-cmark` |
 | Renderer (Rust to wasm, signals) | `leptos` 0.8 (client-side in the browser, server-side for tests), built with `trunk` |
 | Styling and themes | daisyUI 5 on Tailwind CSS 4 (the standalone binary, built ahead of time) |
 | Server | `axum`, `tokio`, `tower-http`, `reqwest` (rustls), `notify` |

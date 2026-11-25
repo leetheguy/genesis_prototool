@@ -520,6 +520,7 @@ fn draw(
         Node::Form(n) => n.view(wired),
         Node::File(n) => n.view(wired),
         Node::Dialog(n) => n.view(wired),
+        Node::Markdown(n) => n.view(wired),
     }
 }
 

@@ -140,6 +140,8 @@ pub enum Node {
     File(File),
     /// A modal dialog, open while its variable says so.
     Dialog(Dialog),
+    /// Markdown, drawn safely.
+    Markdown(Markdown),
 }
 
 impl Node {
@@ -165,6 +167,7 @@ impl Node {
             Node::Form(n) => n.placed(),
             Node::File(n) => n.placed(),
             Node::Dialog(n) => n.placed(),
+            Node::Markdown(n) => n.placed(),
         }
     }
 
@@ -190,6 +193,7 @@ impl Node {
             Node::Form(n) => n.id.as_deref(),
             Node::File(n) => n.id.as_deref(),
             Node::Dialog(n) => n.id.as_deref(),
+            Node::Markdown(n) => n.id.as_deref(),
         }
     }
 
@@ -256,6 +260,22 @@ styled! {
             deserialize_with = "heading_level"
         )]
         pub level: Option<u8>,
+    }
+}
+
+styled! {
+    [boxed, typed, placed]
+    /// `type = "markdown"`: longer prose as Markdown, drawn safely: raw HTML shows as text, and
+    /// only `http`, `https`, `mailto`, `tel`, and relative links and images are kept
+    /// ([`crate::markdown`]).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Markdown {
+        /// The node's name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The Markdown; may hold templates, filled in before it's read as Markdown.
+        pub text: String,
     }
 }
 

@@ -10,6 +10,7 @@ publish = false
 [workspace.dependencies]
 genesis-core = { path = "crates/genesis-core" }
 leptos = "0.8.23"
+pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 roxmltree = "0.21.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
