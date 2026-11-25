@@ -5,13 +5,34 @@
 //! `crates/genesis-ui/classes.txt` for Tailwind to read (a test keeps the two the same).
 
 use genesis_core::style::{
-    Boxed, Color, Columns, Direction, Layout, Line, Margin, StyleKey, TextColor, Typed, Vocab, keys,
+    Boxed, BySize, Color, Columns, Direction, Layout, Line, Margin, SCREENS, StyleKey, TextColor,
+    Typed, Vocab, keys,
 };
 
-/// The classes one key's value gives, space-separated.
-pub trait Classes {
-    /// Its classes.
-    fn classes(&self) -> String;
+/// The classes a key gives for each of its values, space-separated, before any screen prefix.
+pub trait Classes: StyleKey {
+    /// The classes for `value`.
+    fn of(value: Self::Value) -> String;
+}
+
+/// `classes` for `screen`: each one with the screen's prefix (`md:gap-4`), or as it is for `base`.
+fn at_screen(screen: &str, classes: &str) -> Vec<String> {
+    classes
+        .split_whitespace()
+        .map(|class| match screen {
+            "base" => class.to_string(),
+            _ => format!("{screen}:{class}"),
+        })
+        .collect()
+}
+
+/// Every class `key` gives, at every screen size it names.
+pub fn classes<K: Classes>(key: &K) -> String {
+    key.sizes()
+        .each()
+        .flat_map(|(screen, value)| at_screen(screen, &K::of(value)))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A theme color's name, as daisyUI's classes write it (`bg-base-200`).
@@ -28,8 +49,8 @@ fn margin(m: Margin) -> String {
 }
 
 impl Classes for keys::Flow {
-    fn classes(&self) -> String {
-        match self.0 {
+    fn of(value: Self::Value) -> String {
+        match value {
             Direction::Column => "flex flex-col",
             Direction::Row => "flex flex-row",
         }
@@ -38,8 +59,8 @@ impl Classes for keys::Flow {
 }
 
 impl Classes for keys::Grid {
-    fn classes(&self) -> String {
-        match self.0 {
+    fn of(value: Self::Value) -> String {
+        match value {
             Columns::Count(n) => format!("grid grid-cols-{n}"),
             Columns::Fit => "grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))]".into(),
         }
@@ -47,74 +68,74 @@ impl Classes for keys::Grid {
 }
 
 impl Classes for keys::Gap {
-    fn classes(&self) -> String {
-        format!("gap-{}", self.0.0)
+    fn of(value: Self::Value) -> String {
+        format!("gap-{}", value.0)
     }
 }
 
 impl Classes for keys::Align {
-    fn classes(&self) -> String {
-        format!("items-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("items-{}", value.word())
     }
 }
 
 impl Classes for keys::Justify {
-    fn classes(&self) -> String {
-        format!("justify-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("justify-{}", value.word())
     }
 }
 
 impl Classes for keys::Wrap {
-    fn classes(&self) -> String {
-        if self.0 { "flex-wrap" } else { "" }.into()
+    fn of(value: Self::Value) -> String {
+        if value { "flex-wrap" } else { "flex-nowrap" }.into()
     }
 }
 
 impl Classes for keys::Pad {
-    fn classes(&self) -> String {
-        format!("p-{}", self.0.0)
+    fn of(value: Self::Value) -> String {
+        format!("p-{}", value.0)
     }
 }
 
 impl Classes for keys::PadX {
-    fn classes(&self) -> String {
-        format!("px-{}", self.0.0)
+    fn of(value: Self::Value) -> String {
+        format!("px-{}", value.0)
     }
 }
 
 impl Classes for keys::PadY {
-    fn classes(&self) -> String {
-        format!("py-{}", self.0.0)
+    fn of(value: Self::Value) -> String {
+        format!("py-{}", value.0)
     }
 }
 
 impl Classes for keys::Margin {
-    fn classes(&self) -> String {
-        format!("m-{}", margin(self.0))
+    fn of(value: Self::Value) -> String {
+        format!("m-{}", margin(value))
     }
 }
 
 impl Classes for keys::MarginX {
-    fn classes(&self) -> String {
-        format!("mx-{}", margin(self.0))
+    fn of(value: Self::Value) -> String {
+        format!("mx-{}", margin(value))
     }
 }
 
 impl Classes for keys::MarginY {
-    fn classes(&self) -> String {
-        format!("my-{}", margin(self.0))
+    fn of(value: Self::Value) -> String {
+        format!("my-{}", margin(value))
     }
 }
 
 impl Classes for keys::Bg {
-    fn classes(&self) -> String {
-        format!("bg-{}", color(self.0))
+    fn of(value: Self::Value) -> String {
+        format!("bg-{}", color(value))
     }
 }
 
 impl Classes for keys::Border {
-    fn classes(&self) -> String {
-        match self.0 {
+    fn of(value: Self::Value) -> String {
+        match value {
             Line::Plain => "border border-base-300".into(),
             Line::Color(c) => format!("border border-{}", color(c)),
         }
@@ -122,44 +143,49 @@ impl Classes for keys::Border {
 }
 
 impl Classes for keys::Radius {
-    fn classes(&self) -> String {
-        format!("rounded-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("rounded-{}", value.word())
     }
 }
 
 impl Classes for keys::Shadow {
-    fn classes(&self) -> String {
-        format!("shadow-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("shadow-{}", value.word())
     }
 }
 
 impl Classes for keys::Height {
-    fn classes(&self) -> String {
-        format!("h-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("h-{}", value.word())
     }
 }
 
 impl Classes for keys::Scroll {
-    fn classes(&self) -> String {
-        if self.0 { "overflow-auto" } else { "" }.into()
+    fn of(value: Self::Value) -> String {
+        if value {
+            "overflow-auto"
+        } else {
+            "overflow-visible"
+        }
+        .into()
     }
 }
 
 impl Classes for keys::Size {
-    fn classes(&self) -> String {
-        format!("text-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("text-{}", value.word())
     }
 }
 
 impl Classes for keys::Weight {
-    fn classes(&self) -> String {
-        format!("font-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("font-{}", value.word())
     }
 }
 
 impl Classes for keys::Color {
-    fn classes(&self) -> String {
-        match self.0 {
+    fn of(value: Self::Value) -> String {
+        match value {
             TextColor::Muted => "text-base-content/60".into(),
             TextColor::Color(c) => format!("text-{}", color(c)),
         }
@@ -167,14 +193,14 @@ impl Classes for keys::Color {
 }
 
 impl Classes for keys::TextAlign {
-    fn classes(&self) -> String {
-        format!("text-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("text-{}", value.word())
     }
 }
 
 impl Classes for keys::Font {
-    fn classes(&self) -> String {
-        format!("font-{}", self.0.word())
+    fn of(value: Self::Value) -> String {
+        format!("font-{}", value.word())
     }
 }
 
@@ -185,19 +211,25 @@ pub(crate) struct ClassList(Vec<String>);
 impl ClassList {
     /// Adds `key`'s classes, if it's set.
     pub(crate) fn add<K: Classes>(&mut self, key: Option<K>) -> &mut Self {
-        if let Some(classes) = key.map(|k| k.classes()).filter(|c| !c.is_empty()) {
-            self.0.push(classes);
+        if let Some(key) = key {
+            self.0.push(classes(&key));
         }
         self
     }
 
-    /// A cell's layout: a grid when it has one, or else a flex column or row.
+    /// A cell's layout: a flex column or row, until a screen size where it's a grid.
     pub(crate) fn layout(&mut self, l: Layout) -> &mut Self {
-        match l.grid {
-            Some(grid) => self.add(Some(grid)),
-            None => self.add(Some(l.flow.unwrap_or(keys::Flow(Direction::Column)))),
-        };
-        self.add(l.gap).add(l.align).add(l.justify).add(l.wrap)
+        if l.grid.and_then(|g| g.0.at("base")).is_none() {
+            let flow = l.flow.map_or(BySize::base(Direction::Column), |f| {
+                f.0.or_base(Direction::Column)
+            });
+            self.add(Some(keys::Flow(flow)));
+        }
+        self.add(l.grid)
+            .add(l.gap)
+            .add(l.align)
+            .add(l.justify)
+            .add(l.wrap)
     }
 
     /// The box keys.
@@ -223,14 +255,12 @@ impl ClassList {
     }
 }
 
-/// Every class key `K` can give.
-fn every<K: StyleKey + Classes>() -> impl Iterator<Item = String> {
-    K::Value::all().into_iter().flat_map(|v| {
-        K::new(v)
-            .classes()
-            .split_whitespace()
-            .map(String::from)
-            .collect::<Vec<_>>()
+/// Every class key `K` can give, on every screen size.
+fn every<K: Classes>() -> impl Iterator<Item = String> {
+    SCREENS.into_iter().flat_map(|screen| {
+        K::Value::all()
+            .into_iter()
+            .flat_map(move |v| at_screen(screen, &K::of(v)))
     })
 }
 

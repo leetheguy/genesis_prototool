@@ -6,7 +6,7 @@
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
 use genesis_core::config::{Button, Cell, Text};
-use genesis_core::style::{TextSize, Weight, keys};
+use genesis_core::style::{BySize, TextSize, Weight, keys};
 use leptos::prelude::*;
 
 impl Component for Cell {
@@ -40,9 +40,20 @@ impl Component for Text {
             Some(2) => (Some(TextSize::Xl2), Some(Weight::Bold)),
             Some(_) => (Some(TextSize::Xl), Some(Weight::Semibold)),
         };
+        // A size or weight key that names only larger screens keeps the heading's own below them.
         let mut typed = self.typed();
-        typed.size = typed.size.or(size.map(keys::Size));
-        typed.weight = typed.weight.or(weight.map(keys::Weight));
+        if let Some(size) = size {
+            typed.size = Some(keys::Size(
+                typed.size.map_or(BySize::base(size), |k| k.0.or_base(size)),
+            ));
+        }
+        if let Some(weight) = weight {
+            typed.weight = Some(keys::Weight(
+                typed
+                    .weight
+                    .map_or(BySize::base(weight), |k| k.0.or_base(weight)),
+            ));
+        }
         let class = ClassList::default().boxed(self.boxed()).typed(typed).attr();
         match self.level {
             None => view! { <p class=class>{text}</p> }.into_any(),

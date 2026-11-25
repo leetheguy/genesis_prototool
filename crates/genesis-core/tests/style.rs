@@ -226,3 +226,71 @@ fn a_cell_with_both_flow_and_grid_is_a_problem_naming_its_place() {
         ["app.toml: body.0.children.0: a cell lays out by `flow` or by `grid`, not both"]
     );
 }
+
+#[test]
+fn any_style_key_takes_a_table_by_screen_size_and_keeps_its_shape_through_json() {
+    let toml = node(
+        "cell",
+        "gap = { base = 2, md = 4 }\nflow = { md = \"row\" }\npad = { sm = 1, lg = 6, xl = 8 }\nwrap = { base = true, md = false }\nbg = \"base-200\"",
+    );
+    let app = App::from_toml(&toml).unwrap();
+    let json = serde_json::to_value(&app).unwrap();
+    let cell = &json["body"][0];
+    assert_eq!(cell["gap"], serde_json::json!({ "base": 2, "md": 4 }));
+    assert_eq!(cell["flow"], serde_json::json!({ "md": "row" }));
+    assert_eq!(
+        cell["pad"],
+        serde_json::json!({ "sm": 1, "lg": 6, "xl": 8 })
+    );
+    assert_eq!(
+        cell["wrap"],
+        serde_json::json!({ "base": true, "md": false })
+    );
+    assert_eq!(
+        cell["bg"],
+        serde_json::json!("base-200"),
+        "a plain value stays plain"
+    );
+    let back: App = serde_json::from_value(json).unwrap();
+    assert_eq!(back, app);
+}
+
+#[test]
+fn a_bad_screen_size_or_a_bad_value_at_one_is_a_problem_on_its_line() {
+    let cases = [
+        (
+            "gap = { md = 7 }",
+            "`gap` at md is 0, 1, 2, 3, 4, 5, 6, 8, 10, 12, or 16, not 7",
+        ),
+        (
+            "gap = { huge = 2 }",
+            "`gap` takes a value, or a table by screen size: base, sm, md, lg, or xl, not \"huge\"",
+        ),
+        (
+            "gap = {}",
+            "`gap` takes a value, or a table by screen size: base, sm, md, lg, or xl, not {}",
+        ),
+        (
+            "radius = { base = \"sm\", xl = \"round\" }",
+            "`radius` at xl is \"none\", \"sm\", \"md\", \"lg\", \"xl\", \"full\", or \"box\", not \"round\"",
+        ),
+    ];
+    for (line, message) in cases {
+        let problems = App::from_toml(&node("cell", &format!("id = \"x\"\n{line}"))).unwrap_err();
+        assert_eq!(
+            problems.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            [format!("app.toml:7:1: {message}")],
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn flow_and_grid_at_different_screen_sizes_are_still_both() {
+    let problems = App::from_toml(&node(
+        "cell",
+        "flow = { base = \"row\" }\ngrid = { md = 3 }",
+    ))
+    .unwrap_err();
+    assert!(problems[0].message.ends_with("not both"), "{problems:?}");
+}

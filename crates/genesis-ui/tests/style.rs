@@ -35,7 +35,7 @@ fn each_style_key_on_a_cell_gives_its_classes() {
         ("align = \"center\"", "flex flex-col items-center"),
         ("justify = \"between\"", "flex flex-col justify-between"),
         ("wrap = true", "flex flex-col flex-wrap"),
-        ("wrap = false", "flex flex-col"),
+        ("wrap = false", "flex flex-col flex-nowrap"),
         ("pad = 2", "flex flex-col p-2"),
         ("pad_x = 6", "flex flex-col px-6"),
         ("pad_y = 0", "flex flex-col py-0"),
@@ -50,7 +50,7 @@ fn each_style_key_on_a_cell_gives_its_classes() {
         ("shadow = \"md\"", "flex flex-col shadow-md"),
         ("height = \"screen\"", "flex flex-col h-screen"),
         ("scroll = true", "flex flex-col overflow-auto"),
-        ("scroll = false", "flex flex-col"),
+        ("scroll = false", "flex flex-col overflow-visible"),
         ("size = \"2xl\"", "flex flex-col text-2xl"),
         ("weight = \"semibold\"", "flex flex-col font-semibold"),
         ("color = \"muted\"", "flex flex-col text-base-content/60"),
@@ -110,6 +110,54 @@ fn a_headings_size_and_weight_give_way_to_its_own_keys() {
 }
 
 #[test]
+fn a_key_given_a_table_by_screen_size_gives_each_sizes_classes_with_its_prefix() {
+    let cases = [
+        ("gap = { base = 2, md = 4 }", "flex flex-col gap-2 md:gap-4"),
+        ("pad = { sm = 1, xl = 8 }", "flex flex-col sm:p-1 xl:p-8"),
+        (
+            "flow = { base = \"column\", md = \"row\" }",
+            "flex flex-col md:flex md:flex-row",
+        ),
+        (
+            "flow = { lg = \"row\" }",
+            "flex flex-col lg:flex lg:flex-row",
+        ),
+        (
+            "grid = { base = 1, md = 2, lg = 4 }",
+            "grid grid-cols-1 md:grid md:grid-cols-2 lg:grid lg:grid-cols-4",
+        ),
+        ("grid = { md = 3 }", "flex flex-col md:grid md:grid-cols-3"),
+        (
+            "wrap = { base = true, md = false }",
+            "flex flex-col flex-wrap md:flex-nowrap",
+        ),
+        (
+            "border = { md = true }",
+            "flex flex-col md:border md:border-base-300",
+        ),
+        (
+            "color = { base = \"muted\", lg = \"primary\" }",
+            "flex flex-col text-base-content/60 lg:text-primary",
+        ),
+    ];
+    for (keys, want) in cases {
+        assert_eq!(classes("cell", keys), want, "{keys}");
+    }
+}
+
+#[test]
+fn a_heading_keeps_its_own_size_below_the_first_screen_its_size_key_names() {
+    assert_eq!(
+        classes("text", "level = 1\nsize = { md = \"4xl\" }"),
+        "text-3xl md:text-4xl font-bold"
+    );
+    assert_eq!(
+        classes("text", "level = 2\nsize = { base = \"lg\", xl = \"3xl\" }"),
+        "text-lg xl:text-3xl font-bold"
+    );
+}
+
+#[test]
 fn the_vocabulary_has_every_class_a_style_key_can_give_once() {
     let words = style::vocabulary();
     for class in [
@@ -136,6 +184,14 @@ fn the_vocabulary_has_every_class_a_style_key_can_give_once() {
         "text-center",
         "font-medium",
         "font-sans",
+        "flex-nowrap",
+        "overflow-visible",
+        "sm:flex",
+        "md:gap-4",
+        "lg:my-auto",
+        "xl:grid-cols-[repeat(auto-fit,minmax(6rem,1fr))]",
+        "md:text-base-content/60",
+        "sm:border-error-content",
     ] {
         assert!(words.iter().any(|w| w == class), "{class} missing");
     }

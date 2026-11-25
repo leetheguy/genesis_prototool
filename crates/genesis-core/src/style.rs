@@ -7,19 +7,23 @@
 //! Each key is its own small type in [`keys`] (`keys::Gap(Space)`), so it knows its name for errors,
 //! and the node types take them in groups: [`Layout`], [`Boxed`], and [`Typed`].
 //!
+//! Any key takes one value, or a table by screen width ([`BySize`]): `gap = { base = 2, md = 4 }`.
+//!
 //! ```
-//! use genesis_core::style::{Space, Vocab, keys::Gap};
+//! use genesis_core::style::{BySize, Space, keys::Gap};
 //!
 //! let gap: Gap = serde_json::from_str("4").unwrap();
-//! assert_eq!(gap, Gap(Space(4)));
+//! assert_eq!(gap, Gap(BySize::base(Space(4))));
+//! let gap: Gap = serde_json::from_str(r#"{ "md": 6 }"#).unwrap();
+//! assert_eq!(gap.0.at("md"), Some(Space(6)));
 //! let bad = serde_json::from_str::<Gap>("7").unwrap_err().to_string();
 //! assert!(bad.starts_with("`gap` is 0, 1, 2, 3, 4, 5, 6, 8, 10, 12, or 16, not 7"));
 //! ```
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// A closed list of values: what one or more style keys take.
-pub trait Vocab: Sized {
+pub trait Vocab: Sized + Copy {
     /// Every value, in the order an error lists them.
     fn all() -> Vec<Self>;
     /// How it's written in TOML (and JSON).
@@ -32,16 +36,92 @@ pub trait StyleKey: Sized {
     const NAME: &'static str;
     /// The list it takes a value from.
     type Value: Vocab;
-    /// The key holding `value`.
-    fn new(value: Self::Value) -> Self;
+    /// The key holding `values`.
+    fn new(values: BySize<Self::Value>) -> Self;
+    /// Its value at each screen size.
+    fn sizes(&self) -> BySize<Self::Value>;
 }
 
-/// Reads `value` for the key `key`: one from `T`'s list, or a message naming the key and the list.
-pub fn read<T: Vocab>(key: &str, value: &Value) -> Result<T, String> {
+/// The screen widths a key can vary by, smallest first, as Tailwind names them: `base` for every
+/// screen, then `sm` (40rem and up), `md` (48rem), `lg` (64rem), and `xl` (80rem).
+pub const SCREENS: [&str; 5] = ["base", "sm", "md", "lg", "xl"];
+
+/// A key's value at each screen width in [`SCREENS`]; a plain value is its `base`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BySize<T>(pub [Option<T>; 5]);
+
+impl<T: Copy> BySize<T> {
+    /// `value` on every screen.
+    pub fn base(value: T) -> Self {
+        BySize([Some(value), None, None, None, None])
+    }
+
+    /// Its value at `screen`, one of [`SCREENS`], if it names one there.
+    pub fn at(&self, screen: &str) -> Option<T> {
+        let i = SCREENS.iter().position(|s| *s == screen)?;
+        self.0[i]
+    }
+
+    /// The same, with `value` as its `base` if it has none.
+    pub fn or_base(mut self, value: T) -> Self {
+        self.0[0] = self.0[0].or(Some(value));
+        self
+    }
+
+    /// Each screen it names, smallest first, with its value there.
+    pub fn each(&self) -> impl Iterator<Item = (&'static str, T)> + '_ {
+        SCREENS
+            .iter()
+            .zip(self.0)
+            .filter_map(|(screen, value)| Some((*screen, value?)))
+    }
+}
+
+impl<T: Vocab> BySize<T> {
+    /// How the TOML writes it: the plain value when it's only a `base`, or else a table.
+    pub fn to_value(&self) -> Value {
+        match self.0 {
+            [Some(base), None, None, None, None] => base.to_value(),
+            _ => Value::Object(
+                self.each()
+                    .map(|(screen, v)| (screen.to_string(), v.to_value()))
+                    .collect::<Map<_, _>>(),
+            ),
+        }
+    }
+}
+
+/// Reads `value` for the key `key`: one from `T`'s list, or a table by screen size of them, or a
+/// message naming the key and what it takes.
+pub fn read<T: Vocab>(key: &str, value: &Value) -> Result<BySize<T>, String> {
+    let Value::Object(table) = value else {
+        return one(&format!("`{key}`"), value).map(BySize::base);
+    };
+    let not_a_size = |what: &str| {
+        format!(
+            "`{key}` takes a value, or a table by screen size: base, sm, md, lg, or xl, not {what}"
+        )
+    };
+    if table.is_empty() {
+        return Err(not_a_size("{}"));
+    }
+    let mut sizes = BySize([None; 5]);
+    for (screen, v) in table {
+        let i = SCREENS
+            .iter()
+            .position(|s| s == screen)
+            .ok_or_else(|| not_a_size(&Value::from(screen.as_str()).to_string()))?;
+        sizes.0[i] = Some(one(&format!("`{key}` at {screen}"), v)?);
+    }
+    Ok(sizes)
+}
+
+/// Reads one value from `T`'s list, or a message naming what it's for (`` `gap` at md ``) and the list.
+fn one<T: Vocab>(label: &str, value: &Value) -> Result<T, String> {
     T::all()
         .into_iter()
         .find(|v| &v.to_value() == value)
-        .ok_or_else(|| format!("`{key}` is {}, not {value}", takes::<T>()))
+        .ok_or_else(|| format!("{label} is {}, not {value}", takes::<T>()))
 }
 
 /// `T`'s list as an error writes it: `"column" or "row"`, `1, 2, or 3`.
@@ -301,7 +381,7 @@ words! {
 
 /// One type per style key, each holding its value and knowing its own name.
 pub mod keys {
-    use super::{StyleKey, Vocab, read};
+    use super::{BySize, StyleKey, read};
     use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
     use serde_json::Value;
 
@@ -309,13 +389,16 @@ pub mod keys {
         ($($(#[$m:meta])* $key:ident($value:ty) = $name:literal;)*) => {$(
             $(#[$m])*
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-            pub struct $key(pub $value);
+            pub struct $key(pub BySize<$value>);
 
             impl StyleKey for $key {
                 const NAME: &'static str = $name;
                 type Value = $value;
-                fn new(value: $value) -> Self {
-                    $key(value)
+                fn new(values: BySize<$value>) -> Self {
+                    $key(values)
+                }
+                fn sizes(&self) -> BySize<$value> {
+                    self.0
                 }
             }
 
