@@ -1494,8 +1494,10 @@ name = "genesis-ui"
 version = "0.1.0"
 dependencies = [
  "genesis-core",
+ "js-sys",
  "leptos",
  "serde_json",
+ "wasm-bindgen",
  "web-sys",
 ]
 

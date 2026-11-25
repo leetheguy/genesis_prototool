@@ -28,8 +28,9 @@ and the app's handlers for them do the rest. A partial sees only its props; the 
 is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. So is the log: each load's
 problems, each failed call, and each failure a client reports through the mirror go into `genesis.log` in the logs
 folder, and agents read it at `GET /api/log`. So is the webhook: `POST /api/push/{name}` fires `push.{name}` in
-every open screen. Of display logic ([080](080_display_logic.md)), conditions are built, in `show` on every node and
-`disabled` on buttons and controls, and so are checks on controls; formats are still to come.
+every open screen. Display logic ([080](080_display_logic.md)) is built: conditions in `show` on every node and
+`disabled` on buttons and controls, checks on controls, and formats on `text`, in the browser's language
+or `[app] locale`'s.
 
 ## What this is
 
@@ -178,7 +179,7 @@ In use now, then planned. Check current versions before adding any.
 - [050 — State](050_state.md): *draft.* Variables, sources, what persists, signing in, and the mirror.
 - [060 — Hot reload](060_hot_reload.md): *draft.* Watching configs, keeping the last good version, `/status`.
 - [070 — Secrets](070_secrets.md): *draft.* Credentials and sessions, both kept on the server.
-- [080 — Display logic](080_display_logic.md): *draft.* Conditions, input checks, and formats.
+- [080 — Display logic](080_display_logic.md): *implemented.* Conditions, input checks, and formats.
 - [090 — Components](090_components.md): *draft.* TOML files of atoms, with props and local state, used by name.
 - [100 — Events, actions, and handlers](100_events.md): *draft.* The bus: event names, `[on]`, actions, the queue, depth, timers, the workbench.
 - [110 — Working with agents](110_agents.md): *draft.* The guide at `/agents`, one log of every failure, and pushing events in.

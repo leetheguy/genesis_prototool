@@ -47,7 +47,7 @@ impl Component for Text {
     const EVENTS: &'static [&'static str] = &[];
 
     fn view(&self, wired: Wired) -> AnyView {
-        let text = wired.text(&self.text);
+        let text = wired.formatted(&self.text, self.format.as_ref());
         // A heading has a heading's size and weight, unless its own keys say otherwise.
         let (size, weight) = match self.level {
             None => (None, None),

@@ -11,6 +11,7 @@ pub mod bus;
 pub mod condition;
 pub mod config;
 pub mod file;
+pub mod format;
 pub mod markdown;
 pub mod pattern;
 pub mod style;

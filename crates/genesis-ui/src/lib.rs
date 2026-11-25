@@ -29,6 +29,8 @@ use style::ClassList;
 mod components;
 mod controls;
 pub mod files;
+#[cfg(target_arch = "wasm32")]
+mod intl;
 pub mod style;
 
 /// Makes a call and answers it, as [`Host::set_caller`] takes it.
@@ -343,6 +345,30 @@ impl Wired {
         move || {
             template::text(&text, |path| {
                 look(&host, item.as_ref(), scope.as_ref(), path)
+            })
+        }
+    }
+
+    /// The same as [`Wired::text`], with each value its templates fill in shown in `format`. A
+    /// value the format can't take is shown as it is, and the browser console says why.
+    pub fn formatted(
+        &self,
+        text: &str,
+        format: Option<&genesis_core::format::Format>,
+    ) -> impl Fn() -> String + Clone + Send + Sync + 'static + use<> {
+        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let (text, format) = (text.to_string(), format.cloned());
+        move || {
+            let look = |path: &str| look(&host, item.as_ref(), scope.as_ref(), path);
+            let Some(format) = &format else {
+                return template::text(&text, look);
+            };
+            let locale = locale(&host);
+            template::text_with(&text, look, |value| {
+                format.apply(value, locale.as_ref()).unwrap_or_else(|why| {
+                    leptos::logging::warn!("format: {why}; shown as it is");
+                    template::as_text(value)
+                })
             })
         }
     }
@@ -758,6 +784,24 @@ fn kind(value: &Value) -> &'static str {
         Value::Number(_) => "a number",
         Value::Bool(_) => "true or false",
         Value::Array(_) | Value::Null => "a list",
+    }
+}
+
+/// The language formats write in: the browser's, or `[app] locale`'s. Outside a browser (in tests),
+/// US English in UTC.
+fn locale(host: &Host) -> Box<dyn genesis_core::format::Locale> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let tag = host.machine().app().app.locale.clone();
+        Box::new(intl::Browser { tag })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = host;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64);
+        Box::new(genesis_core::format::English::at(now))
     }
 }
 

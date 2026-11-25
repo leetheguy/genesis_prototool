@@ -29,10 +29,20 @@ enum Piece<'a> {
 
 /// Fills every template in `text` for display: values as plain text, a missing value as empty.
 pub fn text(text: &str, look: impl Fn(&str) -> Option<Value>) -> String {
+    text_with(text, look, as_text)
+}
+
+/// The same as [`text`], with each value shown by `show`: a `text` node's `format`
+/// ([`crate::format`]). A missing value is still empty.
+pub fn text_with(
+    text: &str,
+    look: impl Fn(&str) -> Option<Value>,
+    show: impl Fn(&Value) -> String,
+) -> String {
     pieces(text)
         .map(|piece| match piece {
             Piece::Text(t) => t.to_string(),
-            Piece::Lookup(path) => look(path).map(|v| as_text(&v)).unwrap_or_default(),
+            Piece::Lookup(path) => look(path).map(|v| show(&v)).unwrap_or_default(),
         })
         .collect()
 }
