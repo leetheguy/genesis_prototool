@@ -93,7 +93,7 @@ fn a_controls_var_must_be_a_variable_actions_can_write() {
             "{var}: {out}"
         );
     }
-    for var in ["app.query", "sys.view", "sys.theme"] {
+    for var in ["app.query", "sys.theme"] {
         round_trip(&format!("type = \"input\"\nvar = \"{var}\""));
     }
 }

@@ -12,6 +12,7 @@ name = "Cards"
 [state]
 contacts = [{ name = "Ada" }, { name = "Lin" }]
 opened = ""
+view = "main"
 
 [[body]]
 type = "cell"
@@ -21,7 +22,7 @@ each = "app.contacts"
 type = "use"
 id = "card"
 component = "contact_card"
-props = { contact = "{{ item }}", on_open = [{ set = "app.opened", to = "{{ event.item.name }}" }, { go = "contact" }] }
+props = { contact = "{{ item }}", on_open = [{ set = "app.opened", to = "{{ event.item.name }}" }, { set = "app.view", to = "contact" }] }
 "#;
 
 const CARD: &str = r#"
@@ -87,7 +88,7 @@ fn passed_steps_run_in_the_app_with_the_event_inside() {
         at("card", Some("1"), None),
     );
     assert_eq!(m.get("app.opened"), Some(json!("Lin")));
-    assert_eq!(m.get("sys.view"), Some(json!("contact")));
+    assert_eq!(m.get("app.view"), Some(json!("contact")));
 }
 
 #[test]
@@ -182,7 +183,10 @@ props = { on_pick = [{ step = "app.picked" }] }
 
 #[test]
 fn a_failing_passed_step_stops_the_list_and_is_logged() {
-    let app = APP.replace("{ go = \"contact\" }", "\"no_such_action\"");
+    let app = APP.replace(
+        "{ set = \"app.view\", to = \"contact\" }",
+        "\"no_such_action\"",
+    );
     let mut m = Machine::new(load(&[("app.toml", &app), ("contact_card.toml", CARD)]).unwrap());
     m.fire_within(
         "card.both.click",
@@ -238,7 +242,7 @@ fn a_step_template_that_isnt_a_prop_and_a_prop_that_isnt_steps_are_config_errors
 
     for bad in ["\"{{ item }}\"", "[{ sett = \"app.x\" }]", "3"] {
         let app = APP.replace(
-            "on_open = [{ set = \"app.opened\", to = \"{{ event.item.name }}\" }, { go = \"contact\" }]",
+            "on_open = [{ set = \"app.opened\", to = \"{{ event.item.name }}\" }, { set = \"app.view\", to = \"contact\" }]",
             &format!("on_open = {bad}"),
         );
         let out = problems(&[("app.toml", &app), ("contact_card.toml", CARD)]);
@@ -249,8 +253,8 @@ fn a_step_template_that_isnt_a_prop_and_a_prop_that_isnt_steps_are_config_errors
     }
     // One step alone, or a custom action's name, is fine.
     let app = APP.replace(
-        "on_open = [{ set = \"app.opened\", to = \"{{ event.item.name }}\" }, { go = \"contact\" }]",
-        "on_open = { go = \"contact\" }",
+        "on_open = [{ set = \"app.opened\", to = \"{{ event.item.name }}\" }, { set = \"app.view\", to = \"contact\" }]",
+        "on_open = { set = \"app.view\", to = \"contact\" }",
     );
     assert!(load(&[("app.toml", &app), ("contact_card.toml", CARD)]).is_ok());
 }
@@ -309,8 +313,8 @@ on_click = [{ reload = ["app.contacts"] }]
 #[test]
 fn a_component_fires_any_event_and_the_apps_handlers_do_the_rest() {
     let app = APP.replace(
-        "opened = \"\"",
-        "opened = \"\"\n\n[on]\n\"contact.picked\" = [{ set = \"app.opened\", to = \"{{ event.who }}\" }, { go = \"contact\" }]",
+        "view = \"main\"",
+        "view = \"main\"\n\n[on]\n\"contact.picked\" = [{ set = \"app.opened\", to = \"{{ event.who }}\" }, { set = \"app.view\", to = \"contact\" }]",
     );
     let card = r#"
 [component]
@@ -335,5 +339,5 @@ on_click = [{ fire = "contact.picked", with = { who = "{{ props.contact.name }}"
         }),
     );
     assert_eq!(m.get("app.opened"), Some(json!("Lin")));
-    assert_eq!(m.get("sys.view"), Some(json!("contact")));
+    assert_eq!(m.get("app.view"), Some(json!("contact")));
 }

@@ -19,8 +19,8 @@ reload it. Reading a file to reload it doesn't count as a change.
 
 1. `serve` reads every `.toml` file in the configs folder, and genesis-core checks them together ([020](020_config.md)).
 2. **Good:** it becomes the app's current version and goes to every connected client over
-   `GET /api/config`. Each client swaps it in and keeps its state ([050](050_state.md)). If
-   `sys.view` no longer matches anything shown, nothing special happens: the screen shows what the config says it shows.
+   `GET /api/config`. Each client swaps it in and keeps its state ([050](050_state.md)), and the screen shows what the
+   config says it shows.
 3. **Bad:** the app keeps its last good version. Clients get the errors and show a banner over the
    still-working screen, listing each problem's file, line, column, and message. The next good load clears the banner.
 4. **Bad, with no good version yet:** clients show only the error screen.
@@ -54,3 +54,7 @@ Milestone two ([999](999_todo.md)):
 - [x] core: carry the state across a new config (kept, new, and removed variables; [050](050_state.md), "Across a config reload")
 - [x] the renderer: swap in a good config live; show a bad one's problems in a banner over the last good screen
 - [x] deployed check: edit the hello app while the browser is open, and watch it change (`tests/deployed/reload.mjs`)
+
+## Log
+
+- 2026-11-25: the note on a `sys.view` that matches nothing is gone, with `sys.view` ([050](050_state.md)).

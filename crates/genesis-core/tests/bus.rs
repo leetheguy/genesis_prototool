@@ -194,7 +194,6 @@ do = [{ every = 10, fire = "tick" }]
         "app.opened",
         "go_btn.click",
         "app.n.changed",
-        "sys.view.changed",
         "sys.theme.changed",
         "went",
         "tick",
@@ -217,12 +216,10 @@ fn app_variables_start_at_their_starting_values() {
 }
 
 #[test]
-fn sys_view_and_theme_start_at_the_apps_settings() {
-    let m = Machine::new(
-        App::from_toml("[app]\nname = \"t\"\nstart = \"home\"\ntheme = \"dark\"\n").unwrap(),
-    );
-    assert_eq!(m.get("sys.view"), Some(json!("home")));
+fn sys_theme_starts_at_the_apps_setting_and_there_is_no_sys_view() {
+    let m = Machine::new(App::from_toml("[app]\nname = \"t\"\ntheme = \"dark\"\n").unwrap());
     assert_eq!(m.get("sys.theme"), Some(json!("dark")));
+    assert_eq!(m.get("sys.view"), None);
 }
 
 #[test]
@@ -259,16 +256,14 @@ fn without_a_tap_nothing_is_kept_for_taking() {
 }
 
 #[test]
-fn a_snapshot_holds_the_variables_view_theme_and_errors() {
+fn a_snapshot_holds_the_variables_theme_and_errors() {
     let mut m =
         machine("[state]\nn = 1\n[on]\n\"go\" = [{ step = \"app.n\" }, { toggle = \"app.n\" }]\n");
     m.fire("go", json!({}));
     let snapshot = m.snapshot();
     assert_eq!(snapshot["app"], json!({ "n": 2 }));
-    assert_eq!(
-        (&snapshot["sys"]["view"], &snapshot["sys"]["theme"]),
-        (&json!("main"), &json!("light"))
-    );
+    assert_eq!(snapshot["sys"]["theme"], json!("light"));
+    assert_eq!(snapshot["sys"].get("view"), None);
     assert_eq!(
         snapshot["sys"]["errors"][0]["message"],
         "app.n isn't true or false"

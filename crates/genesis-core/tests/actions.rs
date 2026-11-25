@@ -5,10 +5,7 @@ use genesis_core::config::App;
 use serde_json::{Value, json};
 
 fn machine(toml: &str) -> Machine {
-    Machine::new(
-        App::from_toml(&format!("[app]\nname = \"t\"\nstart = \"home\"\n{toml}"))
-            .expect("app loads"),
-    )
+    Machine::new(App::from_toml(&format!("[app]\nname = \"t\"\n{toml}")).expect("app loads"))
 }
 
 /// The newest trail entry with this event name.
@@ -79,17 +76,6 @@ fn toggle_flips_a_boolean() {
     assert_eq!(m.get("app.open"), Some(json!(true)));
     m.fire("flip", json!({}));
     assert_eq!(m.get("app.open"), Some(json!(false)));
-}
-
-#[test]
-fn go_sets_the_view_and_fires_its_change() {
-    let mut m = machine("[on]\n\"open\" = [{ go = \"contacts\" }]\n");
-    m.fire("open", json!({}));
-    assert_eq!(m.get("sys.view"), Some(json!("contacts")));
-    assert_eq!(
-        newest(&m, "sys.view.changed").unwrap()["payload"],
-        json!({ "value": "contacts", "was": "home" })
-    );
 }
 
 #[test]

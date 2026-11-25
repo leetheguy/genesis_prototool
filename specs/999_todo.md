@@ -56,11 +56,11 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 
 ## Open questions
 
-- **`go`, `log`, and timers in a component's own steps.** A component's own steps fire events and reach
-  nothing else ([090](090_components.md), its log): a custom action, a `call`, or a `reload` there is a config
-  error. Still allowed, until decided: `go` (it sets `sys.view` for the whole app), `log`, and `delay`, `every`,
-  and `cancel` (timer ids are app-wide, so a component's `cancel` can stop the app's timer). From
-  [090](090_components.md).
+- **Timers and logs as system components.** Lee: "Timers and logs are types of components. They just don't
+  have a way to render to the UI. But they still mesh with the events, listeners, and actions system." A timer
+  has a string id, start and stop actions, and start, stop, and complete events; a log is called with an action.
+  Until that's specced, `delay`, `every`, `cancel`, and `log` still run in a component's own steps. From
+  [090](090_components.md) and [100](100_events.md).
 
 - **Sessions across `serve` restarts and replicas.** Sessions live in `serve`'s memory, so a restart signs
   everyone out (their state survives), and two `serve`s can't share sessions. That's fine for one server. A
@@ -72,6 +72,8 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 
 ## Ideas
 
+- **`go`, as a convenience.** There's no `go` step: there are no pages, only showing and hiding. Lee: "We may
+  create it as a convenience down the road, but for now it's not necessary." From [100](100_events.md).
 - **Compiled plugin components.** Agent-written Leptos components, built into the renderer by a
   separate build step and loaded as plugins. They can't hot-reload the way TOML does, and they'd be agent
   code running in users' browsers, so this waits for real demand. From [090](090_components.md).

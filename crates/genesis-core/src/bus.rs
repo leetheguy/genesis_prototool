@@ -211,8 +211,6 @@ pub struct Machine {
 struct State {
     /// `app.*`: the app's variables.
     app: Map<String, Value>,
-    /// `sys.view`.
-    view: String,
     /// `sys.theme`.
     theme: String,
     /// `sys.events`, newest first.
@@ -263,7 +261,6 @@ impl Machine {
         let state = State {
             app: starting(&app),
             sources,
-            view: app.app.start.clone(),
             theme: app.app.theme.clone(),
             events: VecDeque::new(),
             errors: VecDeque::new(),
@@ -292,7 +289,7 @@ impl Machine {
 
     /// What a session keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting"):
     /// what the user did, never what an API said. That's `app.*` (except sources, variables a reply
-    /// filled last, and `[app] forget`), and `sys.view`, `sys.theme`, `sys.errors`, and `sys.events`.
+    /// filled last, and `[app] forget`), and `sys.theme`, `sys.errors`, and `sys.events`.
     pub fn kept(&self) -> Value {
         let app: Map<String, Value> = self
             .state
@@ -303,7 +300,7 @@ impl Machine {
             .collect();
         json!({
             "app": app,
-            "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors, "events": self.state.events },
+            "sys": { "theme": self.state.theme, "errors": self.state.errors, "events": self.state.events },
             "drafts": self.shown_drafts(),
             "locals": self.state.locals,
         })
@@ -391,9 +388,6 @@ impl Machine {
             }
         }
         let sys = kept.get("sys");
-        if let Some(view) = sys.and_then(|s| s["view"].as_str()) {
-            self.state.view = view.to_string();
-        }
         if let Some(theme) = sys.and_then(|s| s["theme"].as_str()) {
             self.state.theme = theme.to_string();
         }
@@ -684,18 +678,18 @@ impl Machine {
         self.tapped.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
-    /// The state as one value: `{ "app": {...}, "sys": { "view", "theme", "errors" }, "drafts": {...} }`,
+    /// The state as one value: `{ "app": {...}, "sys": { "theme", "errors" }, "drafts": {...} }`,
     /// with no `password` input's value in it.
     pub fn snapshot(&self) -> Value {
         json!({
             "app": self.state.app,
-            "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors },
+            "sys": { "theme": self.state.theme, "errors": self.state.errors },
             "drafts": self.shown_drafts(),
             "locals": self.state.locals,
         })
     }
 
-    /// The value at a dotted path, as a template would see it: `app.clicks`, `sys.view`,
+    /// The value at a dotted path, as a template would see it: `app.clicks`, `sys.theme`,
     /// `sys.events`, `sys.bus`. `None` when nothing is there.
     pub fn get(&self, path: &str) -> Option<Value> {
         self.look(path, None)
@@ -1099,14 +1093,12 @@ impl Machine {
                     .ok_or_else(|| format!("{toggle} isn't true or false"))?;
                 self.write(toggle, json!(!on), event)?;
             }
-            Step::Go { go } => self.write("sys.view", json!(go), event)?,
             _ => {}
         }
         Ok(())
     }
 
-    /// The current value of a variable actions may write: a declared `app.*`, `sys.view`, or
-    /// `sys.theme`, or inside a component, a declared `local.*`. Anything else is an error saying why.
+    /// The current value of a variable actions may write: a declared `app.*` or `sys.theme`, or inside a component, a declared `local.*`. Anything else is an error saying why.
     fn writable(&self, var: &str, cause: &Queued) -> Result<Value, String> {
         match var.split_once('.') {
             Some(("local", key)) => {
@@ -1128,7 +1120,6 @@ impl Machine {
                 .get(key)
                 .cloned()
                 .ok_or_else(|| format!("{var} isn't declared in [state]")),
-            Some(("sys", "view")) => Ok(json!(self.state.view)),
             Some(("sys", "theme")) => Ok(json!(self.state.theme)),
             _ => Err(format!("{var} can't be written")),
         }
@@ -1161,7 +1152,6 @@ impl Machine {
                     changed = format!("{}.{changed}", scope.name);
                 }
             }
-            Some((_, "view")) => self.state.view = text_of(&value),
             _ => self.state.theme = text_of(&value),
         }
         self.enqueue(&changed, json!({ "value": value, "was": was }), cause);
@@ -1335,7 +1325,6 @@ impl Machine {
             }
             ("props", None) => event?.scope.as_ref()?.props.clone(),
             ("props", Some(key)) => event?.scope.as_ref()?.props.get(key)?.clone(),
-            ("sys", Some("view")) => json!(self.state.view),
             ("sys", Some("theme")) => json!(self.state.theme),
             ("sys", Some("events")) => json!(self.state.events),
             ("sys", Some("errors")) => json!(self.state.errors),
@@ -1674,10 +1663,7 @@ fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<Strin
     let mut names = vec!["app.opened".to_string(), "config.loaded".to_string()];
     names.extend(node_events);
     names.extend(app.state.keys().map(|k| format!("app.{k}.changed")));
-    names.extend([
-        "sys.view.changed".to_string(),
-        "sys.theme.changed".to_string(),
-    ]);
+    names.push("sys.theme.changed".to_string());
     for name in app.sources.keys() {
         names.extend([format!("app.{name}.changed"), format!("app.{name}.reload")]);
     }

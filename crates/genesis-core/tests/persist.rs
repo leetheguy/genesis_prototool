@@ -28,7 +28,7 @@ load_on = []
 "click" = [{ step = "app.clicks" }, { step = "app.scratch" }]
 "pick" = [{ call = "api.get", into = { "app.picked" = "/name" } }]
 "pick_by_hand" = [{ set = "app.picked", to = "Grace" }]
-"elsewhere" = [{ go = "other" }, { set = "sys.theme", to = "dark" }]
+"elsewhere" = [{ set = "sys.theme", to = "dark" }]
 "#;
 
 fn machine() -> Machine {
@@ -55,10 +55,7 @@ fn what_the_user_did_is_kept() {
     m.fire("elsewhere", json!({}));
     let kept = m.kept();
     assert_eq!(kept["app"]["clicks"], 1);
-    assert_eq!(
-        (&kept["sys"]["view"], &kept["sys"]["theme"]),
-        (&json!("other"), &json!("dark"))
-    );
+    assert_eq!(kept["sys"]["theme"], json!("dark"));
     assert!(
         kept["sys"]["events"]
             .as_array()
@@ -102,10 +99,7 @@ fn restoring_brings_it_all_back() {
     let mut again = machine();
     again.restore(&first.kept());
     assert_eq!(again.get("app.clicks"), Some(json!(1)));
-    assert_eq!(
-        (again.get("sys.view"), again.get("sys.theme")),
-        (Some(json!("other")), Some(json!("dark")))
-    );
+    assert_eq!(again.get("sys.theme"), Some(json!("dark")));
     assert_eq!(again.get("sys.errors.0.message"), Some(json!("kept")));
     assert!(
         again
@@ -145,4 +139,13 @@ fn restoring_something_that_isnt_kept_state_is_a_note_not_a_crash() {
     let notes = m.restore(&json!("garbage"));
     assert_eq!(notes.len(), 1);
     assert_eq!(m.get("app.clicks"), Some(json!(0)));
+}
+
+#[test]
+fn a_sys_view_kept_before_go_was_removed_is_ignored() {
+    let mut m = machine();
+    m.restore(&json!({ "app": { "clicks": 2 }, "sys": { "view": "old", "theme": "dark" } }));
+    assert_eq!(m.get("app.clicks"), Some(json!(2)));
+    assert_eq!(m.get("sys.theme"), Some(json!("dark")));
+    assert_eq!(m.get("sys.view"), None);
 }

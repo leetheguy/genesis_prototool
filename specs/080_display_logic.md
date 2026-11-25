@@ -12,7 +12,7 @@ TOML tables, never as expressions, so it can't grow into a language. Anything be
 A condition is a table. It names a variable and makes one test:
 
 ```toml
-show = { var = "sys.view", is = "contacts" }
+show = { var = "app.view", is = "contacts" }
 show = { var = "sys.auth", is = "out" }
 show = { var = "app.contacts", status = "failed" }
 disabled = { var = "local.saving", is = true }
@@ -98,3 +98,7 @@ Milestone three ([999](999_todo.md)):
 - [ ] `disabled` on buttons and controls
 - [ ] checks on controls, with their messages
 - [ ] formats, and `locale`
+
+## Log
+
+- 2026-11-25: the first example shows on `app.view`, a variable the app declares, since `sys.view` is gone ([050](050_state.md)). Showing and hiding is all the navigation there is.

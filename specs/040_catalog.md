@@ -127,7 +127,7 @@ A control (`input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`)
   repeats keeps a draft for each row, by the row's place in the list, so typing in one row's form
   leaves the others alone and each submits on its own.
 - **Anywhere, with `var`:** it reads and writes that variable directly, with no submit: a search box, a filter,
-  a theme picker on `sys.theme`. `var` is a variable a `set` can write: `app.NAME`, `sys.view`, or `sys.theme`.
+  a theme picker on `sys.theme`. `var` is a variable a `set` can write: `app.NAME` or `sys.theme`.
   A control with `var` is a shortcut for a handler, as `on_click` is: its `NAME.change` runs
   `{ set = VAR, to = "{{ event.value }}" }`, so only an action changes state, `sys.bus` shows it, and the
   variable's `.changed` fires for sources and handlers to follow. A control without an `id` is named by its
@@ -318,7 +318,7 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a control with `var` reads and writes its variable on every change; a `select` on `sys.theme` changes the theme
 - each control gives its value its JSON type
 - a control with both `name` and `var`, or with `name` outside a `form`, is a config error
-- a control with `var` naming anything but `app.NAME`, `sys.view`, or `sys.theme` is a config error; `option_label` or `option_value` with written-out options is too, and so is `options` that's neither a list nor a variable's path
+- a control with `var` naming anything but `app.NAME` or `sys.theme` is a config error; `option_label` or `option_value` with written-out options is too, and so is `options` that's neither a list nor a variable's path
 - a control's `.change` runs a `set` of its `var`, shown in `sys.bus`, and fires the variable's `.changed`; one without an `id` writes by its place
 - a select picks the option equal to its variable, shows its placeholder while none is, takes options from a variable by its pointers, and shows a loud failure when that variable isn't a list
 - a number box keeps what's typed on the way to a number (`-`, `2.`) while it still means the variable's value (in a real browser: `tests/deployed/controls.mjs`)
@@ -348,3 +348,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and a check that a file was picked, come with display logic, [080](080_display_logic.md))
 - [x] `dialog`
 - [x] `markdown`
+
+## Log
+
+- 2026-11-25: a control's `var` can't be `sys.view`, which is gone, with the `go` step ([100](100_events.md)).

@@ -7,7 +7,6 @@ const HELLO: &str = r#"
 [app]
 name = "Hello"
 theme = "dark"
-start = "home"
 
 [state]
 clicks = 0
@@ -43,14 +42,12 @@ fn the_app_table_loads_its_values() {
     let app = hello();
     assert_eq!(app.app.name, "Hello");
     assert_eq!(app.app.theme, "dark");
-    assert_eq!(app.app.start, "home");
 }
 
 #[test]
 fn the_app_table_fills_in_defaults() {
     let app = App::from_toml("[app]\nname = \"Bare\"\n").expect("loads");
     assert_eq!(app.app.theme, "light");
-    assert_eq!(app.app.start, "main");
     assert_eq!(app.app.max_chain, 100);
     assert_eq!(app.app.event_trail, 200);
     assert!(
@@ -119,7 +116,6 @@ name = "x"
 "a.b" = [
   { set = "app.x", to = 3 },
   { toggle = "app.open" },
-  { go = "home" },
   { fire = "x.y" },
   { log = "hi" },
   { delay = 500, id = "t" },
@@ -142,24 +138,23 @@ name = "x"
             toggle: "app.open".into()
         }
     );
-    assert_eq!(steps[2], Step::Go { go: "home".into() });
     assert_eq!(
-        steps[3],
+        steps[2],
         Step::Fire {
             fire: "x.y".into(),
             with: Default::default()
         }
     );
-    assert_eq!(steps[4], Step::Log { log: "hi".into() });
+    assert_eq!(steps[3], Step::Log { log: "hi".into() });
     assert_eq!(
-        steps[5],
+        steps[4],
         Step::Delay {
             delay: 500,
             id: Some("t".into())
         }
     );
     assert_eq!(
-        steps[6],
+        steps[5],
         Step::Every {
             every: 1000,
             fire: "tick".into(),
@@ -168,7 +163,7 @@ name = "x"
         }
     );
     assert_eq!(
-        steps[7],
+        steps[6],
         Step::Cancel {
             cancel: "ticker".into()
         }
@@ -213,7 +208,7 @@ fn an_unknown_step_is_an_error_naming_its_keys() {
 #[test]
 fn a_step_with_an_extra_key_is_an_error() {
     let errors =
-        App::from_toml("[app]\nname = \"x\"\n[on]\n\"a.b\" = [{ go = \"home\", to = 1 }]\n")
+        App::from_toml("[app]\nname = \"x\"\n[on]\n\"a.b\" = [{ toggle = \"app.x\", to = 1 }]\n")
             .unwrap_err();
     assert!(errors[0].message.contains("to"), "{:?}", errors);
 }
@@ -297,4 +292,17 @@ fn a_node_without_an_id_is_named_by_its_place() {
         genesis_core::config::child_place("body.0", 1),
         "body.0.children.1"
     );
+}
+
+#[test]
+fn there_is_no_go_step_and_no_start_view() {
+    let errors =
+        App::from_toml("[app]\nname = \"x\"\n[on]\n\"a.b\" = [{ go = \"home\" }]\n").unwrap_err();
+    assert!(
+        errors[0].message.contains("unknown step with keys `go`"),
+        "{:?}",
+        errors
+    );
+    let errors = App::from_toml("[app]\nname = \"x\"\nstart = \"home\"\n").unwrap_err();
+    assert!(errors[0].message.contains("start"), "{:?}", errors);
 }

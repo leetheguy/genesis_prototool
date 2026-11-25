@@ -72,7 +72,7 @@ try {
     const snapshot = JSON.parse(readFileSync(join(dir, client), "utf8"));
     return snapshot.app.clicks === 3 && snapshot;
   });
-  if (mirrored.sys.view !== "main") fail(`the mirror's sys.view is ${mirrored.sys.view}`);
+  if (typeof mirrored.sys.theme !== "string") fail(`the mirror has no sys.theme: ${JSON.stringify(mirrored.sys)}`);
 
   const events = readFileSync(join(dir, client.replace(/\.json$/, ".events.ndjson")), "utf8")
     .trim()

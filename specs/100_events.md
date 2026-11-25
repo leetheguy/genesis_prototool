@@ -33,7 +33,7 @@ An event is a dotted name, plus a payload that handlers read as `{{ event.* }}`.
 | a call to an operation | `auth.logout.ok` or `.failed`, plus `.200`, `.404`, … | `status`, `body` (selected) |
 | a call with `event = "/outcome"` | `score_job.needs_review` (the reply's value at that pointer) | as above |
 | a custom action | `sign_out.done`, or `sign_out.failed` if a step failed | the failure, if any |
-| a variable changing | `app.page.changed`, `sys.view.changed` | `value`, `was` |
+| a variable changing | `app.page.changed`, `sys.theme.changed` | `value`, `was` |
 | a `fire` step | any name | its `with` table |
 | an agent or workflow, through `POST /api/push/{name}` ([110](110_agents.md)) | `push.review_ready` | the JSON body it sent |
 | Genesis | `app.opened`, `server.connected`, `server.disconnected`, `config.loaded`, `config.failed`, `auth.in`, `auth.out`, `state.wiped` | as fits |
@@ -47,7 +47,7 @@ actually changes.
 
 ```toml
 [on]
-"contact_card.click"       = [{ set = "app.selected", to = "{{ event.item.id }}" }, { go = "contact" }]
+"contact_card.click"       = [{ set = "app.selected", to = "{{ event.item.id }}" }, { set = "app.view", to = "contact" }]
 "*.failed"                 = [{ log = "{{ event.name }}: {{ event.body }}" }]
 "contacts.4??"             = [{ toast = "Check that contact and try again." }]
 ```
@@ -77,7 +77,6 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 | `{ set = "app.x", to = "..." }` | sets a variable | `app.x.changed` |
 | `{ step = "app.page", by = 1, min = 1, max = 99 }` | adds to a number, within optional bounds | `app.page.changed` |
 | `{ toggle = "local.open" }` | flips a boolean | `local.open.changed`; inside a component, under its `use` node: `card.local.open.changed` ([090](090_components.md)) |
-| `{ go = "contact" }` | sets `sys.view` | `sys.view.changed` |
 | `{ call = "crm.contacts.update", params = {...}, into = {...}, event = "/ptr" }` | calls an operation ([030](030_connections.md)); waits for the reply | `crm.contacts.update.ok` / `.failed` / `.{status}` |
 | `{ reload = ["app.contacts"] }` | calls those sources again ([050](050_state.md)) | their calls' events |
 | `{ fire = "ticker.tick", with = {...} }` | fires an event | that event |
@@ -166,7 +165,7 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: config types for `[on]`, `[actions]`, `[state]`, and nodes with `id` (TOML and JSON round trip)
 - [x] core: event names and `*`/`?` patterns
 - [x] core: the bus: queue, matching handlers in file order, `sys.events`, `sys.bus`, with `fire` and `log`
-- [x] core: `set`, `step`, `toggle`, `go`, and `.changed` events
+- [x] core: `set`, `step`, `toggle`, and `.changed` events (`go` too, until it was taken out: see the log)
 - [x] core: custom actions with `.done` and `.failed`; stop at the first failure
 - [x] core: chain depth and `max_chain`; failures always logged
 - [x] core: `delay`, `every`, and `cancel` on a clock tests control
@@ -176,3 +175,10 @@ Milestone three ([999](999_todo.md)):
 
 - [ ] `confirm`: asks in a dialog; "no" stops the list quietly
 - [ ] `toast`: a short message, with its variant
+
+## Log
+
+- 2026-11-25: there's no `go` step, and no `sys.view` or `sys.view.changed`. Showing one stack of nodes and
+  hiding another is all the navigation there is: set a variable the app declares (`app.view`) and show on it
+  ([080](080_display_logic.md)). A file that holds every such handler is a convention an author may choose,
+  not part of Genesis. `go` may come back later as a convenience. Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."
