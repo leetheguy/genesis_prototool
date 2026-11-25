@@ -1,15 +1,18 @@
-//! The controls with `var` ([spec 040](../../../specs/040_catalog.md), "Controls"): `input`,
-//! `textarea`, `select`, `checkbox`, `toggle`, and `radio`.
+//! The controls ([spec 040](../../../specs/040_catalog.md), "Controls"): `input`, `textarea`,
+//! `select`, `checkbox`, `toggle`, and `radio`, and the `form` that holds named ones.
 //!
-//! Each shows its variable's current value and, when the person types or picks, fires
-//! `NAME.change` with the new `value`, keeping its JSON type. The bus turns that into a `set` of
-//! the variable, so a control never changes state itself. Each is drawn as the real HTML element
+//! Each shows its current value (its `var`'s, or inside a form, what's typed into it or its form's
+//! `data`) and, when the person types or picks, fires `NAME.change` with the new `value`, keeping
+//! its JSON type. The bus turns that into a `set` of the variable, or puts it in the form's draft,
+//! so a control never changes state itself. Each is drawn as the real HTML element
 //! with daisyUI's class, so keyboards, screen readers, and autofill work. A label wraps its control,
 //! which is what names the control for screen readers.
 
 use crate::style::ClassList;
 use crate::{Component, Wired, failed_face};
-use genesis_core::config::{Checkbox, Input, InputKind, Options, Radio, Select, Textarea, Toggle};
+use genesis_core::config::{
+    Checkbox, Form, Input, InputKind, Options, Radio, Select, Textarea, Toggle,
+};
 use genesis_core::template::as_text;
 use leptos::prelude::*;
 use serde_json::{Value, json};
@@ -78,7 +81,10 @@ impl Component for Input {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        let (kind, read) = (self.kind, wired.read(&self.var));
+        let (kind, read) = (
+            self.kind,
+            wired.bound(self.var.as_deref(), self.name.as_deref()),
+        );
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
         let placeholder = move || placeholder.as_ref().map(|p| p());
         // What the person last typed. While it still means the variable's value, the box keeps it,
@@ -122,7 +128,10 @@ impl Component for Textarea {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        let (rows, read) = (self.rows, wired.read(&self.var));
+        let (rows, read) = (
+            self.rows,
+            wired.bound(self.var.as_deref(), self.name.as_deref()),
+        );
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
         let placeholder = move || placeholder.as_ref().map(|p| p());
         let fire = wired.clone();
@@ -143,8 +152,13 @@ impl Component for Textarea {
 }
 
 /// Fires a checkbox or toggle's `.change` with whether it's now checked.
-fn checked_view(wired: &Wired, var: &str, label: &Option<String>, own: &'static str) -> AnyView {
-    let read = wired.read(var);
+fn checked_view(
+    wired: &Wired,
+    (var, name): (&Option<String>, &Option<String>),
+    label: &Option<String>,
+    own: &'static str,
+) -> AnyView {
+    let read = wired.bound(var.as_deref(), name.as_deref());
     let fire = wired.clone();
     let on_change = move |ev| {
         fire.fire("change", json!({ "value": event_target_checked(&ev) }));
@@ -163,7 +177,7 @@ impl Component for Checkbox {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        checked_view(&wired, &self.var, &self.label, "checkbox")
+        checked_view(&wired, (&self.var, &self.name), &self.label, "checkbox")
     }
 }
 
@@ -171,7 +185,7 @@ impl Component for Toggle {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        checked_view(&wired, &self.var, &self.label, "toggle")
+        checked_view(&wired, (&self.var, &self.name), &self.label, "toggle")
     }
 }
 
@@ -179,9 +193,12 @@ impl Component for Radio {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        let (read, value) = (wired.read(&self.var), self.value.clone());
+        let (read, value) = (
+            wired.bound(self.var.as_deref(), self.name.as_deref()),
+            self.value.clone(),
+        );
         // The browser groups radios by `name`, and moves through a group with the arrow keys.
-        let group = self.var.clone();
+        let group = wired.group(self.var.as_deref(), self.name.as_deref());
         let fire = wired.clone();
         let picked = value.clone();
         let on_change = move |_| fire.fire("change", json!({ "value": picked.clone() }));
@@ -239,7 +256,10 @@ impl Component for Select {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        let (read, choices) = (wired.read(&self.var), choices(self, &wired));
+        let (read, choices) = (
+            wired.bound(self.var.as_deref(), self.name.as_deref()),
+            choices(self, &wired),
+        );
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
         let fire = wired.clone();
         let pick = {
@@ -289,5 +309,26 @@ impl Component for Select {
             })
         };
         select.into_any()
+    }
+}
+
+impl Component for Form {
+    const EVENTS: &'static [&'static str] = &["submit"];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let inner = wired.in_form(self.data.clone());
+        let children = self
+            .children
+            .iter()
+            .enumerate()
+            .map(|(i, child)| inner.child(i, child))
+            .collect_view();
+        let class = wired.class(&mut ClassList::default());
+        // The browser submits on a `submit` button or Enter in a box; the bus fills in the form.
+        let on_submit = move |ev: leptos::ev::SubmitEvent| {
+            ev.prevent_default();
+            wired.fire("submit", json!({}));
+        };
+        view! { <form class=class on:submit=on_submit>{children}</form> }.into_any()
     }
 }

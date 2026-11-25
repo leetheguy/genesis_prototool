@@ -87,7 +87,7 @@ fn a_buttons_variant_and_size_give_daisyuis_classes() {
     for (keys, want) in cases {
         let out = html(&format!("type = \"button\"\nlabel = \"Go\"\n{keys}"), "");
         assert!(
-            out.contains(&format!(r#"<button class="{want}""#)),
+            out.contains(&format!(r#"<button type="button" class="{want}""#)),
             "{keys}: {out}"
         );
     }

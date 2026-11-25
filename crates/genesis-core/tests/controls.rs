@@ -37,7 +37,7 @@ fn an_input_loads_with_var_kind_label_and_placeholder() {
     ) else {
         panic!("not an input")
     };
-    assert_eq!(input.var, "app.query");
+    assert_eq!(input.var.as_deref(), Some("app.query"));
     assert_eq!(input.placeholder.as_deref(), Some("Name or email"));
 }
 
@@ -80,7 +80,7 @@ fn a_radio_needs_a_value() {
 fn a_control_needs_a_var() {
     assert!(
         problem("[[body]]\ntype = \"checkbox\"\nlabel = \"I agree\"")
-            .contains("missing field `var`")
+            .contains("body.0: a control needs `var`, or `name` inside a form")
     );
 }
 

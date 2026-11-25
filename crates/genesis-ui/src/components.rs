@@ -90,7 +90,9 @@ impl Component for Button {
                 .add(Some(variant))
                 .add(self.size),
         );
-        view! { <button class=class on:click=move |_| wired.fire("click", nothing())>{label}</button> }.into_any()
+        // Inside a form, a button submits only when it says so.
+        let kind = if self.submit { "submit" } else { "button" };
+        view! { <button type=kind class=class on:click=move |_| wired.fire("click", nothing())>{label}</button> }.into_any()
     }
 }
 

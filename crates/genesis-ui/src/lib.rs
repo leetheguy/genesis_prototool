@@ -128,6 +128,13 @@ impl Host {
         self.after(effects);
     }
 
+    /// What's typed into `form`'s control named `field`, not yet submitted ([`Machine::draft`]).
+    /// Reading it inside a view makes that part of the view redraw when state changes.
+    pub fn draft(&self, form: &str, field: &str) -> Option<Value> {
+        self.changes.track();
+        self.machine().draft(form, field)
+    }
+
     /// The value at a dotted path (`app.clicks`, `sys.theme`). Reading it inside a view makes
     /// that part of the view redraw when state changes.
     pub fn get(&self, path: &str) -> Option<Value> {
@@ -218,6 +225,15 @@ pub struct Wired {
     placed: Placed,
     /// Inside an `each`, the element it's drawn for: `item.*`.
     item: Option<Value>,
+    /// Inside a `form`, that form.
+    form: Option<FormAt>,
+}
+
+/// The form a node is inside: its name, and the variable its controls start from.
+#[derive(Clone)]
+pub(crate) struct FormAt {
+    name: String,
+    data: Option<String>,
 }
 
 impl Wired {
@@ -237,9 +253,60 @@ impl Wired {
     }
 
     /// The current value at `path` (and `item.*` inside an `each`); redraws as state changes.
-    pub fn read(&self, path: &str) -> impl Fn() -> Option<Value> + Clone + Send + Sync + 'static {
+    pub fn read(
+        &self,
+        path: &str,
+    ) -> impl Fn() -> Option<Value> + Clone + Send + Sync + 'static + use<> {
         let (host, item, path) = (self.host.clone(), self.item.clone(), path.to_string());
         move || look(&host, item.as_ref(), &path)
+    }
+
+    /// A control's current value: its `var`'s, or, with `name` inside a form, what's typed into
+    /// it, else its form's `data` at its name. Redraws as state changes.
+    pub fn bound(
+        &self,
+        var: Option<&str>,
+        name: Option<&str>,
+    ) -> impl Fn() -> Option<Value> + Clone + Send + Sync + 'static + use<> {
+        let read = var.map(|var| self.read(var));
+        let named = match (name, &self.form) {
+            (Some(name), Some(form)) => Some((
+                self.host.clone(),
+                form.name.clone(),
+                name.to_string(),
+                form.data
+                    .as_ref()
+                    .map(|data| self.read(&format!("{data}.{name}"))),
+            )),
+            _ => None,
+        };
+        move || match (&read, &named) {
+            (Some(read), _) => read(),
+            (None, Some((host, form, name, data))) => host
+                .draft(form, name)
+                .or_else(|| data.as_ref().and_then(|data| data())),
+            (None, None) => None,
+        }
+    }
+
+    /// The name a radio's group goes by in the browser: its `var`, or its form's name and its own.
+    pub(crate) fn group(&self, var: Option<&str>, name: Option<&str>) -> String {
+        match (var, name, &self.form) {
+            (Some(var), _, _) => var.to_string(),
+            (None, Some(name), Some(form)) => format!("{}.{name}", form.name),
+            _ => String::new(),
+        }
+    }
+
+    /// The same wiring, for the children of a form whose controls start from `data`.
+    pub(crate) fn in_form(&self, data: Option<String>) -> Wired {
+        Wired {
+            form: Some(FormAt {
+                name: self.name.clone(),
+                data,
+            }),
+            ..self.clone()
+        }
     }
 
     /// The `class` for the node's element: `own` (its component's classes), then its placement.
@@ -254,6 +321,7 @@ impl Wired {
             child_place(&self.place, i),
             &self.host,
             self.item.clone(),
+            self.form.clone(),
         )
     }
 
@@ -268,6 +336,7 @@ impl Wired {
         children: &[Node],
     ) -> impl IntoView + use<> {
         let (host, item, place) = (self.host.clone(), self.item.clone(), self.place.clone());
+        let form = self.form.clone();
         let (path, children) = (path.to_string(), children.to_vec());
         let empty = empty.unwrap_or("Nothing here.").to_string();
         let error = error.map(String::from);
@@ -285,7 +354,13 @@ impl Wired {
                             .iter()
                             .enumerate()
                             .map(|(i, child)| {
-                                draw(child, child_place(&place, i), &host, Some(element.clone()))
+                                draw(
+                                    child,
+                                    child_place(&place, i),
+                                    &host,
+                                    Some(element.clone()),
+                                    form.clone(),
+                                )
                             })
                             .collect::<Vec<_>>()
                     })
@@ -374,14 +449,22 @@ fn kind(value: &Value) -> &'static str {
     }
 }
 
-/// Draws one node through its wiring; inside an `each`, `item` is the element it's drawn for.
-fn draw(node: &Node, place: String, host: &Host, item: Option<Value>) -> AnyView {
+/// Draws one node through its wiring; inside an `each`, `item` is the element it's drawn for, and
+/// inside a `form`, `form` is that form.
+fn draw(
+    node: &Node,
+    place: String,
+    host: &Host,
+    item: Option<Value>,
+    form: Option<FormAt>,
+) -> AnyView {
     let wired = Wired {
         host: host.clone(),
         name: node.name(&place),
         place,
         placed: node.placed(),
         item,
+        form,
     };
     match node {
         Node::Cell(n) => n.view(wired),
@@ -400,6 +483,7 @@ fn draw(node: &Node, place: String, host: &Host, item: Option<Value>) -> AnyView
         Node::Checkbox(n) => n.view(wired),
         Node::Toggle(n) => n.view(wired),
         Node::Radio(n) => n.view(wired),
+        Node::Form(n) => n.view(wired),
     }
 }
 
@@ -413,7 +497,7 @@ pub fn app_view(host: Host) -> AnyView {
             let body = host.machine().app().body.clone();
             body.iter()
                 .enumerate()
-                .map(|(i, node)| draw(node, body_place(i), &host, None))
+                .map(|(i, node)| draw(node, body_place(i), &host, None, None))
                 .collect_view()
         }
     };

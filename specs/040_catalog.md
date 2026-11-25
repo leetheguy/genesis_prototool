@@ -107,7 +107,11 @@ else, or `empty` or `error` on a cell without `each`, is a config error naming t
 A control (`input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`) works one of two ways:
 
 - **Inside a `form`, with `name`:** its value is the form's draft, and goes in the form's `form` payload on submit.
-  It starts from `data`'s `/name` when the form has `data`.
+  It starts from `data`'s `/name` when the form has `data`, and shows what's typed over it. Nothing
+  changes state until `.submit`: the payload's `form` holds every named control's value (typed, else
+  from `data`, else `null`), and the draft starts over. `data` is a variable's path: `app.*`, or `item`
+  and `item.*` inside an `each`. A `name` is a plain name, like `email`. A `password` input's value is
+  never kept, mirrored, or shown on the trail (`sys.events` shows `"(hidden)"`).
 - **Anywhere, with `var`:** it reads and writes that variable directly, with no submit: a search box, a filter,
   a theme picker on `sys.theme`. `var` is a variable a `set` can write: `app.NAME`, `sys.view`, or `sys.theme`.
   A control with `var` is a shortcut for a handler, as `on_click` is: its `NAME.change` runs
@@ -137,8 +141,10 @@ holds something other than a list (or `null`) are a loud failure in the select's
 control, which names it for screen readers. Checks are in [080](080_display_logic.md). A value keeps its JSON type: a
 number from a `number` input, a boolean from a `checkbox`.
 
-A `button` with `submit = true` submits the form it's in. The form fires `.submit` only when every check
-inside it passes; otherwise `.invalid`, and each failing control shows its message.
+A `button` with `submit = true` submits the form it's in, and so does Enter in one of its boxes, as in plain
+HTML. Any other button in a form doesn't. The form fires `.submit` only when every check
+inside it passes; otherwise `.invalid`, and each failing control shows its message. A `submit` button
+outside a `form`, or a form inside a form, is a config error.
 
 `button` takes `variant` (`"primary"`, `"secondary"`, `"accent"`, `"neutral"`, `"ghost"`, `"link"`, `"error"`)
 and `size` (`"xs"`, `"sm"`, `"md"`, `"lg"`), daisyUI's own. Like the style keys, either can take a table by screen size. Controls are drawn as daisyUI's controls.
@@ -285,7 +291,10 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - radios with one `name` in a form, or one `var`, are one group: picking one sets the group's value to its `value`, with its JSON type, and unpicks the rest
 - a `file` gives `{ file, name, type, size }` (a list with `multiple`), never its bytes; one over `max_size` fails its check; a `file` with `var`, or outside a `form`, is a config error
 - a call whose params hold a file reference reaches the API as `multipart/form-data`, the file as a part with its name and type and the other params as fields; a reference that's gone fails the call
-- a `form` starts its controls from `data`; a `submit` button fires `.submit` with each named control in `form`
+- a `form` starts its controls from `data` (an `item` inside an `each`), shows what's typed over it, and changes no state until `.submit`
+- a `submit` button, or Enter in a box, fires `.submit` with each named control in `form` (typed, else from `data`, else `null`), and the draft starts over; another button in a form doesn't submit (in a real browser: `tests/deployed/form.mjs`)
+- a draft is kept and comes back after a reload, and stays across a config reload while its form and control do; a `password` input's value is never kept, mirrored, or on the trail
+- a `submit` button outside a `form`, a form inside a form, a `name` that isn't a plain name, and `data` that isn't a variable's path are config errors
 - a `form` with a failing check fires `.invalid`, not `.submit`, and shows each message
 - a control with `var` reads and writes its variable on every change; a `select` on `sys.theme` changes the theme
 - each control gives its value its JSON type
@@ -316,7 +325,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `audio`, `video`, and `iframe`
 - [x] `each`, with its faces in `Wired`, and `item.*`
 - [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` and checks come with display logic, [080](080_display_logic.md))
-- [ ] `form`, controls with `name`, and the `submit` button
+- [x] `form`, controls with `name`, and the `submit` button (`.invalid` comes with checks, [080](080_display_logic.md))
 - [ ] `file`, and calls that send files as multipart through `serve`
 - [ ] `dialog`
 - [ ] `markdown`

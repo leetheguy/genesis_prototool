@@ -134,6 +134,8 @@ pub enum Node {
     Toggle(Toggle),
     /// One radio button of a group.
     Radio(Radio),
+    /// A form: its named controls fill a draft, which goes out on `.submit`.
+    Form(Form),
 }
 
 impl Node {
@@ -156,6 +158,7 @@ impl Node {
             Node::Checkbox(n) => n.placed(),
             Node::Toggle(n) => n.placed(),
             Node::Radio(n) => n.placed(),
+            Node::Form(n) => n.placed(),
         }
     }
 
@@ -178,6 +181,7 @@ impl Node {
             Node::Checkbox(n) => n.id.as_deref(),
             Node::Toggle(n) => n.id.as_deref(),
             Node::Radio(n) => n.id.as_deref(),
+            Node::Form(n) => n.id.as_deref(),
         }
     }
 
@@ -278,6 +282,9 @@ styled! {
         /// Shortcut for a handler on this button's `.click`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub on_click: Option<Vec<Step>>,
+        /// Submits the form it's in.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pub submit: bool,
     }
 }
 
@@ -436,8 +443,12 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes: `app.NAME`, `sys.view`, or `sys.theme`.
-        pub var: String,
+        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
         /// What it takes: `text` unless it says otherwise.
         #[serde(default, skip_serializing_if = "InputKind::is_text")]
         pub kind: InputKind,
@@ -496,8 +507,12 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes.
-        pub var: String,
+        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
         /// Its label; may hold templates.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub label: Option<String>,
@@ -519,8 +534,12 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes.
-        pub var: String,
+        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
         /// The options: a list here, or a variable holding one.
         pub options: Options,
         /// With options from a variable, the JSON Pointer to each one's label: `/label` unless it
@@ -569,8 +588,12 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes.
-        pub var: String,
+        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
         /// Its label; may hold templates.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub label: Option<String>,
@@ -586,8 +609,12 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes.
-        pub var: String,
+        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
         /// Its label; may hold templates.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub label: Option<String>,
@@ -604,8 +631,12 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable its group reads and writes.
-        pub var: String,
+        /// The variable its group reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its group's name in the form it's in: its value goes in the form's draft, and out on `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
         /// What picking it sets the variable to (any JSON value).
         pub value: Value,
         /// Its label; may hold templates.
@@ -617,15 +648,59 @@ styled! {
 impl Node {
     /// A control's `var`: the variable it reads and writes. `None` for every other type.
     pub fn var(&self) -> Option<&str> {
+        self.control().and_then(|(var, _)| var)
+    }
+
+    /// A control's `name`: its field in the form it's in. `None` for every other type.
+    pub fn field(&self) -> Option<&str> {
+        self.control().and_then(|(_, name)| name)
+    }
+
+    /// A control's `var` and `name`; `None` when it isn't a control.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn control(&self) -> Option<(Option<&str>, Option<&str>)> {
+        let (var, name) = match self {
+            Node::Input(n) => (&n.var, &n.name),
+            Node::Textarea(n) => (&n.var, &n.name),
+            Node::Select(n) => (&n.var, &n.name),
+            Node::Checkbox(n) => (&n.var, &n.name),
+            Node::Toggle(n) => (&n.var, &n.name),
+            Node::Radio(n) => (&n.var, &n.name),
+            _ => return None,
+        };
+        Some((var.as_deref(), name.as_deref()))
+    }
+
+    /// The nodes directly inside it: a cell's or a form's children.
+    pub fn children(&self) -> &[Node] {
         match self {
-            Node::Input(n) => Some(&n.var),
-            Node::Textarea(n) => Some(&n.var),
-            Node::Select(n) => Some(&n.var),
-            Node::Checkbox(n) => Some(&n.var),
-            Node::Toggle(n) => Some(&n.var),
-            Node::Radio(n) => Some(&n.var),
-            _ => None,
+            Node::Cell(n) => &n.children,
+            Node::Form(n) => &n.children,
+            _ => &[],
         }
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "form"`: an HTML `form`. Its controls with `name` fill its draft, and a `submit`
+    /// button (or Enter in a box) fires `.submit` with the draft as `form`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Form {
+        /// The node's name; its `.submit` fires under it, and its draft is kept by it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The nodes inside it.
+        #[serde(default)]
+        pub children: Vec<Node>,
+        /// A variable to start from (`app.contact`, or `item` inside an `each`): each control
+        /// with `name` starts from its `/name`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        /// Shortcut for a handler on this form's `.submit`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub on_submit: Option<Vec<Step>>,
     }
 }
 
@@ -1062,7 +1137,7 @@ impl App {
         }
         if let Some(app) = &top {
             for (i, node) in app.body.iter().enumerate() {
-                check_node(node, &body_place(i), &mut problems);
+                check_node(node, &body_place(i), false, &mut problems);
             }
         }
         names.clashes(&mut problems);
@@ -1269,10 +1344,41 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
 }
 
 /// Checks what one key can't: a node's keys that only make sense apart. `place` names the node,
-/// since it may have no `id`.
-fn check_node(node: &Node, place: &str, problems: &mut Vec<ConfigError>) {
+/// since it may have no `id`; `in_form` says whether it's inside a `form`.
+fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<ConfigError>) {
     let mut problem =
         |message: String| problems.push(problem_in("app.toml", format!("{place}: {message}")));
+    if node.control().is_some() {
+        match (node.var(), node.field()) {
+            (Some(_), Some(_)) => {
+                problem("a control takes `name` (inside a form) or `var`, not both".into())
+            }
+            (None, None) => problem("a control needs `var`, or `name` inside a form".into()),
+            (None, Some(_)) if !in_form => {
+                problem("`name` works inside a `form`; outside one, a control takes `var`".into())
+            }
+            (None, Some(name)) if !is_plain(name) => problem(format!(
+                "`name` is a plain name, like \"email\", not {name:?}"
+            )),
+            _ => {}
+        }
+    }
+    if let Node::Button(button) = node
+        && button.submit
+        && !in_form
+    {
+        problem("`submit` works on a button inside a `form`".into());
+    }
+    if let Node::Form(form) = node {
+        if in_form {
+            problem("a form can't hold another form".into());
+        }
+        if let Some(data) = form.data.as_deref().filter(|d| !is_list_path(d)) {
+            problem(format!(
+                "`data` is a variable's path, like \"app.contact\" or \"item\", not {data:?}"
+            ));
+        }
+    }
     if node.var().is_some_and(|var| !is_writable_path(var)) {
         problem(format!(
             "`var` is an app variable, like \"app.query\", or sys.view or sys.theme, not {:?}",
@@ -1317,10 +1423,19 @@ fn check_node(node: &Node, place: &str, problems: &mut Vec<ConfigError>) {
                 }
             }
         }
-        for (i, child) in cell.children.iter().enumerate() {
-            check_node(child, &child_place(place, i), problems);
-        }
     }
+    let in_form = in_form || matches!(node, Node::Form(_));
+    for (i, child) in node.children().iter().enumerate() {
+        check_node(child, &child_place(place, i), in_form, problems);
+    }
+}
+
+/// Whether `name` is a plain name: letters, digits, `_`, and `-`.
+fn is_plain(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// Whether `path` names a variable a control may write: `app.NAME`, `sys.view`, or `sys.theme`,
