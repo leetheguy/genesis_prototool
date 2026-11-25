@@ -1599,10 +1599,15 @@ impl App {
             let (path, text) = (path.as_ref(), text.as_ref());
             let file_name = path.rsplit('/').next().unwrap_or(path).to_string();
             if let Some(first) = seen_files.get(&file_name) {
+                let first = if first.contains('/') {
+                    first.clone()
+                } else {
+                    format!("{first} (at the top of the configs folder)")
+                };
                 problems.push(problem_in(
                     path,
                     format!(
-                        "the file name {file_name} is also {first}; give one of them another name"
+                        "this file and {first} share the name {file_name}; give one of them another name"
                     ),
                 ));
                 continue;

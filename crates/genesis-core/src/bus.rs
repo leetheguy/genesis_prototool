@@ -1280,8 +1280,46 @@ impl Machine {
             }
             _ => self.state.theme = text_of(&value),
         }
+        self.start_over(var, cause);
         self.enqueue(&changed, json!({ "value": value, "was": was }), cause);
         Ok(())
+    }
+
+    /// Drops the draft of every form whose `data` reads `var`, which just changed, so the form
+    /// shows the new data, not what was typed over the old. A `local.*` var is one instance's, so
+    /// only that instance's forms start over. A form whose `data` is `item` or `props` keeps its
+    /// drafts: those don't change through a variable.
+    fn start_over(&mut self, var: &str, cause: &Queued) {
+        let reads = |data: &str| data == var || data.starts_with(&format!("{var}."));
+        let (inside, row) = match (var.starts_with("local."), &cause.scope) {
+            (false, _) => (None, None),
+            (true, Some(scope)) => (
+                Some(format!("{}.", scope.name)),
+                scope.key.split_once('#').map(|(_, row)| row.to_string()),
+            ),
+            (true, None) => return,
+        };
+        let forms: BTreeSet<&String> = self
+            .forms
+            .forms
+            .iter()
+            .filter(|(name, wired)| {
+                wired.data.as_deref().is_some_and(reads)
+                    && inside
+                        .as_ref()
+                        .is_none_or(|inside| name.starts_with(inside))
+            })
+            .map(|(name, _)| name)
+            .collect();
+        if forms.is_empty() {
+            return;
+        }
+        let mine = |key: &String| {
+            forms.contains(&form_of(key).to_string())
+                && (inside.is_none() || key.split_once('#').map(|(_, r)| r) == row.as_deref())
+        };
+        self.state.drafts.retain(|key, _| !mine(key));
+        self.state.tried.retain(|key| !mine(key));
     }
 
     /// Puts an event a handler fired at the back of the queue, one deeper than its cause.

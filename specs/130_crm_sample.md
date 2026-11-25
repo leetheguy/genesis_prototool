@@ -96,3 +96,5 @@ headless Chromium, as part of `scripts/check-hello.sh`:
   copies it into the `app.*` variable the source reads. The API answers a refusal as plain text, so the default
   failure toast reads as a sentence. Two gaps found are in [999](999_todo.md): a form's draft that doesn't start
   over when its `data` changes, and the message for two files with one name.
+- 2026-11-25: both gaps are fixed ([040](040_catalog.md), [120](120_one_app.md)), and the deployed check now edits one
+  contact, closes unsaved, and checks the next one's form starts from that contact.

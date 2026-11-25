@@ -1,7 +1,8 @@
 // The CRM deployed check (spec 130): the CRM sample, driven in a real browser against its own API.
 // It searches, adds a company (the form's check first), opens one and adds a contact there, edits a
-// contact, fails loudly deleting a company that has contacts, deletes a contact after asking, and
-// checks the API's data file holds it all, even after a restart.
+// contact (what was typed in another, unsaved, doesn't follow), fails loudly deleting a company
+// that has contacts, deletes a contact after asking, and checks the API's data file holds it all,
+// even after a restart.
 //
 // It runs samples/crm/api.mjs on a temporary data file, and serve on a temporary copy of
 // samples/crm/configs pointed at it, with the token in serve's environment only. Run it with
@@ -110,9 +111,18 @@ try {
   await toast("Added Katherine Johnson.", "success");
   await named("Katherine Johnson").waitFor();
 
+  // What's typed in one contact's edit form, closed unsaved, doesn't show up in the next one's.
+  await button("Edit", row("Ada Lovelace")).click();
+  const editingAda = dialog("Edit Ada Lovelace");
+  await editingAda.getByLabel("Phone").fill("000-0000");
+  await page.keyboard.press("Escape");
+  await gone("Ada's edit dialog to close", editingAda);
+
   // Editing a contact saves it, and the list shows the change.
   await button("Edit", row("Grace Hopper")).click();
   const editing = dialog("Edit Grace Hopper");
+  await until("Grace's form to start from Grace", async () => (await editing.getByLabel("Name").inputValue()) === "Grace Hopper");
+  if ((await editing.getByLabel("Phone").inputValue()) !== "") throw new Error("Ada's typing showed up in Grace's form");
   await editing.getByLabel("Phone").fill("555-0199");
   await button("Save", editing).click();
   await toast("Saved Grace Hopper.", "success");
