@@ -24,9 +24,9 @@ Milestones one and two are built; [000](specs/000_overview.md) says what exists.
 any change to the Dockerfile, `docker-compose.yml`, or `/fs/`.
 
 **Browser checks:** `scripts/check-hello.sh` builds the bundle and `serve`, then drives the hello app in headless
-Chromium: clicks and the mirror (`tests/deployed/hello.mjs`), live edits (`tests/deployed/reload.mjs`), and calls
+Chromium: clicks and the mirror (`tests/deployed/hello.mjs`), live edits (`tests/deployed/reload.mjs`), calls
 through `serve` to a mock API and PurpleFlow (`tests/deployed/calls.mjs`; `GENESIS_PF_HOOKS` points it at another
-PurpleFlow). Run it after any change to the renderer, `apps/web`, or `serve`.
+PurpleFlow), and grid layout (`tests/deployed/layout.mjs`). Run it after any change to the renderer, `apps/web`, or `serve`.
 
 ## Genesis rules
 

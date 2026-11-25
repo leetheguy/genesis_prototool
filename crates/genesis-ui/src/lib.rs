@@ -17,11 +17,13 @@
 
 use genesis_core::bus::{Call, Effect, Machine, Reply};
 use genesis_core::config::{App, Node, body_place, child_place};
+use genesis_core::style::Placed;
 use genesis_core::template;
 use leptos::prelude::*;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use style::ClassList;
 
 mod components;
 pub mod style;
@@ -211,6 +213,8 @@ pub struct Wired {
     name: String,
     /// Where it sits in the tree, so its children can be named.
     place: String,
+    /// Where it sits in its parent: its placement keys, the same for every type.
+    placed: Placed,
 }
 
 impl Wired {
@@ -225,6 +229,11 @@ impl Wired {
         move || template::text(&text, |path| host.get(path))
     }
 
+    /// The `class` for the node's element: `own` (its component's classes), then its placement.
+    pub(crate) fn class(&self, own: &mut ClassList) -> String {
+        own.placed(self.placed).attr()
+    }
+
     /// Draws the `i`th child of this node.
     pub fn child(&self, i: usize, node: &Node) -> AnyView {
         draw(node, child_place(&self.place, i), &self.host)
@@ -237,6 +246,7 @@ fn draw(node: &Node, place: String, host: &Host) -> AnyView {
         host: host.clone(),
         name: node.name(&place),
         place,
+        placed: node.placed(),
     };
     match node {
         Node::Cell(n) => n.view(wired),

@@ -379,6 +379,67 @@ words! {
     Font { Sans = "sans", Mono = "mono" }
 }
 
+/// How many grid columns a node covers: a count, or the whole row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Span {
+    /// `1`–`12` columns.
+    Count(u8),
+    /// `"full"`: the whole row.
+    Full,
+}
+
+impl Vocab for Span {
+    fn all() -> Vec<Self> {
+        (1..=12).map(Span::Count).chain([Span::Full]).collect()
+    }
+    fn to_value(&self) -> Value {
+        match self {
+            Span::Count(n) => Value::from(*n),
+            Span::Full => Value::from("full"),
+        }
+    }
+}
+
+/// How many grid columns to skip before a node: `1`–`11`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Offset(pub u8);
+
+impl Vocab for Offset {
+    fn all() -> Vec<Self> {
+        (1..=11).map(Offset).collect()
+    }
+    fn to_value(&self) -> Value {
+        Value::from(self.0)
+    }
+}
+
+words! {
+    /// A node's width.
+    Width {
+        Full = "full",
+        Fit = "fit",
+        Half = "1/2",
+        Third = "1/3",
+        TwoThirds = "2/3",
+        Quarter = "1/4",
+        ThreeQuarters = "3/4",
+    }
+}
+
+words! {
+    /// A cap on a node's width.
+    MaxWidth {
+        Sm = "sm",
+        Md = "md",
+        Lg = "lg",
+        Xl = "xl",
+        Xl2 = "2xl",
+        Xl4 = "4xl",
+        Xl6 = "6xl",
+        Prose = "prose",
+    }
+}
+
 /// One type per style key, each holding its value and knowing its own name.
 pub mod keys {
     use super::{BySize, StyleKey, read};
@@ -464,6 +525,16 @@ pub mod keys {
         TextAlign(super::TextAlign) = "text_align";
         /// `font`: the font family.
         Font(super::Font) = "font";
+        /// `span`: how many grid columns the node covers.
+        Span(super::Span) = "span";
+        /// `offset`: how many grid columns to skip before it.
+        Offset(super::Offset) = "offset";
+        /// `grow`: takes the room left over in a row.
+        Grow(bool) = "grow";
+        /// `width`: its width.
+        Width(super::Width) = "width";
+        /// `max_width`: caps its width.
+        MaxWidth(super::MaxWidth) = "max_width";
     }
 }
 
@@ -508,8 +579,20 @@ pub struct Typed {
     pub font: Option<keys::Font>,
 }
 
-/// Defines a node type with groups of style keys (`layout`, `boxed`, `typed`) as its own fields,
-/// each optional, and a method per group reading them together ([`Layout`], [`Boxed`], [`Typed`]).
+/// The placement keys, read together: where a node sits in its parent. Every node takes them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(missing_docs)]
+pub struct Placed {
+    pub span: Option<keys::Span>,
+    pub offset: Option<keys::Offset>,
+    pub grow: Option<keys::Grow>,
+    pub width: Option<keys::Width>,
+    pub max_width: Option<keys::MaxWidth>,
+}
+
+/// Defines a node type with groups of style keys (`layout`, `boxed`, `typed`, `placed`) as its own
+/// fields, each optional, and a method per group reading them together ([`Layout`], [`Boxed`],
+/// [`Typed`], [`Placed`]).
 ///
 /// The keys are the node's own fields rather than a nested table, so the TOML writes them flat
 /// (`gap = 4`) and an unknown key is still refused with its line.
@@ -604,6 +687,33 @@ macro_rules! styled {
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub font: Option<$crate::style::keys::Font>,
         ] [$($rest)*] $groups $($item)*);
+    };
+    (@fields [$($fields:tt)*] [placed $($rest:ident)*] $groups:tt $($item:tt)*) => {
+        $crate::style::styled!(@fields [$($fields)*
+            #[doc = concat!("`span`: see [`$crate::style::keys::Span`].")]
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub span: Option<$crate::style::keys::Span>,
+            #[doc = concat!("`offset`: see [`$crate::style::keys::Offset`].")]
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub offset: Option<$crate::style::keys::Offset>,
+            #[doc = concat!("`grow`: see [`$crate::style::keys::Grow`].")]
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub grow: Option<$crate::style::keys::Grow>,
+            #[doc = concat!("`width`: see [`$crate::style::keys::Width`].")]
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub width: Option<$crate::style::keys::Width>,
+            #[doc = concat!("`max_width`: see [`$crate::style::keys::MaxWidth`].")]
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub max_width: Option<$crate::style::keys::MaxWidth>,
+        ] [$($rest)*] $groups $($item)*);
+    };
+    (@method placed $name:ident) => {
+        impl $name {
+            /// Its placement keys, read together.
+            pub fn placed(&self) -> $crate::style::Placed {
+                $crate::style::Placed { span: self.span, offset: self.offset, grow: self.grow, width: self.width, max_width: self.max_width }
+            }
+        }
     };
     (@method layout $name:ident) => {
         impl $name {

@@ -6,7 +6,11 @@ use leptos::prelude::*;
 
 /// The classes on the element drawn for one `ty` node with `keys` (TOML lines).
 fn classes(ty: &str, keys: &str) -> String {
-    let text = if ty == "text" { "text = \"hi\"\n" } else { "" };
+    let text = match ty {
+        "text" => "text = \"hi\"\n",
+        "button" => "label = \"Go\"\n",
+        _ => "",
+    };
     let toml = format!("[app]\nname = \"x\"\n[[body]]\ntype = \"{ty}\"\n{text}{keys}\n");
     let out = Owner::new().with(|| app_view(Host::new(App::from_toml(&toml).unwrap())).to_html());
     // The screen's own wrapper comes first; the node is the next element (past Leptos's `<!>` markers).
@@ -158,6 +162,46 @@ fn a_heading_keeps_its_own_size_below_the_first_screen_its_size_key_names() {
 }
 
 #[test]
+fn placement_keys_give_their_classes_on_every_node() {
+    let cases = [
+        ("span = 4", "col-span-4"),
+        ("span = \"full\"", "col-span-full"),
+        ("offset = 2", "col-start-3"),
+        ("grow = true", "grow"),
+        ("grow = false", "grow-0"),
+        ("width = \"1/3\"", "w-1/3"),
+        ("width = \"fit\"", "w-fit"),
+        ("max_width = \"prose\"", "max-w-prose"),
+        ("max_width = \"2xl\"", "max-w-2xl"),
+        (
+            "span = { base = 12, md = 6, lg = 4 }",
+            "col-span-12 md:col-span-6 lg:col-span-4",
+        ),
+    ];
+    for (keys, want) in cases {
+        assert_eq!(
+            classes("cell", keys),
+            format!("flex flex-col {want}"),
+            "cell {keys}"
+        );
+        assert_eq!(classes("text", keys), want, "text {keys}");
+        assert_eq!(
+            classes("button", keys),
+            format!("btn btn-primary {want}"),
+            "button {keys}"
+        );
+    }
+}
+
+#[test]
+fn a_nodes_placement_comes_after_its_own_classes() {
+    assert_eq!(
+        classes("text", "span = 2\nlevel = 2\npad = 1"),
+        "p-1 text-2xl font-bold col-span-2"
+    );
+}
+
+#[test]
 fn the_vocabulary_has_every_class_a_style_key_can_give_once() {
     let words = style::vocabulary();
     for class in [
@@ -192,6 +236,14 @@ fn the_vocabulary_has_every_class_a_style_key_can_give_once() {
         "xl:grid-cols-[repeat(auto-fit,minmax(6rem,1fr))]",
         "md:text-base-content/60",
         "sm:border-error-content",
+        "col-span-1",
+        "col-span-full",
+        "col-start-2",
+        "col-start-12",
+        "grow-0",
+        "w-3/4",
+        "max-w-prose",
+        "xl:max-w-6xl",
     ] {
         assert!(words.iter().any(|w| w == class), "{class} missing");
     }

@@ -111,6 +111,15 @@ pub enum Node {
 }
 
 impl Node {
+    /// Its placement keys: where it sits in its parent. Every node takes them.
+    pub fn placed(&self) -> crate::style::Placed {
+        match self {
+            Node::Cell(n) => n.placed(),
+            Node::Text(n) => n.placed(),
+            Node::Button(n) => n.placed(),
+        }
+    }
+
     /// The node's `id`, if it has one.
     pub fn id(&self) -> Option<&str> {
         match self {
@@ -139,7 +148,7 @@ pub fn child_place(parent: &str, i: usize) -> String {
 }
 
 styled! {
-    [layout, boxed, typed]
+    [layout, boxed, typed, placed]
     /// `type = "cell"`: a `div` holding other nodes, laid out and styled by its style keys
     /// ([spec 040](../../../specs/040_catalog.md)).
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -155,7 +164,7 @@ styled! {
 }
 
 styled! {
-    [boxed, typed]
+    [boxed, typed, placed]
     /// `type = "text"`: a paragraph, or with `level`, a heading.
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -187,18 +196,21 @@ fn heading_level<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u8
     }
 }
 
-/// `type = "button"`. Fires `.click`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Button {
-    /// The node's name; its events fire under it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    /// The button's text.
-    pub label: String,
-    /// Shortcut for a handler on this button's `.click`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub on_click: Option<Vec<Step>>,
+styled! {
+    [placed]
+    /// `type = "button"`. Fires `.click`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Button {
+        /// The node's name; its events fire under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The button's text.
+        pub label: String,
+        /// Shortcut for a handler on this button's `.click`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub on_click: Option<Vec<Step>>,
+    }
 }
 
 /// One step of a handler or an action: a built-in action, or the name of a custom one.

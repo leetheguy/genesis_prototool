@@ -19,11 +19,12 @@ impl Component for Cell {
             .enumerate()
             .map(|(i, child)| wired.child(i, child))
             .collect();
-        let class = ClassList::default()
-            .layout(self.layout())
-            .boxed(self.boxed())
-            .typed(self.typed())
-            .attr();
+        let class = wired.class(
+            ClassList::default()
+                .layout(self.layout())
+                .boxed(self.boxed())
+                .typed(self.typed()),
+        );
         view! { <div class=class>{children}</div> }.into_any()
     }
 }
@@ -54,7 +55,7 @@ impl Component for Text {
                     .map_or(BySize::base(weight), |k| k.0.or_base(weight)),
             ));
         }
-        let class = ClassList::default().boxed(self.boxed()).typed(typed).attr();
+        let class = wired.class(ClassList::default().boxed(self.boxed()).typed(typed));
         match self.level {
             None => view! { <p class=class>{text}</p> }.into_any(),
             Some(1) => view! { <h1 class=class>{text}</h1> }.into_any(),
@@ -69,6 +70,7 @@ impl Component for Button {
 
     fn view(&self, wired: Wired) -> AnyView {
         let label = wired.text(&self.label);
-        view! { <button class="btn btn-primary" on:click=move |_| wired.fire("click", nothing())>{label}</button> }.into_any()
+        let class = wired.class(ClassList::default().raw("btn btn-primary"));
+        view! { <button class=class on:click=move |_| wired.fire("click", nothing())>{label}</button> }.into_any()
     }
 }

@@ -4,7 +4,11 @@ use genesis_core::config::App;
 
 /// An app whose one node is a `ty` with `keys` (TOML lines) on it.
 fn node(ty: &str, keys: &str) -> String {
-    let text = if ty == "text" { "text = \"hi\"\n" } else { "" };
+    let text = match ty {
+        "text" => "text = \"hi\"\n",
+        "button" => "label = \"Go\"\n",
+        _ => "",
+    };
     format!("[app]\nname = \"Styled\"\n\n[[body]]\ntype = \"{ty}\"\n{text}{keys}\n")
 }
 
@@ -82,6 +86,37 @@ const TYPE: &[(&str, &[&str])] = &[
     ("font", &[r#""sans""#, r#""mono""#]),
 ];
 
+const PLACEMENT: &[(&str, &[&str])] = &[
+    ("span", &["1", "4", "12", r#""full""#]),
+    ("offset", &["1", "6", "11"]),
+    ("grow", &["true", "false"]),
+    (
+        "width",
+        &[
+            r#""full""#,
+            r#""fit""#,
+            r#""1/2""#,
+            r#""1/3""#,
+            r#""2/3""#,
+            r#""1/4""#,
+            r#""3/4""#,
+        ],
+    ),
+    (
+        "max_width",
+        &[
+            r#""sm""#,
+            r#""md""#,
+            r#""lg""#,
+            r#""xl""#,
+            r#""2xl""#,
+            r#""4xl""#,
+            r#""6xl""#,
+            r#""prose""#,
+        ],
+    ),
+];
+
 const SPACING: &[&str] = &["0", "1", "2", "3", "4", "5", "6", "8", "10", "12", "16"];
 
 const COLORS: &[&str] = &[
@@ -129,13 +164,18 @@ fn every_value_loads(ty: &str, groups: &[&[(&str, &[&str])]]) {
 }
 
 #[test]
-fn a_cell_takes_every_layout_box_and_type_value() {
-    every_value_loads("cell", &[LAYOUT, BOX, TYPE]);
+fn a_cell_takes_every_layout_box_type_and_placement_value() {
+    every_value_loads("cell", &[LAYOUT, BOX, TYPE, PLACEMENT]);
 }
 
 #[test]
-fn a_text_takes_every_box_and_type_value() {
-    every_value_loads("text", &[BOX, TYPE]);
+fn a_text_takes_every_box_type_and_placement_value() {
+    every_value_loads("text", &[BOX, TYPE, PLACEMENT]);
+}
+
+#[test]
+fn a_button_takes_every_placement_value() {
+    every_value_loads("button", &[PLACEMENT]);
 }
 
 #[test]
@@ -179,6 +219,22 @@ fn a_value_outside_a_keys_list_is_a_problem_naming_the_key_and_its_values_on_its
         (
             "weight = \"heavy\"",
             "`weight` is \"normal\", \"medium\", \"semibold\", or \"bold\", not \"heavy\"",
+        ),
+        (
+            "span = 0",
+            "`span` is 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, or \"full\", not 0",
+        ),
+        (
+            "offset = 12",
+            "`offset` is 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, or 11, not 12",
+        ),
+        (
+            "width = \"50%\"",
+            "`width` is \"full\", \"fit\", \"1/2\", \"1/3\", \"2/3\", \"1/4\", or \"3/4\", not \"50%\"",
+        ),
+        (
+            "max_width = \"3xl\"",
+            "`max_width` is \"sm\", \"md\", \"lg\", \"xl\", \"2xl\", \"4xl\", \"6xl\", or \"prose\", not \"3xl\"",
         ),
     ];
     for (line, message) in cases {
@@ -293,4 +349,17 @@ fn flow_and_grid_at_different_screen_sizes_are_still_both() {
     ))
     .unwrap_err();
     assert!(problems[0].message.ends_with("not both"), "{problems:?}");
+}
+
+#[test]
+fn every_node_hands_over_its_placement_keys() {
+    use genesis_core::style::{BySize, Span, keys};
+    for ty in ["cell", "text", "button"] {
+        let app = App::from_toml(&node(ty, "span = 4")).unwrap();
+        assert_eq!(
+            app.body[0].placed().span,
+            Some(keys::Span(BySize::base(Span::Count(4)))),
+            "{ty}"
+        );
+    }
 }

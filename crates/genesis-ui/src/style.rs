@@ -5,8 +5,8 @@
 //! `crates/genesis-ui/classes.txt` for Tailwind to read (a test keeps the two the same).
 
 use genesis_core::style::{
-    Boxed, BySize, Color, Columns, Direction, Layout, Line, Margin, SCREENS, StyleKey, TextColor,
-    Typed, Vocab, keys,
+    Boxed, BySize, Color, Columns, Direction, Layout, Line, Margin, Placed, SCREENS, Span,
+    StyleKey, TextColor, Typed, Vocab, keys,
 };
 
 /// The classes a key gives for each of its values, space-separated, before any screen prefix.
@@ -204,7 +204,41 @@ impl Classes for keys::Font {
     }
 }
 
-/// Collects classes, skipping keys that aren't set or give none.
+impl Classes for keys::Span {
+    fn of(value: Self::Value) -> String {
+        match value {
+            Span::Count(n) => format!("col-span-{n}"),
+            Span::Full => "col-span-full".into(),
+        }
+    }
+}
+
+impl Classes for keys::Offset {
+    fn of(value: Self::Value) -> String {
+        // Skipping n columns is starting at column n + 1.
+        format!("col-start-{}", value.0 + 1)
+    }
+}
+
+impl Classes for keys::Grow {
+    fn of(value: Self::Value) -> String {
+        if value { "grow" } else { "grow-0" }.into()
+    }
+}
+
+impl Classes for keys::Width {
+    fn of(value: Self::Value) -> String {
+        format!("w-{}", value.word())
+    }
+}
+
+impl Classes for keys::MaxWidth {
+    fn of(value: Self::Value) -> String {
+        format!("max-w-{}", value.word())
+    }
+}
+
+/// Collects classes, skipping keys that aren't set.
 #[derive(Default)]
 pub(crate) struct ClassList(Vec<String>);
 
@@ -215,6 +249,21 @@ impl ClassList {
             self.0.push(classes(&key));
         }
         self
+    }
+
+    /// Adds `classes` as they are: a component's own daisyUI classes.
+    pub(crate) fn raw(&mut self, classes: &str) -> &mut Self {
+        self.0.push(classes.into());
+        self
+    }
+
+    /// The placement keys.
+    pub(crate) fn placed(&mut self, p: Placed) -> &mut Self {
+        self.add(p.span)
+            .add(p.offset)
+            .add(p.grow)
+            .add(p.width)
+            .add(p.max_width)
     }
 
     /// A cell's layout: a flex column or row, until a screen size where it's a grid.
@@ -292,6 +341,11 @@ pub fn vocabulary() -> Vec<String> {
         every::<keys::Color>().collect(),
         every::<keys::TextAlign>().collect(),
         every::<keys::Font>().collect(),
+        every::<keys::Span>().collect(),
+        every::<keys::Offset>().collect(),
+        every::<keys::Grow>().collect(),
+        every::<keys::Width>().collect(),
+        every::<keys::MaxWidth>().collect(),
     ];
     let mut seen = std::collections::BTreeSet::new();
     all.into_iter()

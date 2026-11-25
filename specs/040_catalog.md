@@ -250,7 +250,8 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a table by screen size naming another screen, or none, is a config error; so is a bad value at one screen, naming it
 - a style key value outside its list is a config error naming the key and its values, at its line
 - a cell with both `flow` and `grid` is a config error naming its place
-- `grid = 12` with children of `span = 4` lays them three to a row; `offset` skips columns; `"fit"` fits columns
+- `grid = 12` with children of `span = 4` lays them three to a row; `offset` skips columns; `"fit"` fits columns; a span by screen size changes with the window (in a real browser: `tests/deployed/layout.mjs`)
+- every node takes the placement keys, drawn after its own classes
 - a `text` with `level` is a heading element
 - a cell with `each` draws its children once per element, each seeing its own element as `item.*`
 - a cell with `each` shows loading, the loud failure (with detail even when `error` is set), `empty`, and its children, as its source moves through each status
@@ -286,7 +287,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 
 - [x] `cell` with the layout and box keys, replacing `stack`; `text` with `level` and the type keys, replacing `heading` ([120](120_one_app.md))
 - [x] screen sizes for every style key, and the whole style vocabulary in the built CSS
-- [ ] placement keys on every node
+- [x] placement keys on every node
 - [ ] `image` and `link`; `button`'s variants and sizes
 - [ ] `divider` and `svg`
 - [ ] `audio`, `video`, and `iframe`
