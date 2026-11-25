@@ -142,7 +142,7 @@ fn is_path(s: &str) -> bool {
 }
 
 /// A value as text: strings as they are, `null` as empty, everything else as compact JSON.
-fn as_text(v: &Value) -> String {
+pub fn as_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Null => String::new(),

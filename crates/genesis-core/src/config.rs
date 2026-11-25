@@ -122,6 +122,18 @@ pub enum Node {
     Video(Video),
     /// Another page, embedded and sandboxed.
     Iframe(Iframe),
+    /// A one-line text box.
+    Input(Input),
+    /// A box for longer text.
+    Textarea(Textarea),
+    /// A drop-down of options.
+    Select(Select),
+    /// A checkbox.
+    Checkbox(Checkbox),
+    /// A switch.
+    Toggle(Toggle),
+    /// One radio button of a group.
+    Radio(Radio),
 }
 
 impl Node {
@@ -138,6 +150,12 @@ impl Node {
             Node::Audio(n) => n.placed(),
             Node::Video(n) => n.placed(),
             Node::Iframe(n) => n.placed(),
+            Node::Input(n) => n.placed(),
+            Node::Textarea(n) => n.placed(),
+            Node::Select(n) => n.placed(),
+            Node::Checkbox(n) => n.placed(),
+            Node::Toggle(n) => n.placed(),
+            Node::Radio(n) => n.placed(),
         }
     }
 
@@ -154,6 +172,12 @@ impl Node {
             Node::Audio(n) => n.id.as_deref(),
             Node::Video(n) => n.id.as_deref(),
             Node::Iframe(n) => n.id.as_deref(),
+            Node::Input(n) => n.id.as_deref(),
+            Node::Textarea(n) => n.id.as_deref(),
+            Node::Select(n) => n.id.as_deref(),
+            Node::Checkbox(n) => n.id.as_deref(),
+            Node::Toggle(n) => n.id.as_deref(),
+            Node::Radio(n) => n.id.as_deref(),
         }
     }
 
@@ -396,6 +420,212 @@ styled! {
         /// without navigating it. On unless it says otherwise.
         #[serde(default = "defaults::yes")]
         pub sandbox: bool,
+    }
+}
+
+// The controls ([spec 040](../../../specs/040_catalog.md), "Controls"). Each reads and writes the
+// variable its `var` names: a change fires `NAME.change` with the new `value`, and the bus runs a
+// `set` of `var` for it (see `crate::bus`), so only an action ever changes state.
+
+styled! {
+    [placed]
+    /// `type = "input"`: a one-line box; its value is text, or a number for `kind = "number"`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Input {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable it reads and writes: `app.NAME`, `sys.view`, or `sys.theme`.
+        pub var: String,
+        /// What it takes: `text` unless it says otherwise.
+        #[serde(default, skip_serializing_if = "InputKind::is_text")]
+        pub kind: InputKind,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+        /// Shown while it's empty; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub placeholder: Option<String>,
+    }
+}
+
+/// What an `input` takes, as HTML's own input types.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputKind {
+    /// Any text.
+    #[default]
+    Text,
+    /// An email address.
+    Email,
+    /// Text drawn as dots.
+    Password,
+    /// A number; empty is `null`.
+    Number,
+    /// A date, as `YYYY-MM-DD`.
+    Date,
+    /// Search text.
+    Search,
+}
+
+impl InputKind {
+    /// Its HTML `type`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InputKind::Text => "text",
+            InputKind::Email => "email",
+            InputKind::Password => "password",
+            InputKind::Number => "number",
+            InputKind::Date => "date",
+            InputKind::Search => "search",
+        }
+    }
+
+    fn is_text(&self) -> bool {
+        *self == InputKind::Text
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "textarea"`: a box for longer text.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Textarea {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable it reads and writes.
+        pub var: String,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+        /// Shown while it's empty; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub placeholder: Option<String>,
+        /// How many lines tall it is; the browser's own unless it says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub rows: Option<u32>,
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "select"`: a drop-down. Its value is the picked option's `value`, with its type.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Select {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable it reads and writes.
+        pub var: String,
+        /// The options: a list here, or a variable holding one.
+        pub options: Options,
+        /// With options from a variable, the JSON Pointer to each one's label: `/label` unless it
+        /// says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub option_label: Option<String>,
+        /// With options from a variable, the JSON Pointer to each one's value: `/value` unless it
+        /// says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub option_value: Option<String>,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+        /// Shown while the value matches no option; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub placeholder: Option<String>,
+    }
+}
+
+/// A `select`'s options: written out, or the path of a variable holding a list.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Options {
+    /// `[{ label, value }]`.
+    List(Vec<Choice>),
+    /// A variable's path, like `"app.companies"`.
+    From(String),
+}
+
+/// One written-out option: the words shown, and the value it picks (any JSON value).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Choice {
+    /// What it shows.
+    pub label: String,
+    /// What picking it sets the variable to.
+    pub value: Value,
+}
+
+styled! {
+    [placed]
+    /// `type = "checkbox"`: its value is `true` or `false`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Checkbox {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable it reads and writes.
+        pub var: String,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "toggle"`: a switch; its value is `true` or `false`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Toggle {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable it reads and writes.
+        pub var: String,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "radio"`: one radio button. Every radio on one `var` is a group; picking one sets
+    /// the variable to its `value`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Radio {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable its group reads and writes.
+        pub var: String,
+        /// What picking it sets the variable to (any JSON value).
+        pub value: Value,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+    }
+}
+
+impl Node {
+    /// A control's `var`: the variable it reads and writes. `None` for every other type.
+    pub fn var(&self) -> Option<&str> {
+        match self {
+            Node::Input(n) => Some(&n.var),
+            Node::Textarea(n) => Some(&n.var),
+            Node::Select(n) => Some(&n.var),
+            Node::Checkbox(n) => Some(&n.var),
+            Node::Toggle(n) => Some(&n.var),
+            Node::Radio(n) => Some(&n.var),
+            _ => None,
+        }
     }
 }
 
@@ -1041,9 +1271,33 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
 /// Checks what one key can't: a node's keys that only make sense apart. `place` names the node,
 /// since it may have no `id`.
 fn check_node(node: &Node, place: &str, problems: &mut Vec<ConfigError>) {
+    let mut problem =
+        |message: String| problems.push(problem_in("app.toml", format!("{place}: {message}")));
+    if node.var().is_some_and(|var| !is_writable_path(var)) {
+        problem(format!(
+            "`var` is an app variable, like \"app.query\", or sys.view or sys.theme, not {:?}",
+            node.var().unwrap_or_default()
+        ));
+    }
+    if let Node::Select(select) = node {
+        match &select.options {
+            Options::From(path) if !is_list_path(path) => problem(format!(
+                "`options` is a list, or a variable's path like \"app.companies\", not {path:?}"
+            )),
+            Options::From(_) => {}
+            Options::List(_) => {
+                for (key, set) in [
+                    ("option_label", select.option_label.is_some()),
+                    ("option_value", select.option_value.is_some()),
+                ] {
+                    if set {
+                        problem(format!("`{key}` goes with `options` from a variable"));
+                    }
+                }
+            }
+        }
+    }
     if let Node::Cell(cell) = node {
-        let mut problem =
-            |message: String| problems.push(problem_in("app.toml", format!("{place}: {message}")));
         if cell.flow.is_some() && cell.grid.is_some() {
             problem("a cell lays out by `flow` or by `grid`, not both".into());
         }
@@ -1066,6 +1320,20 @@ fn check_node(node: &Node, place: &str, problems: &mut Vec<ConfigError>) {
         for (i, child) in cell.children.iter().enumerate() {
             check_node(child, &child_place(place, i), problems);
         }
+    }
+}
+
+/// Whether `path` names a variable a control may write: `app.NAME`, `sys.view`, or `sys.theme`,
+/// the ones a `set` takes.
+fn is_writable_path(path: &str) -> bool {
+    match path.split_once('.') {
+        Some(("app", name)) => {
+            !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        }
+        _ => matches!(path, "sys.view" | "sys.theme"),
     }
 }
 

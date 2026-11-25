@@ -62,7 +62,8 @@ That's a paged list. Save a change to the file and every open window changes wit
 reload, connections and sources with server-held credentials, sessions kept on the device, and Docker
 Compose with dufs for agents. **Milestone three is under way:** `serve` runs one app, the configs
 folder, at `/`, and most of the atoms are built (cells with style keys and `each`, text, images, links,
-buttons, dividers, svg, audio, video, iframes). Next come the controls and forms, `dialog`, `markdown`, components, and what
+buttons, dividers, svg, audio, video, iframes, and the controls with `var`: inputs, textareas, selects,
+checkboxes, toggles, and radios). Next come forms, `file`, `dialog`, `markdown`, components, and what
 agents need to build a screen on their own. The design is in
 [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 

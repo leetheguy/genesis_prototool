@@ -109,7 +109,11 @@ A control (`input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`)
 - **Inside a `form`, with `name`:** its value is the form's draft, and goes in the form's `form` payload on submit.
   It starts from `data`'s `/name` when the form has `data`.
 - **Anywhere, with `var`:** it reads and writes that variable directly, with no submit: a search box, a filter,
-  a theme picker on `sys.theme`.
+  a theme picker on `sys.theme`. `var` is a variable a `set` can write: `app.NAME`, `sys.view`, or `sys.theme`.
+  A control with `var` is a shortcut for a handler, as `on_click` is: its `NAME.change` runs
+  `{ set = VAR, to = "{{ event.value }}" }`, so only an action changes state, `sys.bus` shows it, and the
+  variable's `.changed` fires for sources and handlers to follow. A control without an `id` is named by its
+  place, as a button is. A text box writes on every keystroke.
 
 **Radios are grouped by name.** Every `radio` with the same `name` in one form, or the same `var`, is one
 group: picking one unpicks the rest, and the group's value is the picked radio's `value` (any JSON value,
@@ -127,7 +131,10 @@ picker offers (`"image/*"`, `".pdf,.csv"`). A file bigger than `max_size` (defau
 no limit) fails its control's check with a message naming both sizes.
 
 A `select` takes `options` (`[{ label, value }]`, or `options = "app.companies"` with `option_label` and
-`option_value` pointers). Checks are in [080](080_display_logic.md). A value keeps its JSON type: a
+`option_value` pointers, `/label` and `/value` unless they say otherwise). It picks the option whose value
+equals its variable's; while none does, it shows `placeholder`, if it has one. Options from a variable that
+holds something other than a list (or `null`) are a loud failure in the select's place. A `label` wraps its
+control, which names it for screen readers. Checks are in [080](080_display_logic.md). A value keeps its JSON type: a
 number from a `number` input, a boolean from a `checkbox`.
 
 A `button` with `submit = true` submits the form it's in. The form fires `.submit` only when every check
@@ -283,6 +290,10 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a control with `var` reads and writes its variable on every change; a `select` on `sys.theme` changes the theme
 - each control gives its value its JSON type
 - a control with both `name` and `var`, or with `name` outside a `form`, is a config error
+- a control with `var` naming anything but `app.NAME`, `sys.view`, or `sys.theme` is a config error; `option_label` or `option_value` with written-out options is too, and so is `options` that's neither a list nor a variable's path
+- a control's `.change` runs a `set` of its `var`, shown in `sys.bus`, and fires the variable's `.changed`; one without an `id` writes by its place
+- a select picks the option equal to its variable, shows its placeholder while none is, takes options from a variable by its pointers, and shows a loud failure when that variable isn't a list
+- a number box keeps what's typed on the way to a number (`-`, `2.`) while it still means the variable's value (in a real browser: `tests/deployed/controls.mjs`)
 - a wired cell fires `.click`, and can be reached and pressed with the keyboard
 - each type fires its events with its payload; one without an `id` (and no `on_*`) fires nothing
 - the wrapper handles `show`, locals, placement, and the `each` faces the same way for every type
@@ -304,7 +315,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `divider` and `svg`
 - [x] `audio`, `video`, and `iframe`
 - [x] `each`, with its faces in `Wired`, and `item.*`
-- [ ] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups
+- [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` and checks come with display logic, [080](080_display_logic.md))
 - [ ] `form`, controls with `name`, and the `submit` button
 - [ ] `file`, and calls that send files as multipart through `serve`
 - [ ] `dialog`

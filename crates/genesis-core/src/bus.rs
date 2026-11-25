@@ -1019,6 +1019,23 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
         Node::Audio(Audio { id: Some(id), .. }) | Node::Video(Video { id: Some(id), .. }) => {
             events.extend(["play", "pause", "ended"].map(|e| format!("{id}.{e}")));
         }
+        Node::Input(_)
+        | Node::Textarea(_)
+        | Node::Select(_)
+        | Node::Checkbox(_)
+        | Node::Toggle(_)
+        | Node::Radio(_) => {
+            // A control writes its variable the one way anything does: a `set`, run by its `.change`.
+            let name = node.name(place);
+            events.push(format!("{name}.change"));
+            handlers.push(Handler {
+                pattern: format!("{name}.change"),
+                steps: vec![Step::Set {
+                    set: node.var().unwrap_or_default().to_string(),
+                    to: json!("{{ event.value }}"),
+                }],
+            });
+        }
         Node::Text(_)
         | Node::Image(_)
         | Node::Link(_)
