@@ -137,7 +137,7 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 - a component with named controls or a submit button used outside a form, and one holding a form used inside
   a form, are config errors
 - the outlet draws its `default`, and after `go`, the component named, wired under its own name (in a
-  real browser: `tests/deployed/hello.mjs`)
+  real browser: `tests/deployed/components.mjs`)
 - editing a component redraws every place that uses it ([060](060_hot_reload.md)) (in a real browser:
   `tests/deployed/components.mjs`)
 

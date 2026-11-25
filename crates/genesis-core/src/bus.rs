@@ -24,7 +24,7 @@
 //! ```
 
 use crate::config::{
-    self, App, Audio, Component, Handler, InputKind, Node, Source, Step, Video, as_steps,
+    self, App, Audio, Component, Handler, InputKind, Node, Source, Step, Use, Video, as_steps,
     body_place, child_place, prop_steps,
 };
 use crate::{pattern, template};
@@ -200,6 +200,8 @@ struct State {
     app: Map<String, Value>,
     /// `sys.theme`.
     theme: String,
+    /// `sys.outlet`: the component in the outlet, if the app has one.
+    outlet: Option<String>,
     /// `sys.events`, newest first.
     events: VecDeque<Value>,
     /// `sys.errors`, newest first.
@@ -249,6 +251,7 @@ impl Machine {
             app: starting(&app),
             sources,
             theme: app.app.theme.clone(),
+            outlet: config::outlet(&app).map(|o| o.default.clone()),
             events: VecDeque::new(),
             errors: VecDeque::new(),
             drafts: BTreeMap::new(),
@@ -477,6 +480,12 @@ impl Machine {
         // A running timer keeps running while the registry still holds it.
         let registry = config::timers(&app);
         self.timers.retain(|t| registry.contains_key(&t.name));
+        // The outlet keeps its component while `go` can still put it there.
+        let can_go = config::outlet_components(&app);
+        self.state.outlet = match (config::outlet(&app), self.state.outlet.take()) {
+            (Some(_), Some(now)) if can_go.contains(&now) => Some(now),
+            (outlet, _) => outlet.map(|o| o.default.clone()),
+        };
         self.state.locals.retain(|key, locals| {
             let Some(state) = instances
                 .get(form_of(key))
@@ -642,6 +651,34 @@ impl Machine {
         due.min_by_key(|(_, t)| t.due).map(|(i, _)| i)
     }
 
+    /// Puts the component `name` in the outlet, firing `sys.outlet.changed` when that changes it.
+    fn go(&mut self, name: &str, cause: &Queued) -> Result<(), String> {
+        let Some(was) = self.state.outlet.clone() else {
+            return Err(format!(
+                "there's no outlet for `go` to put {name:?} in; put one in app.toml's body"
+            ));
+        };
+        let component = self
+            .app
+            .components
+            .get(name)
+            .ok_or_else(|| format!("there's no component named {name:?} to go to"))?;
+        if let Some(prop) = component.props.first() {
+            return Err(format!(
+                "`{name}` needs the prop `{prop}`, and the outlet passes none"
+            ));
+        }
+        if was != name {
+            self.state.outlet = Some(name.to_string());
+            self.enqueue(
+                "sys.outlet.changed",
+                json!({ "value": name, "was": was }),
+                cause,
+            );
+        }
+        Ok(())
+    }
+
     /// Starts the timer `name`, or starts it over, and fires `NAME.start`.
     fn start_timer(&mut self, name: &str, cause: &Queued) -> Result<(), String> {
         let timer = config::timers(&self.app)
@@ -687,7 +724,7 @@ impl Machine {
     pub fn snapshot(&self) -> Value {
         json!({
             "app": self.state.app,
-            "sys": { "theme": self.state.theme, "errors": self.state.errors },
+            "sys": { "theme": self.state.theme, "outlet": self.state.outlet, "errors": self.state.errors },
             "drafts": self.shown_drafts(),
             "locals": self.state.locals,
         })
@@ -775,6 +812,7 @@ impl Machine {
                     Some(prop) => self.enter_prop(&mut run, prop),
                     None => self.enter(&mut run, name),
                 },
+                Step::Go { go } => self.go(go, &run.event),
                 Step::Start { start } => self.start_timer(start, &run.event),
                 Step::Stop { stop } => self.stop_timer(stop, &run.event),
                 Step::Call { call, params, .. } => {
@@ -1289,6 +1327,7 @@ impl Machine {
             ("props", None) => event?.scope.as_ref()?.props.clone(),
             ("props", Some(key)) => event?.scope.as_ref()?.props.get(key)?.clone(),
             ("sys", Some("theme")) => json!(self.state.theme),
+            ("sys", Some("outlet")) => json!(self.state.outlet),
             ("sys", Some("events")) => json!(self.state.events),
             ("sys", Some("errors")) => json!(self.state.errors),
             ("sys", Some("sources")) => json!(self.state.sources),
@@ -1325,8 +1364,10 @@ fn wiring(app: &App) -> Wiring {
     let mut instances = BTreeMap::new();
     let mut node_events = Vec::new();
     let mut forms = Forms::default();
+    let outlet = config::outlet_components(app);
     for (i, node) in app.body.iter().enumerate() {
         let mut wire = Wire {
+            outlet: &outlet,
             handlers: &mut handlers,
             owners: &mut owners,
             instances: &mut instances,
@@ -1408,6 +1449,8 @@ struct Wire<'a> {
     components: &'a BTreeMap<String, Component>,
     events: &'a mut Vec<String>,
     forms: &'a mut Forms,
+    /// The components `go` can put in the outlet, each wired under its own name.
+    outlet: &'a BTreeSet<String>,
 }
 
 impl Wire<'_> {
@@ -1584,6 +1627,17 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, owner: Option<&Owner>
         | Node::Video(_)
         | Node::Iframe(_)
         | Node::Markdown(_) => {}
+        Node::Outlet(_) => {
+            // Each component `go` can put here is wired as a `use` node named after it.
+            for component in wire.outlet.clone() {
+                let used = Node::Use(Use {
+                    id: Some(component.clone()),
+                    component,
+                    ..Use::default()
+                });
+                wire_node(&used, place, form, owner, wire);
+            }
+        }
         Node::Use(used) => {
             // A loop of components is refused on load; one handed over another way stops here.
             if let Some(component) = wire.components.get(&used.component)
@@ -1627,6 +1681,9 @@ fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<Strin
     names.extend(node_events);
     names.extend(app.state.keys().map(|k| format!("app.{k}.changed")));
     names.push("sys.theme.changed".to_string());
+    if config::outlet(app).is_some() {
+        names.push("sys.outlet.changed".to_string());
+    }
     for name in app.sources.keys() {
         names.extend([format!("app.{name}.changed"), format!("app.{name}.reload")]);
     }

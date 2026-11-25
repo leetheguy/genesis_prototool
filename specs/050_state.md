@@ -24,8 +24,8 @@ Components never know where a value came from: a starting value, a click, a call
   theme picker is a Select bound to it), and is kept on this device.
 - **`sys.outlet`**: the name of the component in the `outlet`, or `null` in an app without one. It starts
   at the outlet's `default`, changes only by `go` ([100](100_events.md), "Going"), and isn't kept: every
-  open starts at the `default`. Over a config reload it stays, unless the component it names is gone or
-  now needs props; then it's the `default` again.
+  open starts at the `default`. Over a config reload it stays while `go` can still put its component
+  there; otherwise it's the `default` again.
 - **`sys.errors`**: every loud failure, newest first: `{ at, op, status, message }`. It's read-only,
   and a cell with `each` can show it.
 - **`sys.events`** and **`sys.bus`**: the event trail and who listens to what ([100](100_events.md)).

@@ -222,6 +222,8 @@ pub enum Node {
     Markdown(Markdown),
     /// A component, by name, with its props.
     Use(Use),
+    /// Where `go` swaps in a component: one at most, in `app.toml`'s body.
+    Outlet(Outlet),
 }
 
 impl Node {
@@ -249,6 +251,7 @@ impl Node {
             Node::Dialog(n) => n.placed(),
             Node::Markdown(n) => n.placed(),
             Node::Use(n) => n.placed(),
+            Node::Outlet(n) => n.placed(),
         }
     }
 
@@ -276,6 +279,7 @@ impl Node {
             Node::Dialog(n) => n.id.as_deref(),
             Node::Markdown(n) => n.id.as_deref(),
             Node::Use(n) => n.id.as_deref(),
+            Node::Outlet(_) => None,
         }
     }
 
@@ -364,7 +368,7 @@ styled! {
 styled! {
     [placed]
     /// `type = "use"`: draws a component in its place ([spec 090](../../../specs/090_components.md)).
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct Use {
         /// The node's name; events inside the component fire under it (`card.more_btn.click`).
@@ -376,6 +380,65 @@ styled! {
         #[serde(default, skip_serializing_if = "Map::is_empty")]
         pub props: Map<String, Value>,
     }
+}
+
+styled! {
+    [placed]
+    /// `type = "outlet"`: draws the component `go` last named, `default` at first. There's one at
+    /// most, in `app.toml`'s body ([spec 100](../../../specs/100_events.md), "Going").
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Outlet {
+        /// The component it draws when the app opens.
+        pub default: String,
+    }
+}
+
+/// The app's `outlet`, if its body holds one (the first, if a broken config holds more).
+pub fn outlet(app: &App) -> Option<&Outlet> {
+    fn find(nodes: &[Node]) -> Option<&Outlet> {
+        nodes.iter().find_map(|node| match node {
+            Node::Outlet(outlet) => Some(outlet),
+            _ => find(node.children()),
+        })
+    }
+    find(&app.body)
+}
+
+/// The components `go` can put in the outlet: its `default`, and each component without required
+/// props that a `go` step names, anywhere in the app. Each is wired, under its own name, before it's
+/// drawn. Empty without an outlet.
+pub fn outlet_components(app: &App) -> BTreeSet<String> {
+    fn gone_to(value: &Value, out: &mut BTreeSet<String>) {
+        match value {
+            Value::Object(fields) => {
+                if let Some(Value::String(name)) = fields.get("go") {
+                    out.insert(name.clone());
+                }
+                fields.values().for_each(|v| gone_to(v, out));
+            }
+            Value::Array(items) => items.iter().for_each(|v| gone_to(v, out)),
+            _ => {}
+        }
+    }
+    let Some(outlet) = outlet(app) else {
+        return BTreeSet::new();
+    };
+    let mut names = BTreeSet::from([outlet.default.clone()]);
+    let bodies = app.components.values().map(|c| &c.body);
+    for value in [
+        serde_json::to_value(&app.body),
+        serde_json::to_value(app.on.iter().map(|h| &h.steps).collect::<Vec<_>>()),
+        serde_json::to_value(&app.actions),
+    ]
+    .into_iter()
+    .chain(bodies.map(serde_json::to_value))
+    .flatten()
+    {
+        gone_to(&value, &mut names);
+    }
+    names.retain(|name| app.components.get(name).is_some_and(|c| c.props.is_empty()));
+    names
 }
 
 /// Reads `level`, refusing anything but 1, 2, or 3.
@@ -1024,6 +1087,11 @@ pub enum Step {
         /// The line; may hold templates.
         log: String,
     },
+    /// Puts a component in the outlet, swapping out what was there ([spec 100](../../../specs/100_events.md), "Going").
+    Go {
+        /// The component's name.
+        go: String,
+    },
     /// Starts a timer by its name, or starts it over ([spec 100](../../../specs/100_events.md), "Timers").
     Start {
         /// The timer's name.
@@ -1473,6 +1541,7 @@ impl App {
             for (i, node) in app.body.iter().enumerate() {
                 check_node(node, &body_place(i), false, &checks, &mut problems);
             }
+            check_outlets(&app.body, &mut problems);
             for (name, component) in &app.components {
                 let checks = Checks {
                     file: &component_files[name],
@@ -1777,7 +1846,7 @@ fn check_component(component: &Component, checks: &Checks, problems: &mut Vec<Co
 }
 
 /// Looks through a component's own steps for one that reaches past it: a custom action, a `call`,
-/// a `reload`, a timer's `start` or `stop`, or a `log`. A component's steps work on its own `local.*`, run its props' steps, and fire
+/// a `reload`, a `go`, a timer's `start` or `stop`, or a `log`. A component's steps work on its own `local.*`, run its props' steps, and fire
 /// events; the app's handlers for those events can do anything ([spec 090](../../../specs/090_components.md)).
 fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
     for step in node.shortcuts() {
@@ -1787,6 +1856,7 @@ fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
             }
             Step::Call { call, .. } => format!("calls `{call}`"),
             Step::Reload { .. } => "reloads a source".to_string(),
+            Step::Go { go } => format!("puts `{go}` in the outlet"),
             Step::Start { start } => format!("starts the timer `{start}`"),
             Step::Stop { stop } => format!("stops the timer `{stop}`"),
             Step::Log { .. } => "writes to the log".to_string(),
@@ -1870,6 +1940,42 @@ fn scan(
             }
         }
         _ => {}
+    }
+}
+
+/// The checks on where `app.toml`'s outlets are: one at most, and never inside an `each`, which
+/// would draw it once per row.
+fn check_outlets(body: &[Node], problems: &mut Vec<ConfigError>) {
+    fn walk(nodes: &[Node], parent: Option<&str>, in_each: bool, found: &mut Vec<(String, bool)>) {
+        for (i, node) in nodes.iter().enumerate() {
+            let place = parent.map_or_else(|| body_place(i), |p| child_place(p, i));
+            if matches!(node, Node::Outlet(_)) {
+                found.push((place.clone(), in_each));
+            }
+            let each = in_each || matches!(node, Node::Cell(c) if c.each.is_some());
+            walk(node.children(), Some(&place), each, found);
+        }
+    }
+    let mut found = Vec::new();
+    walk(body, None, false, &mut found);
+    for (place, _) in found.iter().filter(|(_, in_each)| *in_each) {
+        problems.push(problem_in(
+            "app.toml",
+            format!(
+                "{place}: an `outlet` can't go inside an `each`, which would draw it once per row"
+            ),
+        ));
+    }
+    if found.len() > 1 {
+        let places: Vec<&str> = found.iter().map(|(p, _)| p.as_str()).collect();
+        problems.push(problem_in(
+            "app.toml",
+            format!(
+                "there's one outlet, and app.toml's body has {}: {}; keep one",
+                found.len(),
+                places.join(", ")
+            ),
+        ));
     }
 }
 
@@ -2050,7 +2156,27 @@ fn check_node(
             }
         }
     }
-    if let Node::Use(used) = node {
+    if let Node::Outlet(_) = node {
+        if inside {
+            problem("an `outlet` goes only in app.toml's body; a component can't hold one".into());
+        } else if in_form_here {
+            problem("an `outlet` can't go inside a `form`".into());
+        }
+    }
+    // The outlet's default is drawn as a `use` node with no props would be, so it's checked as one.
+    let drawn;
+    let used = match node {
+        Node::Use(used) => Some(used),
+        Node::Outlet(outlet) if !inside => {
+            drawn = Use {
+                component: outlet.default.clone(),
+                ..Use::default()
+            };
+            Some(&drawn)
+        }
+        _ => None,
+    };
+    if let Some(used) = used {
         match checks.components.get(&used.component) {
             None if checks.broken.contains(&used.component) => {}
             None => problem(format!(
@@ -2197,8 +2323,8 @@ fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
 }
 
 /// The step kinds, keyed by the TOML key that names each one.
-const STEP_KINDS: [&str; 9] = [
-    "call", "reload", "set", "step", "toggle", "fire", "log", "start", "stop",
+const STEP_KINDS: [&str; 10] = [
+    "call", "reload", "set", "step", "toggle", "fire", "log", "go", "start", "stop",
 ];
 
 impl<'de> Deserialize<'de> for Step {
@@ -2265,6 +2391,17 @@ impl<'de> Deserialize<'de> for Step {
                     .map_err(wrong)?
                     .log,
             },
+            "go" => {
+                let go = serde_json::from_value::<steps::Go>(fields)
+                    .map_err(wrong)?
+                    .go;
+                if go.contains("{{") {
+                    return Err(de::Error::custom(format!(
+                        "`go` takes a component's name, written out, not a template like {go:?}"
+                    )));
+                }
+                Step::Go { go }
+            }
             "start" => Step::Start {
                 start: serde_json::from_value::<steps::Start>(fields)
                     .map_err(wrong)?
@@ -2333,6 +2470,12 @@ mod steps {
     #[serde(deny_unknown_fields)]
     pub struct Log {
         pub log: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Go {
+        pub go: String,
     }
 
     #[derive(Deserialize)]

@@ -2,7 +2,8 @@
 // draws once per element of an each with its own props, draws again when the state its props come
 // from changes, keeps each instance's local state apart (and across a reload of the page), fires
 // its events under the use node for the app to hear, runs the steps its caller passes in, and every
-// place that uses it redraws when its file is edited.
+// place that uses it redraws when its file is edited. The app's outlet draws its default, go swaps
+// in another component whose nodes fire under its own name, and a reload opens on the default again.
 //
 // It runs genesis-serve on a temporary app of its own. Run it with scripts/check-hello.sh.
 
@@ -32,9 +33,29 @@ name = "Components"
 contacts = [{ name = "Ada", email = "ada@example.com" }, { name = "Lin", email = "lin@example.com" }]
 picked = "nobody"
 chosen = "no one"
+tapped = "no"
 
 [on]
 "card.more.click" = [{ set = "app.picked", to = "{{ event.item.name }}" }]
+"notes.tap.click" = [{ set = "app.tapped", to = "yes" }]
+
+[[body]]
+type = "button"
+label = "Go to notes"
+on_click = { go = "notes" }
+
+[[body]]
+type = "button"
+label = "Go home"
+on_click = { go = "home" }
+
+[[body]]
+type = "text"
+text = "Tapped {{ app.tapped }}"
+
+[[body]]
+type = "outlet"
+default = "home"
 
 [[body]]
 type = "button"
@@ -86,6 +107,35 @@ label = "Choose {{ props.contact.name }}"
 on_click = "{{ props.on_choose }}"
 `;
 writeFileSync(join(configs, "views", "contact_card.toml"), card("Card:"));
+writeFileSync(
+  join(configs, "views", "home.toml"),
+  `# The outlet's default.
+[component]
+
+[[body]]
+type = "text"
+text = "Home page"
+`,
+);
+writeFileSync(
+  join(configs, "views", "notes.toml"),
+  `# What go puts in the outlet: a tap counter of its own, heard by the app.
+[component]
+
+[state]
+taps = 0
+
+[[body]]
+type = "text"
+text = "Notes, {{ local.taps }} taps"
+
+[[body]]
+type = "button"
+id = "tap"
+label = "Tap"
+on_click = [{ step = "local.taps" }]
+`,
+);
 
 async function until(what, check, ms = 10_000) {
   const deadline = Date.now() + ms;
@@ -127,10 +177,25 @@ try {
   // Steps the caller passed in run in the app, with the event from inside.
   await page.getByRole("button", { name: "Choose Ada" }).click();
   await page.getByText("Chose Ada").waitFor();
+  // The outlet draws its default; go swaps in a component that fires under its own name.
+  await page.getByText("Home page").waitFor();
+  await page.getByRole("button", { name: "Go to notes" }).click();
+  await page.getByText("Notes, 0 taps").waitFor();
+  await until("home to go", async () => !(await page.getByText("Home page").isVisible()));
+  await page.getByRole("button", { name: "Tap" }).click();
+  await page.getByText("Notes, 1 taps").waitFor();
+  await page.getByText("Tapped yes").waitFor();
+  // Its locals stay while it's away.
+  await page.getByRole("button", { name: "Go home" }).click();
+  await page.getByText("Home page").waitFor();
+  await page.getByRole("button", { name: "Go to notes" }).click();
+  await page.getByText("Notes, 1 taps").waitFor();
   // Locals are kept on the device, so they're back after a reload of the page.
   await page.waitForTimeout(500);
   await page.reload();
   await page.getByText("Card: Lin at lin@example.com, 2 clicks").waitFor();
+  // sys.outlet isn't kept: a reload opens on the default.
+  await page.getByText("Home page").waitFor();
   // Its props come from the app's state where it's used, so a change there draws it again.
   await page.getByRole("button", { name: "Rename" }).click();
   await page.getByText("Card: Grace at grace@example.com, 0 clicks").waitFor();
@@ -140,7 +205,7 @@ try {
   await page.getByText("Contact: Lin at lin@example.com, 2 clicks").waitFor();
 
   if (errors.length) throw new Error(`the page threw: ${errors.join(" / ")}`);
-  console.log("ok: a component drew per element with its props and its own locals, fired under its use node, ran its caller's steps, and redrew when its file changed");
+  console.log("ok: a component drew per element with its props and its own locals, fired under its use node, ran its caller's steps, and redrew when its file changed; the outlet swapped components with go");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;
