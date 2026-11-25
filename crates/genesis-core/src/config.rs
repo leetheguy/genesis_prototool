@@ -305,6 +305,21 @@ impl Node {
         }
     }
 
+    /// A control's checks, `required` first: what has to pass for its form to submit.
+    pub fn checks(&self) -> Vec<crate::condition::Check> {
+        let (required, checks, ticked) = match self {
+            Node::Input(n) => (&n.required, &n.checks, false),
+            Node::Textarea(n) => (&n.required, &n.checks, false),
+            Node::Select(n) => (&n.required, &n.checks, false),
+            Node::Checkbox(n) => (&n.required, &n.checks, true),
+            Node::Toggle(n) => (&n.required, &n.checks, true),
+            Node::Radio(n) => (&n.required, &n.checks, false),
+            Node::File(n) => (&n.required, &n.checks, false),
+            _ => return Vec::new(),
+        };
+        crate::condition::control_checks(required.as_ref(), checks, ticked)
+    }
+
     /// The node's `id`, if it has one.
     pub fn id(&self) -> Option<&str> {
         match self {
@@ -690,6 +705,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -757,6 +778,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -787,6 +814,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -844,6 +877,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -868,6 +907,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -893,6 +938,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// The variable its group reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -996,6 +1047,12 @@ styled! {
         /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub disabled: Option<crate::condition::Condition>,
+        /// `true` (or the message to show): it needs a value; a checkbox or toggle, a tick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub required: Option<crate::condition::Required>,
+        /// Checks on its value, each with the message shown while it fails ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub checks: Vec<crate::condition::Check>,
         /// Never set: a file works only inside a form. Read so the mistake is named.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,

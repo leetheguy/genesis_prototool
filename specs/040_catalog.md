@@ -42,9 +42,9 @@ never a composite.
 | `input` | `input` | `name` or `var`, `kind` (`text`, `email`, `password`, `number`, `date`, `search`), `label`, `placeholder`, `disabled`, checks |
 | `textarea` | `textarea` | as `input`, without `kind`, plus `rows` |
 | `select` | `select` | as `input`, without `kind`, plus `options` |
-| `checkbox` | a checkbox | `name` or `var`, `label`, `disabled` |
+| `checkbox` | a checkbox | `name` or `var`, `label`, `disabled`, checks |
 | `toggle` | a switch | as `checkbox` |
-| `radio` | a radio button | `name` or `var` (its group), `value`, `label`, `disabled` |
+| `radio` | a radio button | `name` or `var` (its group), `value`, `label`, `disabled`, checks |
 | `file` | a file picker | `name`, `label`, `accept`, `multiple`, `max_size`, `disabled`, checks |
 | `form` | `form` | `children`, `data` (to start from) |
 | `dialog` | `dialog` | `children`, `open` (a variable), `title`, `on_close` |
@@ -268,7 +268,7 @@ A node with an `id` fires these ([100](100_events.md)); `on_click`, `on_change`,
 | `button`, `cell` | `.click` | — |
 | a control | `.change` | `value` |
 | `audio`, `video` | `.play`, `.pause`, `.ended` | — |
-| `form` | `.submit` (only when its checks pass), `.invalid` | `form` |
+| `form` | `.submit` (only when its checks pass), `.invalid` | `form`; `.invalid` also `invalid` |
 | `dialog` | `.close` | — |
 
 Inside an `each`, a node's events carry that element as `item` too. A cell fires `.click` only when
@@ -352,9 +352,9 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `divider` and `svg`
 - [x] `audio`, `video`, and `iframe`
 - [x] `each`, with its faces in `Wired`, and `item.*`
-- [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` is built; checks come with display logic, [080](080_display_logic.md))
-- [x] `form`, controls with `name`, and the `submit` button (`.invalid` comes with checks, [080](080_display_logic.md))
-- [x] `file`, and calls that send files as multipart through `serve` (`disabled` is built; a check that a file was picked comes with display logic, [080](080_display_logic.md))
+- [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` and checks, [080](080_display_logic.md))
+- [x] `form`, controls with `name`, and the `submit` button (`.invalid`, with checks, [080](080_display_logic.md))
+- [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and `required` for a file that has to be picked, [080](080_display_logic.md))
 - [x] `dialog`
 - [x] `markdown`
 - [x] `outlet`, filled by `go`
@@ -367,3 +367,4 @@ Milestone three ([999](999_todo.md)), each with its tests:
   component that's only available in that top-level page." "Then go would swap out the contents of that
   component." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."
 - 2026-11-25: `show` on every node and `disabled` on buttons and controls are built ([080](080_display_logic.md)).
+- 2026-11-25: checks on every control, and `.invalid` with each failing field's message ([080](080_display_logic.md)). Forms are drawn `novalidate`.

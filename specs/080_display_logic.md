@@ -26,6 +26,7 @@ show = { all = [{ var = "app.role", in = ["admin", "owner"] }, { not = { var = "
 | `empty = true` | is missing, `null`, `""`, `[]`, or `{}` (`empty = false` is the opposite) |
 | `gt`, `gte`, `lt`, `lte = N` | is a number on that side of `N` |
 | `matches = "regex"` | is text the regular expression finds a match in |
+| `min_len`, `max_len = N` | is text with at least (or at most) `N` characters, or a list with that many items |
 | `status = "loading"` | is a source with that status ([050](050_state.md)) |
 
 `all = [...]`, `any = [...]`, and `not = {...}` combine conditions. `var` may also be `item.*`,
@@ -64,8 +65,22 @@ kind = "number"
 checks = [{ gte = 1, lte = 500, message = "1 to 500 seats." }]
 ```
 
-A check is a condition on the control's own value (so it has no `var`), plus a `message`. `required = true` is
-shorthand for `{ empty = false, message = "Required." }`. Length tests are `min_len` and `max_len`.
+A check is one or more tests on the control's own value (so it has no `var`, `all`, `any`, or `not`),
+which all have to pass, plus a `message`. `required = true` is shorthand for
+`{ empty = false, message = "Required." }`; `required = "Pick a plan."` says its own message. On a
+checkbox or toggle, `required` means ticked. Length tests are `min_len` and `max_len`, which count
+characters in text and items in a list (a `file` with `multiple`). Every control takes checks.
+
+- **An empty value passes** every check but `required` (and one that tests `empty`, `is`, or `in`), so
+  an optional field left blank isn't wrong.
+- **When a control speaks:** its first failing check's message shows under it once the person has
+  changed it, or once its form's submit failed a check. Fixing the value clears it, and a good submit
+  starts the form over quietly.
+- **A submit with a failing check** fires `.invalid` in place of `.submit`. Its payload has `form`, as
+  `.submit`'s would, and `invalid`: each failing field's first message, by name. The draft stays.
+- **Only the form's checks decide.** The form is drawn `novalidate`, so the browser's own bubbles (for
+  a `kind = "email"` box, say) never stop a submit before `.invalid` can fire. Write the check you mean.
+- **A control with `var`** shows its messages the same way, but has no form to stop.
 
 These checks are for the person typing. They aren't a guarantee: the API checks what it accepts,
 and its refusal is a loud failure ([030](030_connections.md)).
@@ -100,6 +115,11 @@ handle (text given to `currency`) is shown as it is, and the problem goes to the
 - a condition anywhere but `show`, `disabled`, or a control's checks is a config error
 - a failing check shows its message and blocks submit; fixing the value clears it
 - `required`, `min_len`, and `max_len` act as their shorthand
+- a control says nothing until it's changed or its form's submit fails a check (in a real browser:
+  `tests/deployed/checks.mjs`)
+- `.invalid` carries `form` and each failing field's message, and keeps the draft; a row's form is
+  checked against its own item
+- a check without `message`, or with `var`, `status`, or a combinator, is a config error
 - each format turns its example into the value shown; the raw value in state is unchanged
 - `locale` changes number and date output
 
@@ -109,7 +129,7 @@ Milestone three ([999](999_todo.md)):
 
 - [x] conditions, and `show` on every node through `Wired`
 - [x] `disabled` on buttons and controls
-- [ ] checks on controls, with their messages
+- [x] checks on controls, with their messages
 - [ ] formats, and `locale`
 
 ## Log
@@ -119,3 +139,9 @@ Milestone three ([999](999_todo.md)):
   node takes. `matches` uses the `regex-lite` crate, chosen over `regex` because it adds far less to
   the browser bundle; it has no Unicode classes like `\p{L}`, which a display check doesn't need.
   Numbers compare by value, so `is = 1` holds for `1.0`.
+- 2026-11-25: checks on controls are built. A check may hold several tests, all of which must pass,
+  as the seats example does. `min_len` and `max_len` are tests like the others, so conditions can use
+  them too. An empty value passes every check but `required`, so optional fields stay optional.
+  Messages wait until the person changes the control or a submit fails, so a fresh form isn't
+  covered in red. Forms are drawn `novalidate` so Genesis's checks are the only ones, and `.invalid`
+  always fires.

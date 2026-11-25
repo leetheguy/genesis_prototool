@@ -9,8 +9,8 @@
 //! which is what names the control for screen readers.
 
 use crate::style::ClassList;
-use crate::{Component, Wired, failed_face};
-use genesis_core::condition::Condition;
+use crate::{Complaint, Component, Wired, failed_face};
+use genesis_core::condition::{Check, Condition, control_checks};
 use genesis_core::config::{
     Checkbox, File, Form, Input, InputKind, Options, Radio, Select, Textarea, Toggle,
 };
@@ -24,6 +24,7 @@ fn labelled(
     wired: &Wired,
     label: &Option<String>,
     own: &'static str,
+    complaint: &Option<Complaint>,
     control: impl Fn(String) -> AnyView,
 ) -> AnyView {
     match label {
@@ -31,10 +32,36 @@ fn labelled(
             let text = wired.text(label);
             let class = wired.class(ClassList::default().raw("fieldset"));
             let control = control(own.to_string());
-            view! { <label class=class><span class="fieldset-legend">{text}</span>{control}</label> }
+            let note = note(complaint);
+            view! { <label class=class><span class="fieldset-legend">{text}</span>{control}{note}</label> }
                 .into_any()
         }
-        None => control(wired.class(ClassList::default().raw(own))),
+        None => unlabelled(wired, own, complaint, control),
+    }
+}
+
+/// A control with no label: alone with its placement, or, when it has checks, in a `div` that holds
+/// it and what's wrong with it, so the message never takes a place of its own.
+fn unlabelled(
+    wired: &Wired,
+    own: &'static str,
+    complaint: &Option<Complaint>,
+    control: impl Fn(String) -> AnyView,
+) -> AnyView {
+    if complaint.is_none() {
+        return control(wired.class(ClassList::default().raw(own)));
+    }
+    let class = wired.class(&mut ClassList::default());
+    let (control, note) = (control(own.to_string()), note(complaint));
+    view! { <div class=class>{control}{note}</div> }.into_any()
+}
+
+/// What's wrong with a control's value, under it, while there's something to say.
+fn note(complaint: &Option<Complaint>) -> impl IntoView + use<> {
+    let complaint = complaint.clone();
+    move || {
+        let message = complaint.as_ref()?.message()?;
+        Some(view! { <p class="text-error text-sm" role="alert">{message}</p> })
     }
 }
 
@@ -43,16 +70,25 @@ fn boxed_label(
     wired: &Wired,
     label: &Option<String>,
     own: &'static str,
+    complaint: &Option<Complaint>,
     control: impl Fn(String) -> AnyView,
 ) -> AnyView {
     match label {
         Some(label) => {
             let text = wired.text(label);
-            let class = wired.class(ClassList::default().raw("label"));
             let control = control(own.to_string());
-            view! { <label class=class>{control}<span>{text}</span></label> }.into_any()
+            if complaint.is_none() {
+                let class = wired.class(ClassList::default().raw("label"));
+                return view! { <label class=class>{control}<span>{text}</span></label> }
+                    .into_any();
+            }
+            // The message goes under the box and its words, inside the node's one element.
+            let class = wired.class(&mut ClassList::default());
+            let note = note(complaint);
+            view! { <div class=class><label class="label">{control}<span>{text}</span></label>{note}</div> }
+                .into_any()
         }
-        None => control(wired.class(ClassList::default().raw(own))),
+        None => unlabelled(wired, own, complaint, control),
     }
 }
 
@@ -101,6 +137,12 @@ impl Component for Input {
             }
         });
         let off = wired.holds(self.disabled.as_ref());
+        let complaint = wired.complaint(
+            control_checks(self.required.as_ref(), &self.checks, false),
+            self.var.as_deref(),
+            self.name.as_deref(),
+        );
+        let touch = complaint.clone();
         let fire = wired.clone();
         let on_input = move |ev| {
             let input = event_target::<leptos::web_sys::HtmlInputElement>(&ev);
@@ -112,9 +154,10 @@ impl Component for Input {
             }
             let value = meaning(kind, &text);
             typed.set(Some(text));
+            touch.iter().for_each(Complaint::touch);
             fire.fire("change", json!({ "value": value }));
         };
-        labelled(&wired, &self.label, "input", move |class| {
+        labelled(&wired, &self.label, "input", &complaint, move |class| {
             let (value, prop) = (move || showing.get(), move || showing.get());
             let (placeholder, on_input, off) = (placeholder.clone(), on_input.clone(), off.clone());
             view! {
@@ -137,11 +180,18 @@ impl Component for Textarea {
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
         let placeholder = move || placeholder.as_ref().map(|p| p());
         let off = wired.holds(self.disabled.as_ref());
+        let complaint = wired.complaint(
+            control_checks(self.required.as_ref(), &self.checks, false),
+            self.var.as_deref(),
+            self.name.as_deref(),
+        );
+        let touch = complaint.clone();
         let fire = wired.clone();
         let on_input = move |ev| {
+            touch.iter().for_each(Complaint::touch);
             fire.fire("change", json!({ "value": event_target_value(&ev) }));
         };
-        labelled(&wired, &self.label, "textarea", move |class| {
+        labelled(&wired, &self.label, "textarea", &complaint, move |class| {
             let (text, prop) = (shown(read.clone()), shown(read.clone()));
             let (placeholder, on_input, off) = (placeholder.clone(), on_input.clone(), off.clone());
             view! {
@@ -160,16 +210,19 @@ fn checked_view(
     wired: &Wired,
     (var, name): (&Option<String>, &Option<String>),
     label: &Option<String>,
-    disabled: Option<&Condition>,
+    (disabled, checks): (Option<&Condition>, Vec<Check>),
     own: &'static str,
 ) -> AnyView {
     let read = wired.bound(var.as_deref(), name.as_deref());
     let off = wired.holds(disabled);
+    let complaint = wired.complaint(checks, var.as_deref(), name.as_deref());
+    let touch = complaint.clone();
     let fire = wired.clone();
     let on_change = move |ev| {
+        touch.iter().for_each(Complaint::touch);
         fire.fire("change", json!({ "value": event_target_checked(&ev) }));
     };
-    boxed_label(wired, label, own, move |class| {
+    boxed_label(wired, label, own, &complaint, move |class| {
         let (on, prop) = (read.clone(), read.clone());
         let checked = move || on() == Some(Value::Bool(true));
         let prop = move || prop() == Some(Value::Bool(true));
@@ -190,7 +243,10 @@ impl Component for Checkbox {
             &wired,
             (&self.var, &self.name),
             &self.label,
-            self.disabled.as_ref(),
+            (
+                self.disabled.as_ref(),
+                control_checks(self.required.as_ref(), &self.checks, true),
+            ),
             "checkbox",
         )
     }
@@ -204,7 +260,10 @@ impl Component for Toggle {
             &wired,
             (&self.var, &self.name),
             &self.label,
-            self.disabled.as_ref(),
+            (
+                self.disabled.as_ref(),
+                control_checks(self.required.as_ref(), &self.checks, true),
+            ),
             "toggle",
         )
     }
@@ -222,9 +281,18 @@ impl Component for Radio {
         let group = wired.group(self.var.as_deref(), self.name.as_deref());
         let fire = wired.clone();
         let picked = value.clone();
-        let on_change = move |_| fire.fire("change", json!({ "value": picked.clone() }));
+        let complaint = wired.complaint(
+            control_checks(self.required.as_ref(), &self.checks, false),
+            self.var.as_deref(),
+            self.name.as_deref(),
+        );
+        let touch = complaint.clone();
+        let on_change = move |_| {
+            touch.iter().for_each(Complaint::touch);
+            fire.fire("change", json!({ "value": picked.clone() }));
+        };
         let off = wired.holds(self.disabled.as_ref());
-        boxed_label(&wired, &self.label, "radio", move |class| {
+        boxed_label(&wired, &self.label, "radio", &complaint, move |class| {
             let (on, prop) = (read.clone(), read.clone());
             let (mine, also) = (value.clone(), value.clone());
             let checked = move || on().as_ref() == Some(&mine);
@@ -284,10 +352,17 @@ impl Component for Select {
         );
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
         let off = wired.holds(self.disabled.as_ref());
+        let complaint = wired.complaint(
+            control_checks(self.required.as_ref(), &self.checks, false),
+            self.var.as_deref(),
+            self.name.as_deref(),
+        );
+        let touch = complaint.clone();
         let fire = wired.clone();
         let pick = {
             let choices = choices.clone();
             move |ev| {
+                touch.iter().for_each(Complaint::touch);
                 // Each option's `value` is its place in the list; the variable gets its JSON value.
                 let picked = event_target_value(&ev).parse::<usize>().ok();
                 let list = choices().unwrap_or_default();
@@ -307,7 +382,7 @@ impl Component for Select {
             if let Some(why) = failure.get() {
                 return failed_face(None, &why);
             }
-            labelled(&wired, &label, "select", |class| {
+            labelled(&wired, &label, "select", &complaint, |class| {
                 let (read, choices, pick) = (read.clone(), choices.clone(), pick.clone());
                 let (placeholder, off) = (placeholder.clone(), off.clone());
                 let options = move || {
@@ -349,11 +424,13 @@ impl Component for Form {
             .collect_view();
         let class = wired.class(&mut ClassList::default());
         // The browser submits on a `submit` button or Enter in a box; the bus fills in the form.
+        // `novalidate`: the form's checks are its controls' own, so the browser's bubbles (for an
+        // `email` box, say) never stop a submit before `.invalid` can fire.
         let on_submit = move |ev: leptos::ev::SubmitEvent| {
             ev.prevent_default();
             wired.fire("submit", json!({}));
         };
-        view! { <form class=class on:submit=on_submit>{children}</form> }.into_any()
+        view! { <form class=class novalidate on:submit=on_submit>{children}</form> }.into_any()
     }
 }
 
@@ -365,6 +442,12 @@ impl Component for File {
         let max = self.max_size.unwrap_or(genesis_core::file::MAX_SIZE);
         let read = wired.bound(None, self.name.as_deref());
         let off = wired.holds(self.disabled.as_ref());
+        let complaint = wired.complaint(
+            control_checks(self.required.as_ref(), &self.checks, false),
+            None,
+            self.name.as_deref(),
+        );
+        let touch = complaint.clone();
         // Why the last pick was refused, shown under the picker until the next pick.
         let refused = RwSignal::new(None::<String>);
         let fire = wired.clone();
@@ -378,6 +461,7 @@ impl Component for File {
                 .iter()
                 .find_map(|f| genesis_core::file::too_big(&f.name(), f.size() as u64, max));
             refused.set(why.clone());
+            touch.iter().for_each(Complaint::touch);
             if why.is_some() {
                 // A refused pick fires nothing, and the picker lets go of it.
                 input.set_value("");
@@ -400,10 +484,12 @@ impl Component for File {
                 input.set_value("");
             }
         });
+        // A refused pick says why; otherwise, what's wrong with what's picked, if anything.
         let note = move || {
             refused
                 .get()
-                .map(|why| view! { <p class="text-error text-sm">{why}</p> })
+                .or_else(|| complaint.as_ref()?.message())
+                .map(|why| view! { <p class="text-error text-sm" role="alert">{why}</p> })
         };
         let input = view! {
             <input type="file" node_ref=picker class="file-input" accept=accept multiple=multiple
