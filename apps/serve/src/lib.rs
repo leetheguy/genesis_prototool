@@ -17,8 +17,8 @@
 //! | `GET /health` | `200` when the server is up |
 //!
 //! Every failure goes into one log, `genesis.log` in the logs folder ([spec 110](../../../specs/110_agents.md)):
-//! each load's problems (and `load ok` once it loads clean again) and each failed call, one line each,
-//! with the time. It keeps the app's last `[app] log_lines` lines.
+//! each load's problems (and `load ok` once it loads clean again), each failed call, and each new entry
+//! in a client's mirrored `sys.errors`, one line each, with the time. It keeps the app's last `[app] log_lines` lines.
 //!
 //! The mirror ([spec 050](../../../specs/050_state.md), "The mirror") turns names from the outside
 //! world into file paths, so client names must be plain (letters, digits, `_`, `-`), or the
@@ -210,15 +210,46 @@ struct Server {
     changes: broadcast::Sender<()>,
     /// Every failure, one line each.
     log: log::Log,
+    /// Held while a mirror is compared and written, so no error is logged twice.
+    mirroring: tokio::sync::Mutex<()>,
 }
 
 impl Server {
     fn new(settings: Settings, changes: usize) -> Server {
         Server {
             log: log::Log::new(&settings.logs),
+            mirroring: tokio::sync::Mutex::new(()),
             settings,
             http: reqwest::Client::new(),
             changes: broadcast::channel(changes).0,
+        }
+    }
+
+    /// Logs each of a client's `sys.errors` that the mirror it last wrote didn't hold, oldest
+    /// first, as a `run` line.
+    async fn log_new_errors(&self, dir: &Path, client: &str, state: &Value) {
+        let errors = |state: &Value| -> Vec<Value> {
+            state["sys"]["errors"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        };
+        let old = tokio::fs::read_to_string(dir.join(format!("{client}.json")))
+            .await
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .map(|old| errors(&old))
+            .unwrap_or_default();
+        // sys.errors is newest first.
+        for error in errors(state).iter().rev().filter(|e| !old.contains(e)) {
+            let line = format!(
+                "client {client}: {}: {}",
+                as_text(&error["name"]),
+                as_text(&error["message"])
+            );
+            self.log
+                .write("run", &self.settings.creds.redact(&line))
+                .await;
         }
     }
 
@@ -529,6 +560,8 @@ async fn mirror(State(server): Shared, Json(body): Json<Value>) -> Response {
         .as_array()
         .map(|e| e.iter().map(Value::to_string).collect())
         .unwrap_or_default();
+    let _held = server.mirroring.lock().await;
+    server.log_new_errors(dir, client, &body["state"]).await;
     match write_mirror(dir, client, &body["state"], &events).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => refuse(
