@@ -131,3 +131,7 @@ Milestone three ([999](999_todo.md)):
   `run  client ID: EVENT: MESSAGE`. The mirror on disk is the memory of what's been logged, so a reload of the
   page or of `serve` logs nothing twice. A failed call shows twice, once as `serve` saw it (`call`) and once as
   the client did (`run`, its `OP.failed`). The line's time is when `serve` heard of it.
+- 2026-11-25: `GET /api/log` takes the agent token as `/fs/` does, and is shut when `serve` has none. With both
+  `since` and `tail`, it's the last `tail` lines from `since` on. A `since` that isn't a time in the log's own
+  form (`2026-11-24T10:00:00Z`), or a `tail` that isn't a whole number, is a `400` saying so. Before anything
+  is logged, it answers nothing, not a `404`.
