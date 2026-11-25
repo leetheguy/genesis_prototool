@@ -321,9 +321,31 @@ words! {
     Shadow { None = "none", Sm = "sm", Md = "md", Lg = "lg" }
 }
 
-words! {
-    /// A height.
-    Height { Full = "full", Screen = "screen" }
+/// A height: its parent's, the screen's, or a fixed number of rem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Height {
+    /// `"full"`: its parent's height.
+    Full,
+    /// `"screen"`: the screen's height.
+    Screen,
+    /// A number of rem: `4`, `8`, `12`, `16`, `24`, `32`, `48`, or `64`.
+    Rem(u8),
+}
+
+impl Vocab for Height {
+    fn all() -> Vec<Self> {
+        [Height::Full, Height::Screen]
+            .into_iter()
+            .chain([4, 8, 12, 16, 24, 32, 48, 64].map(Height::Rem))
+            .collect()
+    }
+    fn to_value(&self) -> Value {
+        match self {
+            Height::Full => Value::from("full"),
+            Height::Screen => Value::from("screen"),
+            Height::Rem(n) => Value::from(*n),
+        }
+    }
 }
 
 words! {

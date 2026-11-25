@@ -56,7 +56,7 @@ const BOX: &[(&str, &[&str])] = &[
         ],
     ),
     ("shadow", &[r#""none""#, r#""sm""#, r#""md""#, r#""lg""#]),
-    ("height", &[r#""full""#, r#""screen""#]),
+    ("height", &[r#""full""#, r#""screen""#, "4", "64"]),
     ("scroll", &["true", "false"]),
 ];
 

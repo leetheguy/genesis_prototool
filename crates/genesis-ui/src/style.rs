@@ -5,7 +5,7 @@
 //! `crates/genesis-ui/classes.txt` for Tailwind to read (a test keeps the two the same).
 
 use genesis_core::style::{
-    Boxed, BySize, Color, Columns, Direction, Layout, Line, Margin, Placed, SCREENS, Span,
+    Boxed, BySize, Color, Columns, Direction, Height, Layout, Line, Margin, Placed, SCREENS, Span,
     StyleKey, TextColor, Typed, Vocab, keys,
 };
 
@@ -156,7 +156,11 @@ impl Classes for keys::Shadow {
 
 impl Classes for keys::Height {
     fn of(value: Self::Value) -> String {
-        format!("h-{}", value.word())
+        match value {
+            Height::Full => "h-full".into(),
+            Height::Screen => "h-screen".into(),
+            Height::Rem(n) => format!("h-[{n}rem]"),
+        }
     }
 }
 

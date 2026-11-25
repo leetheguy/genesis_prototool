@@ -35,8 +35,8 @@ never a composite.
 | `svg` | inline `svg`, checked at load | `svg` (the markup), `label`, the type keys |
 | `divider` | `hr` | `color` (a theme color), the box keys |
 | `audio` | `audio` | `src`, `controls`, `autoplay`, `loop`, `muted` |
-| `video` | `video` | as `audio`, plus `poster` |
-| `iframe` | `iframe`, sandboxed | `src`, `title`, `sandbox`, `height` |
+| `video` | `video` | as `audio`, plus `poster` and the box keys |
+| `iframe` | `iframe`, sandboxed | `src`, `title`, `sandbox`, the box keys |
 | `link` | `a` | `text`, `href` (with templates); an outside link (`http://`, `https://`, or `//`) opens in a new tab |
 | `button` | `button` | `label`, `disabled`, `submit`, `variant`, `size` |
 | `input` | `input` | `name` or `var`, `kind` (`text`, `email`, `password`, `number`, `date`, `search`), `label`, `placeholder`, `disabled`, checks |
@@ -66,11 +66,12 @@ unless its own keys say otherwise. `markdown` is for longer prose, and for strea
   without one it's decoration they skip.
 - **`divider`** is a plain `hr`, for a rule between sections, in the theme's border color unless `color` names another.
 - **`audio`** and **`video`** play `src` (with templates). `controls` defaults to `true`; `autoplay`, `loop`,
-  and `muted` default to `false` (browsers play on their own only when muted).
+  and `muted` default to `false` (browsers play on their own only when muted). With an `id`, each fires
+  `.play`, `.pause`, and `.ended`.
 - **`iframe`** embeds another page by `src` (with templates). `title` is required: it's what a screen reader
   announces. It's sandboxed by default, allowing scripts, forms, and popups but not acting as this app's
-  origin or navigating it; `sandbox = false` lifts that, as a power tool should allow. `height` takes
-  `"screen"`, `"full"`, or a number of rem.
+  origin or navigating it; `sandbox = false` lifts that, as a power tool should allow. It fills its parent's
+  width unless `width` says otherwise, and it's 24rem tall unless the box key `height` says otherwise.
 
 ### Repeating: `each`
 
@@ -172,7 +173,7 @@ theme colors, so every theme recolors every screen. There are no CSS classes in 
 | `border` | `true`, or a color | a border |
 | `radius` | `"none"`, `"sm"`, `"md"`, `"lg"`, `"xl"`, `"full"`, `"box"` | rounded corners; `"box"` is the theme's own |
 | `shadow` | `"none"`, `"sm"`, `"md"`, `"lg"` | a shadow |
-| `height` | `"full"`, `"screen"` | its height |
+| `height` | `"full"`, `"screen"`, or rem: `4`, `8`, `12`, `16`, `24`, `32`, `48`, `64` | its height; a fixed one with `scroll` makes a panel that scrolls |
 | `scroll` | `true`, `false` | scrolls what doesn't fit; `false` stops it |
 
 **Type**, for a cell's text and `text`:
@@ -267,8 +268,8 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - `markdown` draws Markdown and escapes raw HTML
 - `svg` draws Genesis's own copy of its markup inline; anything that could run or reach outside it (an element outside the list, an `on*` attribute, a `javascript:` URL, an outside `href` or `url()`) is a config error at its line; with `label` it's a named image, without one it's hidden from screen readers; markup that isn't one `svg` is a config error
 - `divider` is an `hr`, in the theme's border color or its own
-- `audio` and `video` take `src` with templates and default to controls on, autoplay off; they fire `.play`, `.pause`, and `.ended`
-- `iframe` is sandboxed unless `sandbox = false`; one with no `title` is a config error
+- `audio` and `video` take `src` with templates and default to controls on, autoplay off; with an `id` they fire `.play`, `.pause`, and `.ended` (in a real browser: `tests/deployed/media.mjs`), and without one they fire nothing
+- `iframe` is sandboxed unless `sandbox = false`, full width and 24rem tall unless its keys say otherwise; one with no `title` is a config error
 - radios with one `name` in a form, or one `var`, are one group: picking one sets the group's value to its `value`, with its JSON type, and unpicks the rest
 - a `file` gives `{ file, name, type, size }` (a list with `multiple`), never its bytes; one over `max_size` fails its check; a `file` with `var`, or outside a `form`, is a config error
 - a call whose params hold a file reference reaches the API as `multipart/form-data`, the file as a part with its name and type and the other params as fields; a reference that's gone fails the call
@@ -296,7 +297,7 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] placement keys on every node
 - [x] `image` and `link`; `button`'s variants and sizes
 - [x] `divider` and `svg`
-- [ ] `audio`, `video`, and `iframe`
+- [x] `audio`, `video`, and `iframe`
 - [ ] `each`, with its faces in `Wired`, and `item.*`
 - [ ] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups
 - [ ] `form`, controls with `name`, and the `submit` button

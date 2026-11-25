@@ -23,7 +23,7 @@
 //! assert_eq!(machine.get("sys.events").unwrap()[0]["log"], "hello");
 //! ```
 
-use crate::config::{App, Handler, Node, Source, Step, body_place, child_place};
+use crate::config::{App, Audio, Handler, Node, Source, Step, Video, body_place, child_place};
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -1016,7 +1016,17 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
                 wire_node(child, &child_place(place, i), handlers, events);
             }
         }
-        Node::Text(_) | Node::Image(_) | Node::Link(_) | Node::Svg(_) | Node::Divider(_) => {}
+        Node::Audio(Audio { id: Some(id), .. }) | Node::Video(Video { id: Some(id), .. }) => {
+            events.extend(["play", "pause", "ended"].map(|e| format!("{id}.{e}")));
+        }
+        Node::Text(_)
+        | Node::Image(_)
+        | Node::Link(_)
+        | Node::Svg(_)
+        | Node::Divider(_)
+        | Node::Audio(_)
+        | Node::Video(_)
+        | Node::Iframe(_) => {}
     }
 }
 

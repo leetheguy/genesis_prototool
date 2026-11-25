@@ -116,6 +116,12 @@ pub enum Node {
     Svg(Svg),
     /// A rule between sections.
     Divider(Divider),
+    /// A sound player.
+    Audio(Audio),
+    /// A video player.
+    Video(Video),
+    /// Another page, embedded and sandboxed.
+    Iframe(Iframe),
 }
 
 impl Node {
@@ -129,6 +135,9 @@ impl Node {
             Node::Link(n) => n.placed(),
             Node::Svg(n) => n.placed(),
             Node::Divider(n) => n.placed(),
+            Node::Audio(n) => n.placed(),
+            Node::Video(n) => n.placed(),
+            Node::Iframe(n) => n.placed(),
         }
     }
 
@@ -142,6 +151,9 @@ impl Node {
             Node::Link(n) => n.id.as_deref(),
             Node::Svg(n) => n.id.as_deref(),
             Node::Divider(n) => n.id.as_deref(),
+            Node::Audio(n) => n.id.as_deref(),
+            Node::Video(n) => n.id.as_deref(),
+            Node::Iframe(n) => n.id.as_deref(),
         }
     }
 
@@ -297,6 +309,83 @@ styled! {
         /// The line's theme color; the theme's own border color unless it says otherwise.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub color: Option<crate::style::keys::LineColor>,
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "audio"`: a sound player. With an `id`, fires `.play`, `.pause`, and `.ended`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Audio {
+        /// The node's name; its events fire under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// Where it plays from; may hold templates.
+        pub src: String,
+        /// Shows the player's controls. On unless it says otherwise.
+        #[serde(default = "defaults::yes")]
+        pub controls: bool,
+        /// Starts playing on its own (browsers allow it only when `muted`).
+        #[serde(default)]
+        pub autoplay: bool,
+        /// Starts again at the end.
+        #[serde(default, rename = "loop")]
+        pub r#loop: bool,
+        /// Starts with no sound.
+        #[serde(default)]
+        pub muted: bool,
+    }
+}
+
+styled! {
+    [boxed, placed]
+    /// `type = "video"`: a video player; as `audio`, with a `poster`. With an `id`, fires `.play`,
+    /// `.pause`, and `.ended`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Video {
+        /// The node's name; its events fire under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// Where it plays from; may hold templates.
+        pub src: String,
+        /// Shows the player's controls. On unless it says otherwise.
+        #[serde(default = "defaults::yes")]
+        pub controls: bool,
+        /// Starts playing on its own (browsers allow it only when `muted`).
+        #[serde(default)]
+        pub autoplay: bool,
+        /// Starts again at the end.
+        #[serde(default, rename = "loop")]
+        pub r#loop: bool,
+        /// Starts with no sound.
+        #[serde(default)]
+        pub muted: bool,
+        /// A picture to show before it plays; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub poster: Option<String>,
+    }
+}
+
+styled! {
+    [boxed, placed]
+    /// `type = "iframe"`: another page, embedded. Sandboxed unless `sandbox = false`; 24rem tall
+    /// unless its `height` says otherwise.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Iframe {
+        /// The node's name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The page; may hold templates.
+        pub src: String,
+        /// What it is, for screen readers. Required.
+        pub title: String,
+        /// Runs the page with scripts, forms, and popups, but not as this app's origin and
+        /// without navigating it. On unless it says otherwise.
+        #[serde(default = "defaults::yes")]
+        pub sandbox: bool,
     }
 }
 
@@ -1235,6 +1324,9 @@ mod ordered_handlers {
 
 /// Default values, as functions because that's what serde's `default = "..."` takes.
 mod defaults {
+    pub fn yes() -> bool {
+        true
+    }
     pub fn theme() -> String {
         "light".into()
     }

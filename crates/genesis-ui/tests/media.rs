@@ -42,3 +42,78 @@ fn a_divider_is_an_hr_in_the_themes_line_color_or_its_own() {
     let out = html("type = \"divider\"\ncolor = \"primary\"\nmargin_y = 6");
     assert!(out.contains(r#"<hr class="border-primary my-6">"#), "{out}");
 }
+
+#[test]
+fn audio_and_video_draw_their_players_with_controls_unless_told_otherwise() {
+    let cases = [
+        (
+            "type = \"audio\"
+src = \"/a.mp3\"",
+            r#"<audio src="/a.mp3" controls class="">"#,
+        ),
+        (
+            "type = \"audio\"
+src = \"/a.mp3\"
+controls = false
+autoplay = true
+loop = true
+muted = true
+span = 2",
+            r#"<audio src="/a.mp3" autoplay loop muted class="col-span-2">"#,
+        ),
+        (
+            "type = \"video\"
+src = \"/v.mp4\"
+poster = \"/p.png\"
+radius = \"box\"",
+            r#"<video src="/v.mp4" poster="/p.png" controls class="rounded-box">"#,
+        ),
+    ];
+    for (node, want) in cases {
+        let out = html(node);
+        assert!(out.contains(want), "{node}: {out}");
+    }
+}
+
+#[test]
+fn media_srcs_fill_their_templates() {
+    let toml = "[app]
+name = \"x\"
+[state]
+clip = \"intro\"
+[[body]]
+type = \"video\"
+src = \"/fs/{{ app.clip }}.mp4\"
+poster = \"/fs/{{ app.clip }}.png\"
+";
+    let out = Owner::new().with(|| app_view(Host::new(App::from_toml(toml).unwrap())).to_html());
+    assert!(
+        out.contains(r#"<video src="/fs/intro.mp4" poster="/fs/intro.png""#),
+        "{out}"
+    );
+}
+
+#[test]
+fn an_iframe_is_sandboxed_full_width_and_24rem_tall_unless_told_otherwise() {
+    let out = html(
+        "type = \"iframe\"
+src = \"/r\"
+title = \"Report\"",
+    );
+    assert!(
+        out.contains(r#"<iframe src="/r" title="Report" sandbox="allow-scripts allow-forms allow-popups" class="h-[24rem] w-full">"#),
+        "{out}"
+    );
+    let out = html(
+        "type = \"iframe\"
+src = \"/r\"
+title = \"Report\"
+sandbox = false
+height = \"screen\"
+width = \"1/2\"",
+    );
+    assert!(
+        out.contains(r#"<iframe src="/r" title="Report" class="h-screen w-1/2">"#),
+        "{out}"
+    );
+}

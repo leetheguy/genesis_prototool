@@ -5,8 +5,8 @@
 
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
-use genesis_core::config::{Button, Cell, Divider, Image, Link, Svg, Text};
-use genesis_core::style::{BySize, Color, TextSize, Variant, Weight, keys};
+use genesis_core::config::{Audio, Button, Cell, Divider, Iframe, Image, Link, Svg, Text, Video};
+use genesis_core::style::{BySize, Color, Height, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
 
 impl Component for Cell {
@@ -140,5 +140,81 @@ impl Component for Divider {
             .unwrap_or(keys::LineColor(BySize::base(Color::Base300)));
         let class = wired.class(ClassList::default().add(Some(color)).boxed(self.boxed()));
         view! { <hr class=class /> }.into_any()
+    }
+}
+
+/// Fires a player's `event` when it has an `id`; one without fires nothing.
+fn player(
+    wired: &Wired,
+    id: &Option<String>,
+) -> impl Fn(&'static str) + Clone + Send + Sync + 'static {
+    let (wired, named) = (wired.clone(), id.is_some());
+    move |event| {
+        if named {
+            wired.fire(event, nothing());
+        }
+    }
+}
+
+impl Component for Audio {
+    const EVENTS: &'static [&'static str] = &["play", "pause", "ended"];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let src = wired.text(&self.src);
+        let class = wired.class(&mut ClassList::default());
+        let fire = player(&wired, &self.id);
+        let (play, pause, ended) = (fire.clone(), fire.clone(), fire);
+        view! {
+            <audio src=src controls=self.controls autoplay=self.autoplay loop=self.r#loop muted=self.muted class=class
+                on:play=move |_| play("play")
+                on:pause=move |_| pause("pause")
+                on:ended=move |_| ended("ended")
+            ></audio>
+        }
+        .into_any()
+    }
+}
+
+impl Component for Video {
+    const EVENTS: &'static [&'static str] = &["play", "pause", "ended"];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let src = wired.text(&self.src);
+        let poster = self.poster.as_ref().map(|p| wired.text(p));
+        let poster = move || poster.as_ref().map(|p| p());
+        let class = wired.class(ClassList::default().boxed(self.boxed()));
+        let fire = player(&wired, &self.id);
+        let (play, pause, ended) = (fire.clone(), fire.clone(), fire);
+        view! {
+            <video src=src poster=poster controls=self.controls autoplay=self.autoplay loop=self.r#loop muted=self.muted class=class
+                on:play=move |_| play("play")
+                on:pause=move |_| pause("pause")
+                on:ended=move |_| ended("ended")
+            ></video>
+        }
+        .into_any()
+    }
+}
+
+impl Component for Iframe {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let src = wired.text(&self.src);
+        let title = self.title.clone();
+        // Scripts, forms, and popups, but not this app's origin, and no navigating it.
+        let sandbox = self
+            .sandbox
+            .then_some("allow-scripts allow-forms allow-popups");
+        let mut own = ClassList::default();
+        let boxed = self.boxed();
+        if boxed.height.is_none() {
+            own.add(Some(keys::Height(BySize::base(Height::Rem(24)))));
+        }
+        if self.width.is_none() {
+            own.raw("w-full");
+        }
+        let class = wired.class(own.boxed(boxed));
+        view! { <iframe src=src title=title sandbox=sandbox class=class></iframe> }.into_any()
     }
 }

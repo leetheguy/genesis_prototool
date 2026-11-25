@@ -244,6 +244,8 @@ fn the_vocabulary_has_every_class_a_style_key_can_give_once() {
         "w-3/4",
         "max-w-prose",
         "xl:max-w-6xl",
+        "h-[4rem]",
+        "md:h-[64rem]",
     ] {
         assert!(words.iter().any(|w| w == class), "{class} missing");
     }

@@ -256,6 +256,9 @@ fn draw(node: &Node, place: String, host: &Host) -> AnyView {
         Node::Link(n) => n.view(wired),
         Node::Svg(n) => n.view(wired),
         Node::Divider(n) => n.view(wired),
+        Node::Audio(n) => n.view(wired),
+        Node::Video(n) => n.view(wired),
+        Node::Iframe(n) => n.view(wired),
     }
 }
 
