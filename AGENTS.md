@@ -10,7 +10,7 @@ specific to Genesis.
 | **precommit** | `scripts/precommit.sh`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (and for wasm on `genesis-web`), `cargo machete`, `cargo test`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`, `trunk build` of the browser bundle, and `scripts/check-css.sh` (every style class is in the built CSS) |
 | **test** | `cargo test`. The renderer's tests draw to HTML natively (Leptos's server-side mode); what only a real browser does (clicks) is a deployed check with Playwright against the served app |
 | **coverage** | `scripts/coverage.sh` (`cargo llvm-cov --workspace --fail-under-lines 90`). `genesis-web` is wasm-only and natively an empty program, so it adds nothing to the count |
-| **mutation** | `cargo mutants --in-diff <(git diff)` on the lines a change touches; `cargo mutants -f FILE` to harden a whole file |
+| **mutation** | `cargo mutants --in-diff <(git diff)` on the lines a change touches; `cargo mutants -f FILE` to harden a whole file. **Skipped during early development** (the user's call: it costs too much for now); run it only when asked, and with `-j 1` on the dev box, where it once filled the disk |
 | **security** | `cargo audit` (known vulnerabilities) and gitleaks (secrets in history), both in CI |
 | **run** | `docker compose up -d --build` (`serve` and `files`); `cargo tauri dev` for the desktop shell; `genesis-bench APP_DIR` for the bus alone |
 | **CI** | `.github/workflows/ci.yml` (GitHub Actions), once the repo has a remote |

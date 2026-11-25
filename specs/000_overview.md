@@ -16,8 +16,11 @@ Everything else here is still design: every numbered spec but [120](120_one_app.
 design they add up to.
 
 **Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. One app
-([120](120_one_app.md)) is built; still to come are the rest of the atoms, components, display logic, and what agents need from `serve`: a guide,
-one log, and a webhook ([110](110_agents.md)).
+([120](120_one_app.md)) is built. Of the atoms ([040](040_catalog.md)), these are built: `cell` with the style keys
+(layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
+and sizes; `divider`; `svg`; `audio`; `video`; and `iframe`. 040's task list says what's next: the controls,
+`form`, `file`, `dialog`, and `markdown`. Still to come after them are components, display logic, and what
+agents need from `serve`: a guide, one log, and a webhook ([110](110_agents.md)).
 
 ## What this is
 
