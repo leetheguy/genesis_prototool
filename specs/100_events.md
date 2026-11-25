@@ -276,3 +276,5 @@ Milestone three ([999](999_todo.md)):
   for him to check.
 - 2026-11-25: a `go` naming a page that isn't there (or can't go there) fails when it runs, not at load,
   so a page can show up later. Lee, on load or run: "When it runs".
+- 2026-11-25: `go` names a page by its plain file name, without a path or template: `{ go = "contacts" }` is
+  `views/contacts.toml`. Lee: "That's perfect. Yes, and that's why I said that all files should be uniquely named."
