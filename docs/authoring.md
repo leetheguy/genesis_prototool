@@ -1401,7 +1401,11 @@ Every save reloads every open screen. If the new version has a problem, **the ol
 and the problem is reported, so the person never sees a broken screen.
 
 - **`GET BASE/status`** says whether the app loads: `{"status": "loaded"}`, or `"failed"` with each
-  problem as `FILE:LINE:COLUMN: what's wrong`. Check it after every write.
+  problem as `FILE:LINE:COLUMN: what's wrong`. Check it after every write. Wiring is checked too: a step
+  naming an action, timer, or operation that isn't there, a `set` on a variable with no starting value in
+  `[state]`, and a template reading something that isn't there where it's written (`item` outside an `each`,
+  `event` outside a step) are refused here, not when they run. A `go` to a page that isn't there isn't: it
+  fails when it runs, so you can add the page later.
 - **`GET BASE/api/log`** is the server's log of every failure, in order: problems loading, calls that
   failed (with the API's answer and the event that started them), steps that failed in a screen, and
   pushes it refused. `?tail=50` gives the last 50 lines, and `?since=2026-11-24T10:00:00Z` the lines

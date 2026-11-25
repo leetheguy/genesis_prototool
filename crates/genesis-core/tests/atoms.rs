@@ -3,7 +3,9 @@
 use genesis_core::config::{App, Node};
 
 fn app(node: &str) -> Result<App, Vec<genesis_core::config::ConfigError>> {
-    App::from_toml(&format!("[app]\nname = \"Atoms\"\n\n[[body]]\n{node}\n"))
+    App::from_toml(&format!(
+        "[app]\nname = \"Atoms\"\n\n[[body]]\n{node}\n\n[state]\npage = 1\navatar = \"\"\n"
+    ))
 }
 
 fn problem(node: &str) -> String {
@@ -26,13 +28,13 @@ fn round_trip(node: &str) -> Node {
 #[test]
 fn an_image_loads_with_src_alt_and_the_box_and_placement_keys() {
     let Node::Image(image) = round_trip(
-        "type = \"image\"\nsrc = \"{{ item.avatar }}\"\nalt = \"Ada\"\nradius = \"full\"\nshadow = \"sm\"\nwidth = \"1/4\"",
+        "type = \"image\"\nsrc = \"{{ app.avatar }}\"\nalt = \"Ada\"\nradius = \"full\"\nshadow = \"sm\"\nwidth = \"1/4\"",
     ) else {
         panic!("not an image")
     };
     assert_eq!(
         (image.src.as_str(), image.alt.as_str()),
-        ("{{ item.avatar }}", "Ada")
+        ("{{ app.avatar }}", "Ada")
     );
 }
 

@@ -114,7 +114,16 @@ fn an_empty_load_on_waits_for_a_reload() {
 
 #[test]
 fn reloading_something_that_isnt_a_source_is_a_failure() {
-    let mut m = machine("[on]\n\"refresh\" = [{ reload = [\"app.page\"] }]\n");
+    let text =
+        format!("[app]\nname = \"t\"\n{BASE}[on]\n\"refresh\" = [{{ reload = [\"app.page\"] }}]\n");
+    // Caught at load...
+    let problems = format!("{:?}", App::from_toml(&text).unwrap_err());
+    assert!(
+        problems.contains("`reload` takes sources, as \\\"app.NAME\\\" for each [sources.NAME], and \\\"app.page\\\" isn't one"),
+        "{problems}"
+    );
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(&text).unwrap());
     m.fire("refresh", json!({}));
     assert_eq!(
         m.get("sys.errors.0.message"),

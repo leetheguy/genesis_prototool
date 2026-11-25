@@ -18,9 +18,13 @@ fn problem(toml: &str) -> String {
         .join("\n")
 }
 
+/// The variables the nodes below write.
+const STATE: &str = "[state]\nquery = \"\"\nx = \"\"\nnote = \"\"\nagree = false\ndark = false\nsize = 0\ncompany = 0\ncompanies = []\n";
+
 /// Loads one node, checks it survives the trip to the browser (JSON), and hands it back.
 fn round_trip(node: &str) -> Node {
-    let app = app(&format!("[[body]]\n{node}\n")).unwrap_or_else(|e| panic!("{node}: {e:?}"));
+    let app =
+        app(&format!("{STATE}[[body]]\n{node}\n")).unwrap_or_else(|e| panic!("{node}: {e:?}"));
     let back: App = serde_json::from_value(serde_json::to_value(&app).unwrap()).unwrap();
     assert_eq!(back, app, "{node}");
     app.body[0].clone()
@@ -184,7 +188,13 @@ fn sys_bus_shows_a_controls_change_and_the_set_it_runs() {
 
 #[test]
 fn a_change_to_an_undeclared_variable_fails_loudly() {
-    let mut m = machine("[[body]]\ntype = \"input\"\nid = \"q_box\"\nvar = \"app.q\"");
+    let text =
+        "[app]\nname = \"Controls\"\n[[body]]\ntype = \"input\"\nid = \"q_box\"\nvar = \"app.q\"";
+    // Caught at load...
+    let problems = format!("{:?}", App::from_toml(text).unwrap_err());
+    assert!(problems.contains("`app.q` isn't declared"), "{problems}");
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(text).unwrap());
     m.fire("q_box.change", json!({ "value": "x" }));
     let errors = m.get("sys.errors").unwrap();
     assert!(

@@ -17,3 +17,4 @@ pub mod pattern;
 pub mod style;
 pub mod svg;
 pub mod template;
+mod wiring;

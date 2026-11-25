@@ -94,8 +94,16 @@ fn actions_run_other_actions_and_each_reports_when_done() {
 
 #[test]
 fn a_step_naming_no_action_is_a_failure() {
-    let mut m =
-        machine("[state]\nn = 0\n[on]\n\"go\" = [\"nowhere\", { set = \"app.n\", to = 1 }]\n");
+    let text = "[app]\nname = \"t\"\n[state]\nn = 0\n[on]\n\"go\" = [\"nowhere\", { set = \"app.n\", to = 1 }]\n";
+    // Caught at load...
+    let problems = format!("{:?}", App::from_toml(text).unwrap_err());
+    assert!(
+        problems
+            .contains("there's no custom action named `nowhere`; define it as [actions.nowhere]"),
+        "{problems}"
+    );
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(text).unwrap());
     m.fire("go", json!({}));
     assert_eq!(m.get("app.n"), Some(json!(0)));
 }
@@ -126,7 +134,10 @@ fn actions_nested_exactly_max_chain_deep_still_run() {
 
 #[test]
 fn a_missing_action_fires_its_own_failed() {
-    let mut m = machine("[on]\n\"go\" = [\"nowhere\"]\n");
+    // An app read without the load checks, which would refuse it.
+    let mut m = Machine::new(
+        toml::from_str("[app]\nname = \"t\"\n[on]\n\"go\" = [\"nowhere\"]\n").unwrap(),
+    );
     m.fire("go", json!({}));
     assert_eq!(
         newest(&m, "nowhere.failed").unwrap()["payload"],

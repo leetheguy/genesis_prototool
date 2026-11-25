@@ -30,7 +30,10 @@ problems, each failed call, and each failure a client reports through the mirror
 folder, and agents read it at `GET /api/log`. So is the webhook: `POST /api/push/{name}` fires `push.{name}` in
 every open screen. Display logic ([080](080_display_logic.md)) is built: conditions in `show` on every node and
 `disabled` on buttons and controls, checks on controls, and formats on `text`, in the browser's language
-or `[app] locale`'s.
+or `[app] locale`'s. The load checks for wiring ([020](020_config.md)) are built: a step naming an action, timer,
+operation, or source that isn't there, a step writing what it can't, and a template that isn't a plain lookup or
+reads nothing where it's written are refused at load, each with its file, line, and column. A `go` to a page
+that isn't there still fails only when it runs.
 
 ## What this is
 
@@ -56,7 +59,8 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
 1. **The app is the configs folder**: `app.toml` at the top, and any other TOML files in any folders,
    put together. Folders only organize; every file name is unique across the whole app, and nothing is
    defined twice. Agents reach it only through dufs, as in PurpleFlow. It's
-   loaded into closed Rust types; unknown keys are errors. See [020](020_config.md), [120](120_one_app.md).
+   loaded into closed Rust types; unknown keys are errors, and so is wiring that could only fail when it
+   runs. See [020](020_config.md), [120](120_one_app.md).
 2. **One screen of atoms.** The screen is a tree of nodes from a closed catalog of atoms, as small as
    plain HTML: `cell` (a `div`) for layout, and `text`, `image`, `svg`, `divider`, `audio`, `video`, `iframe`,
    `link`, `button`, each form control (including `radio` and `file`), `form`, and `dialog`. Cells take closed style keys (no CSS classes) for layout, placement, box, and type, with

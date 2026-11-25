@@ -94,8 +94,10 @@ fn a_plain_string_step_runs_that_action() {
 
 #[test]
 fn a_step_step_adds_one_by_default() {
-    let app =
-        App::from_toml("[app]\nname = \"x\"\n[on]\n\"a.b\" = [{ step = \"app.n\" }]\n").unwrap();
+    let app = App::from_toml(
+        "[app]\nname = \"x\"\n[state]\nn = 0\n[on]\n\"a.b\" = [{ step = \"app.n\" }]\n",
+    )
+    .unwrap();
     assert_eq!(
         app.on[0].steps[0],
         Step::Step {
@@ -112,6 +114,9 @@ fn every_built_in_step_loads() {
     let toml = r#"
 [app]
 name = "x"
+[state]
+x = 0
+open = false
 [on]
 "a.b" = [
   { set = "app.x", to = 3 },
@@ -122,7 +127,8 @@ name = "x"
   { stop = "ticker" },
 ]
 "#;
-    let app = App::from_toml(toml).unwrap();
+    let app =
+        App::from_files([("app.toml", toml), ("timers.toml", "[ticker]\nms = 10\n")]).unwrap();
     let steps = &app.on[0].steps;
     assert_eq!(
         steps[0],

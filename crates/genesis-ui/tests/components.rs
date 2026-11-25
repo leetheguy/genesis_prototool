@@ -69,7 +69,7 @@ props = { contact = "{{ app.me }}", note = " (you)" }
 [[body]]
 type = "use"
 component = "contact_card"
-props = { contact = "{{ app.nobody }}" }
+props = { contact = "{{ app.me.nobody }}" }
 "#,
         &[("contact_card.toml", CARD)],
     );
@@ -117,18 +117,18 @@ props = ["tags"]
 
 [[body]]
 type = "cell"
-each = "item"
+each = "props.tags"
 
-[[body]]
+[[body.children]]
 type = "text"
 text = "[{{ item }}]"
 "#;
     let out = html(
-        "[state]\nrows = [\"r\"]\n[[body]]\ntype = \"cell\"\neach = \"app.rows\"\n[[body.children]]\ntype = \"use\"\ncomponent = \"tags\"\nprops = { tags = \"{{ item }}\" }\n",
+        "[state]\nrows = [\"r\"]\n[[body]]\ntype = \"cell\"\neach = \"app.rows\"\n[[body.children]]\ntype = \"use\"\ncomponent = \"tags\"\nprops = { tags = [\"a\"] }\n",
         &[("tags.toml", tags)],
     );
-    // `item` outside its own `each` names nothing inside a component.
-    assert!(out.contains("[]"), "{out}");
+    // Inside the component, `item` is the component's own row, not the row it's drawn in.
+    assert!(out.contains("[a]"), "{out}");
     assert!(!out.contains("[r]"), "{out}");
 }
 

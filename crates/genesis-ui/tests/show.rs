@@ -59,10 +59,13 @@ text = "Always"
 fn a_hidden_node_takes_no_place() {
     let (out, _) = before_and_after(
         r#"
+[state]
+flags = {}
+
 [[body]]
 type = "cell"
 span = 6
-show = { var = "app.missing", empty = false }
+show = { var = "app.flags.missing", empty = false }
 
 [[body.children]]
 type = "text"
