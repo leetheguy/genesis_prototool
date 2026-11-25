@@ -751,6 +751,10 @@ macro_rules! styled {
             #[doc = concat!("`max_width`: see [`$crate::style::keys::MaxWidth`].")]
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub max_width: Option<$crate::style::keys::MaxWidth>,
+            /// `show`: a condition; the node and its children are drawn only while it holds
+            /// ([spec 080](../../../specs/080_display_logic.md)).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub show: Option<$crate::condition::Condition>,
         ] [$($rest)*] $groups $($item)*);
     };
     (@method placed $name:ident) => {
@@ -758,6 +762,11 @@ macro_rules! styled {
             /// Its placement keys, read together.
             pub fn placed(&self) -> $crate::style::Placed {
                 $crate::style::Placed { span: self.span, offset: self.offset, grow: self.grow, width: self.width, max_width: self.max_width }
+            }
+
+            /// Its `show` condition, if it has one. Every node takes it, as it takes placement.
+            pub fn show(&self) -> Option<&$crate::condition::Condition> {
+                self.show.as_ref()
             }
         }
     };

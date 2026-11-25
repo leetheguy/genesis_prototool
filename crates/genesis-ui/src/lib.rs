@@ -16,6 +16,7 @@
 //! watches, so whatever read it redraws when it changes.
 
 use genesis_core::bus::{Call, Effect, Machine, Reply, Within};
+use genesis_core::condition::Condition;
 use genesis_core::config::{App, Node, body_place, child_place};
 use genesis_core::style::Placed;
 use genesis_core::template;
@@ -329,6 +330,43 @@ impl Wired {
         let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
         let path = path.to_string();
         move || look(&host, item.as_ref(), scope.as_ref(), &path)
+    }
+
+    /// Whether `condition` holds right now, redrawing as state changes; `false` with none.
+    /// `form.*` reads the draft of the form it's in, as its controls show it.
+    pub fn holds(
+        &self,
+        condition: Option<&Condition>,
+    ) -> impl Fn() -> bool + Clone + Send + Sync + 'static + use<> {
+        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let (form, condition) = (self.form.clone(), condition.cloned());
+        move || {
+            let Some(condition) = &condition else {
+                return false;
+            };
+            condition.holds(&|path: &str| match path.strip_prefix("form.") {
+                Some(rest) => {
+                    let form = form.as_ref()?;
+                    let (name, rest) = match rest.split_once('.') {
+                        Some((name, rest)) => (name, Some(rest)),
+                        None => (rest, None),
+                    };
+                    let value = host
+                        .draft_at(&form.name, form.row.as_deref(), name)
+                        .or_else(|| {
+                            let data = form.data.as_ref()?;
+                            look(
+                                &host,
+                                item.as_ref(),
+                                scope.as_ref(),
+                                &format!("{data}.{name}"),
+                            )
+                        })?;
+                    dig(&value, rest)
+                }
+                None => look(&host, item.as_ref(), scope.as_ref(), path),
+            })
+        }
     }
 
     /// A control's current value: its `var`'s, or, with `name` inside a form, what's typed into
@@ -679,6 +717,24 @@ fn draw(
         form,
         scope,
     };
+    let Some(show) = node.show() else {
+        return view_of(node, wired);
+    };
+    // Drawn only while `show` holds. The memo redraws it only when that changes, and nothing read
+    // while drawing it makes it draw again.
+    let holds = wired.holds(Some(show));
+    let shown = Memo::new(move |_| holds());
+    let node = node.clone();
+    (move || {
+        shown
+            .get()
+            .then(|| untrack(|| view_of(&node, wired.clone())))
+    })
+    .into_any()
+}
+
+/// Draws `node` through `wired`, as its type does.
+fn view_of(node: &Node, wired: Wired) -> AnyView {
     match node {
         Node::Cell(n) => n.view(wired),
         Node::Text(n) => n.view(wired),

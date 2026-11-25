@@ -23,6 +23,7 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use crate::condition::{Condition, Test};
 use crate::style::styled;
 use crate::template;
 
@@ -261,6 +262,49 @@ impl Node {
         }
     }
 
+    /// Its `show` condition: it's drawn only while this holds.
+    pub fn show(&self) -> Option<&crate::condition::Condition> {
+        match self {
+            Node::Cell(n) => n.show(),
+            Node::Text(n) => n.show(),
+            Node::Button(n) => n.show(),
+            Node::Image(n) => n.show(),
+            Node::Link(n) => n.show(),
+            Node::Svg(n) => n.show(),
+            Node::Divider(n) => n.show(),
+            Node::Audio(n) => n.show(),
+            Node::Video(n) => n.show(),
+            Node::Iframe(n) => n.show(),
+            Node::Input(n) => n.show(),
+            Node::Textarea(n) => n.show(),
+            Node::Select(n) => n.show(),
+            Node::Checkbox(n) => n.show(),
+            Node::Toggle(n) => n.show(),
+            Node::Radio(n) => n.show(),
+            Node::Form(n) => n.show(),
+            Node::File(n) => n.show(),
+            Node::Dialog(n) => n.show(),
+            Node::Markdown(n) => n.show(),
+            Node::Use(n) => n.show(),
+            Node::Outlet(n) => n.show(),
+        }
+    }
+
+    /// Its `disabled` condition, on a button or a control.
+    pub fn disabled(&self) -> Option<&crate::condition::Condition> {
+        match self {
+            Node::Button(n) => n.disabled.as_ref(),
+            Node::Input(n) => n.disabled.as_ref(),
+            Node::Textarea(n) => n.disabled.as_ref(),
+            Node::Select(n) => n.disabled.as_ref(),
+            Node::Checkbox(n) => n.disabled.as_ref(),
+            Node::Toggle(n) => n.disabled.as_ref(),
+            Node::Radio(n) => n.disabled.as_ref(),
+            Node::File(n) => n.disabled.as_ref(),
+            _ => None,
+        }
+    }
+
     /// The node's `id`, if it has one.
     pub fn id(&self) -> Option<&str> {
         match self {
@@ -467,6 +511,9 @@ styled! {
         /// The node's name; its events fire under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The button's text.
         pub label: String,
         /// Its look: `"primary"` unless it says otherwise.
@@ -640,6 +687,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -704,6 +754,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -731,6 +784,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -785,6 +841,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -806,6 +865,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -828,6 +890,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// The variable its group reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -928,6 +993,9 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        /// A condition; while it holds, the person can't use it ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub disabled: Option<crate::condition::Condition>,
         /// Never set: a file works only inside a form. Read so the mistake is named.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
@@ -1541,6 +1609,7 @@ impl App {
             let checks = Checks {
                 file: "app.toml",
                 components: &app.components,
+                sources: &app.sources,
                 broken: &broken,
                 component: None,
             };
@@ -1552,6 +1621,7 @@ impl App {
                 let checks = Checks {
                     file: &component_files[name],
                     components: &app.components,
+                    sources: &app.sources,
                     broken: &broken,
                     component: Some(name),
                 };
@@ -1776,6 +1846,8 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
 struct Checks<'a> {
     file: &'a str,
     components: &'a BTreeMap<String, Component>,
+    /// The app's sources, which a `status` test names.
+    sources: &'a BTreeMap<String, Source>,
     /// Components whose files didn't read, already reported.
     broken: &'a BTreeSet<String>,
     component: Option<&'a str>,
@@ -1961,6 +2033,19 @@ fn scan(
                     for (i, child) in v.as_array().into_iter().flatten().enumerate() {
                         scan(child, &child_place(place, i), None, component, problem);
                     }
+                } else if k == "show" || k == "disabled" {
+                    // A condition only reads its variables.
+                    if let Ok(condition) = Condition::try_from(v.clone()) {
+                        for (var, _) in condition.tests() {
+                            scan(
+                                &Value::String(var.into()),
+                                place,
+                                Some("each"),
+                                component,
+                                problem,
+                            );
+                        }
+                    }
                 } else {
                     scan(v, place, Some(k), component, problem);
                 }
@@ -2079,6 +2164,13 @@ fn check_node(
     let inside = checks.component.is_some();
     let in_form_here = in_form;
     let in_form = in_form || inside;
+    for (key, condition) in [("show", node.show()), ("disabled", node.disabled())] {
+        for (var, test) in condition.map(Condition::tests).unwrap_or_default() {
+            if let Some(why) = condition_var(var, test, inside, in_form, checks.sources) {
+                problem(format!("`{key}`: {why}"));
+            }
+        }
+    }
     if matches!(node, Node::File(_)) && (node.var().is_some() || !in_form) {
         problem("a `file` works only inside a `form`, with `name`".into());
     } else if node.control().is_some() {
@@ -2259,6 +2351,57 @@ fn check_node(
     for (i, child) in node.children().iter().enumerate() {
         check_node(child, &child_place(place, i), in_form, checks, problems);
     }
+}
+
+/// What's wrong with a condition's `var`, if anything: its root is one a condition can read
+/// (`app`, `item`, `form`, `local`, `props`, `sys`), `local.*` and `props.*` only inside a
+/// component, `form.*` only inside a form, and a `status` test names a source.
+fn condition_var(
+    var: &str,
+    test: &Test,
+    inside: bool,
+    in_form: bool,
+    sources: &BTreeMap<String, Source>,
+) -> Option<String> {
+    let mut parts = var.split('.');
+    let root = parts.next().unwrap_or_default();
+    let plain = parts.clone().all(is_plain);
+    if !plain || (root != "item" && parts.next().is_none()) {
+        return Some(format!(
+            "{var:?} isn't a variable's path, like \"app.view\" or \"item.status\""
+        ));
+    }
+    match root {
+        "app" | "item" | "sys" => {}
+        "local" | "props" if inside => {}
+        "local" | "props" => {
+            return Some(format!(
+                "{var:?} reads a component's `{root}.*`, so it works only inside one"
+            ));
+        }
+        "form" if in_form => {}
+        "form" => {
+            return Some(format!(
+                "{var:?} reads a form's draft, so it works only inside a `form`"
+            ));
+        }
+        _ => {
+            return Some(format!(
+                "a condition reads `app.*`, `item.*`, `form.*`, `local.*`, `props.*`, or `sys.*`, not {var:?}"
+            ));
+        }
+    }
+    if let Test::Status(_) = test {
+        let source = var
+            .strip_prefix("app.")
+            .filter(|name| sources.contains_key(*name));
+        if source.is_none() {
+            return Some(format!(
+                "`status` tests a source, like \"app.contacts\", and {var:?} isn't one"
+            ));
+        }
+    }
+    None
 }
 
 /// Whether `name` is a plain name: letters, digits, `_`, and `-`.

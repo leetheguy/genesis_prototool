@@ -340,7 +340,7 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 The first milestone ([999](999_todo.md)), after the bus ([100](100_events.md)):
 
 - [x] genesis-ui: a Leptos app that draws a config from the state machine, with daisyUI 5 built ahead of time
-- [x] genesis-ui: the `Component` trait and the `Wired` wrapper (naming by `id` or place, reading state, firing events; `show` comes with conditions, [080](080_display_logic.md))
+- [x] genesis-ui: the `Component` trait and the `Wired` wrapper (naming by `id` or place, reading state, firing events; `show`, with conditions, [080](080_display_logic.md))
 - [x] components: `stack`, `heading`, `text` (with templates), and `button`
 
 Milestone three ([999](999_todo.md)), each with its tests:
@@ -352,9 +352,9 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `divider` and `svg`
 - [x] `audio`, `video`, and `iframe`
 - [x] `each`, with its faces in `Wired`, and `item.*`
-- [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` and checks come with display logic, [080](080_display_logic.md))
+- [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` is built; checks come with display logic, [080](080_display_logic.md))
 - [x] `form`, controls with `name`, and the `submit` button (`.invalid` comes with checks, [080](080_display_logic.md))
-- [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and a check that a file was picked, come with display logic, [080](080_display_logic.md))
+- [x] `file`, and calls that send files as multipart through `serve` (`disabled` is built; a check that a file was picked comes with display logic, [080](080_display_logic.md))
 - [x] `dialog`
 - [x] `markdown`
 - [x] `outlet`, filled by `go`
@@ -366,3 +366,4 @@ Milestone three ([999](999_todo.md)), each with its tests:
   Lee: "We don't need a list of pages. We need a top-level page and a partial." "Let's just make it a special
   component that's only available in that top-level page." "Then go would swap out the contents of that
   component." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."
+- 2026-11-25: `show` on every node and `disabled` on buttons and controls are built ([080](080_display_logic.md)).

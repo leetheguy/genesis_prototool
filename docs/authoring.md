@@ -146,7 +146,8 @@ variant = "ghost"
 
 Every node takes an **`id`**: the name it fires its events under (`save.click`), and the name its
 local state and form draft are kept by. A node without an `id` fires nothing you can handle in `[on]`,
-though its own `on_click` still works.
+though its own `on_click` still works. Every node also takes **`show`**, and buttons and controls take
+**`disabled`** ([Show, hide, and disable](#show-hide-and-disable)).
 
 | Type | What it is | It takes |
 |---|---|---|
@@ -272,6 +273,96 @@ id = "delete_yes"
 label = "Delete"
 variant = "error"
 ```
+
+### Show, hide, and disable
+
+`show` draws a node, and its children, only while a **condition** holds. `disabled` greys out a button
+or control while one holds, so it can't be clicked or typed in. Both follow state as it changes. There's
+no list of pages inside a screen: it's all show and hide.
+
+A condition is a small table, never an expression: a variable, and one test on it.
+
+| Test | Holds when the variable |
+|---|---|
+| `is = X` | equals `X`, with the same type (`"1"` isn't `1`) |
+| `in = [X, Y]` | equals one of them |
+| `empty = true` | is missing, `null`, `""`, `[]` or `{}`; `empty = false` is the opposite |
+| `gt`, `gte`, `lt`, `lte = N` | is a number above, at least, below, or at most `N` |
+| `matches = "regex"` | is text the regular expression finds a match in |
+| `status = "loading"` | is a source with that status: `idle`, `loading`, `ok` or `failed` |
+
+`all = [...]`, `any = [...]` and `not = {...}` combine conditions. A test on the wrong type, like `gt`
+on text, is false rather than an error.
+
+`var` can read `app.*`, `sys.*`, `item.*` (in a row of an `each`), `form.*` (what's typed into the
+form it's in, else its `data`), and in a component `local.*` and `props.*`. A condition that reads
+something its place can't see is a load problem.
+
+```toml
+# app.toml
+[app]
+name = "Tabs"
+
+[state]
+view = "people"
+
+[[body]]
+type = "cell"
+flow = "row"
+gap = 2
+
+[[body.children]]
+type = "button"
+id = "people_tab"
+label = "People"
+variant = "ghost"
+disabled = { var = "app.view", is = "people" }      # the tab you're on can't be clicked
+
+[[body.children]]
+type = "button"
+id = "join_tab"
+label = "Join"
+variant = "ghost"
+disabled = { var = "app.view", is = "join" }
+
+[[body]]
+type = "text"
+text = "Everyone who's joined."
+show = { var = "app.view", is = "people" }
+
+[[body]]
+type = "form"
+id = "join"
+show = { var = "app.view", is = "join" }
+
+[[body.children]]
+type = "cell"
+gap = 2
+
+[[body.children.children]]
+type = "input"
+id = "email_box"
+name = "email"
+kind = "email"
+label = "Email"
+
+[[body.children.children]]
+type = "button"
+label = "Join"
+submit = true
+disabled = { not = { var = "form.email", matches = "^[^@ ]+@[^@ ]+$" } }   # until it looks like an email
+
+[on]
+"people_tab.click" = [{ set = "app.view", to = "people" }]
+"join_tab.click" = [{ set = "app.view", to = "join" }]
+"join.submit" = [{ set = "app.view", to = "people" }]
+```
+
+- **On a cell with `each`,** `show` is tested once, for the whole list. To hide some rows, put `show`
+  on the row's own children, where `item.*` is that row: `show = { var = "item.archived", is = false }`.
+- **To show "Loading…" or a failure** somewhere other than the list itself, test the source's status:
+  `show = { var = "app.contacts", status = "failed" }`. A cell with `each` already does this in its own place.
+- **A hidden node takes no room,** and a hidden form keeps what was typed into it.
 
 ## State and templates
 
@@ -1207,8 +1298,7 @@ If you have the Genesis repo, `genesis-bench FOLDER` runs an app with no screen:
 
 These are designed but not yet in Genesis. Don't use them: the app won't load, or they'll do nothing.
 
-- Showing and hiding by condition (`show`), `disabled`, input checks such as `required`, and `format`
-  for numbers and dates.
+- Input checks such as `required` and `checks`, and `format` for numbers and dates.
 - The `confirm` and `toast` steps. Use a dialog for both for now.
 - Signing in (`[app.auth]`, `sign_in`, `sign_out`, `{{ session.token }}`) and `wipe_state`.
 - Streaming answers (`stream` on an operation, and a source's `mode`).

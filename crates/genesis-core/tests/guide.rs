@@ -4,7 +4,7 @@
 //! the guide leans on hardest do what it says they do.
 
 use genesis_core::bus::{Effect, Machine, Reply};
-use genesis_core::config::App;
+use genesis_core::config::{App, Node};
 use serde_json::{Value, json};
 
 const GUIDE: &str = include_str!("../../../docs/authoring.md");
@@ -212,4 +212,41 @@ fn a_push_opens_the_review() {
         (m.get("app.contact.name"), m.get("app.reviewing")),
         (Some(json!("Ada")), Some(json!(true)))
     );
+}
+
+#[test]
+fn tabs_show_one_view_and_join_waits_for_an_email() {
+    let app = example("Tabs");
+    let (tabs, people, form) = (&app.body[0], &app.body[1], &app.body[2]);
+    let Node::Form(join) = form else {
+        panic!("not a form")
+    };
+    let Node::Cell(fields) = &join.children[0] else {
+        panic!("not a cell")
+    };
+    let submit = &fields.children[1];
+    let mut m = Machine::new(app.clone());
+    let shown = |m: &Machine, node: &Node| node.show().unwrap().holds(&|p: &str| m.get(p));
+    let off = |m: &Machine, node: &Node| {
+        node.disabled()
+            .unwrap()
+            .holds(&|p: &str| match p.strip_prefix("form.") {
+                Some(field) => m.draft("join", field),
+                None => m.get(p),
+            })
+    };
+    let Node::Cell(tabs) = tabs else {
+        panic!("not a cell")
+    };
+    assert!(shown(&m, people) && !shown(&m, form));
+    assert!(off(&m, &tabs.children[0]) && !off(&m, &tabs.children[1]));
+    m.fire("join_tab.click", json!({}));
+    assert!(!shown(&m, people) && shown(&m, form));
+    assert!(off(&m, submit));
+    m.fire("email_box.change", json!({ "value": "ada" }));
+    assert!(off(&m, submit));
+    m.fire("email_box.change", json!({ "value": "ada@example.com" }));
+    assert!(!off(&m, submit));
+    m.fire("join.submit", json!({}));
+    assert!(shown(&m, people));
 }

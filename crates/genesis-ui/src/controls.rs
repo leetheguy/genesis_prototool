@@ -10,6 +10,7 @@
 
 use crate::style::ClassList;
 use crate::{Component, Wired, failed_face};
+use genesis_core::condition::Condition;
 use genesis_core::config::{
     Checkbox, File, Form, Input, InputKind, Options, Radio, Select, Textarea, Toggle,
 };
@@ -99,6 +100,7 @@ impl Component for Input {
                 _ => as_text(&now),
             }
         });
+        let off = wired.holds(self.disabled.as_ref());
         let fire = wired.clone();
         let on_input = move |ev| {
             let input = event_target::<leptos::web_sys::HtmlInputElement>(&ev);
@@ -114,10 +116,10 @@ impl Component for Input {
         };
         labelled(&wired, &self.label, "input", move |class| {
             let (value, prop) = (move || showing.get(), move || showing.get());
-            let (placeholder, on_input) = (placeholder.clone(), on_input.clone());
+            let (placeholder, on_input, off) = (placeholder.clone(), on_input.clone(), off.clone());
             view! {
                 <input type=kind.as_str() class=class placeholder=placeholder value=value prop:value=prop
-                    on:input=on_input />
+                    disabled=off on:input=on_input />
             }
             .into_any()
         })
@@ -134,15 +136,17 @@ impl Component for Textarea {
         );
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
         let placeholder = move || placeholder.as_ref().map(|p| p());
+        let off = wired.holds(self.disabled.as_ref());
         let fire = wired.clone();
         let on_input = move |ev| {
             fire.fire("change", json!({ "value": event_target_value(&ev) }));
         };
         labelled(&wired, &self.label, "textarea", move |class| {
             let (text, prop) = (shown(read.clone()), shown(read.clone()));
-            let (placeholder, on_input) = (placeholder.clone(), on_input.clone());
+            let (placeholder, on_input, off) = (placeholder.clone(), on_input.clone(), off.clone());
             view! {
-                <textarea class=class placeholder=placeholder rows=rows prop:value=prop on:input=on_input>
+                <textarea class=class placeholder=placeholder rows=rows prop:value=prop disabled=off
+                    on:input=on_input>
                     {text}
                 </textarea>
             }
@@ -156,9 +160,11 @@ fn checked_view(
     wired: &Wired,
     (var, name): (&Option<String>, &Option<String>),
     label: &Option<String>,
+    disabled: Option<&Condition>,
     own: &'static str,
 ) -> AnyView {
     let read = wired.bound(var.as_deref(), name.as_deref());
+    let off = wired.holds(disabled);
     let fire = wired.clone();
     let on_change = move |ev| {
         fire.fire("change", json!({ "value": event_target_checked(&ev) }));
@@ -167,9 +173,12 @@ fn checked_view(
         let (on, prop) = (read.clone(), read.clone());
         let checked = move || on() == Some(Value::Bool(true));
         let prop = move || prop() == Some(Value::Bool(true));
-        let on_change = on_change.clone();
-        view! { <input type="checkbox" class=class checked=checked prop:checked=prop on:change=on_change /> }
-            .into_any()
+        let (on_change, off) = (on_change.clone(), off.clone());
+        view! {
+            <input type="checkbox" class=class checked=checked prop:checked=prop disabled=off
+                on:change=on_change />
+        }
+        .into_any()
     })
 }
 
@@ -177,7 +186,13 @@ impl Component for Checkbox {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        checked_view(&wired, (&self.var, &self.name), &self.label, "checkbox")
+        checked_view(
+            &wired,
+            (&self.var, &self.name),
+            &self.label,
+            self.disabled.as_ref(),
+            "checkbox",
+        )
     }
 }
 
@@ -185,7 +200,13 @@ impl Component for Toggle {
     const EVENTS: &'static [&'static str] = &["change"];
 
     fn view(&self, wired: Wired) -> AnyView {
-        checked_view(&wired, (&self.var, &self.name), &self.label, "toggle")
+        checked_view(
+            &wired,
+            (&self.var, &self.name),
+            &self.label,
+            self.disabled.as_ref(),
+            "toggle",
+        )
     }
 }
 
@@ -202,15 +223,16 @@ impl Component for Radio {
         let fire = wired.clone();
         let picked = value.clone();
         let on_change = move |_| fire.fire("change", json!({ "value": picked.clone() }));
+        let off = wired.holds(self.disabled.as_ref());
         boxed_label(&wired, &self.label, "radio", move |class| {
             let (on, prop) = (read.clone(), read.clone());
             let (mine, also) = (value.clone(), value.clone());
             let checked = move || on().as_ref() == Some(&mine);
             let prop = move || prop().as_ref() == Some(&also);
-            let on_change = on_change.clone();
+            let (on_change, off) = (on_change.clone(), off.clone());
             view! {
                 <input type="radio" name=group.clone() class=class checked=checked prop:checked=prop
-                    on:change=on_change />
+                    disabled=off on:change=on_change />
             }
             .into_any()
         })
@@ -261,6 +283,7 @@ impl Component for Select {
             choices(self, &wired),
         );
         let placeholder = self.placeholder.as_ref().map(|p| wired.text(p));
+        let off = wired.holds(self.disabled.as_ref());
         let fire = wired.clone();
         let pick = {
             let choices = choices.clone();
@@ -286,7 +309,7 @@ impl Component for Select {
             }
             labelled(&wired, &label, "select", |class| {
                 let (read, choices, pick) = (read.clone(), choices.clone(), pick.clone());
-                let placeholder = placeholder.clone();
+                let (placeholder, off) = (placeholder.clone(), off.clone());
                 let options = move || {
                     let now = read();
                     let list = choices().unwrap_or_default();
@@ -305,7 +328,8 @@ impl Component for Select {
                         .collect_view();
                     view! { {first}{rest} }
                 };
-                view! { <select class=class on:change=pick>{options}</select> }.into_any()
+                view! { <select class=class disabled=off on:change=pick>{options}</select> }
+                    .into_any()
             })
         };
         select.into_any()
@@ -340,6 +364,7 @@ impl Component for File {
         let (multiple, accept) = (self.multiple, self.accept.clone());
         let max = self.max_size.unwrap_or(genesis_core::file::MAX_SIZE);
         let read = wired.bound(None, self.name.as_deref());
+        let off = wired.holds(self.disabled.as_ref());
         // Why the last pick was refused, shown under the picker until the next pick.
         let refused = RwSignal::new(None::<String>);
         let fire = wired.clone();
@@ -382,7 +407,7 @@ impl Component for File {
         };
         let input = view! {
             <input type="file" node_ref=picker class="file-input" accept=accept multiple=multiple
-                on:change=on_change />
+                disabled=off on:change=on_change />
         };
         // The note sits inside the node's one element, so it never takes a place of its own.
         match &self.label {
