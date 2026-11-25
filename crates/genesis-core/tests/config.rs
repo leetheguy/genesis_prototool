@@ -118,9 +118,8 @@ name = "x"
   { toggle = "app.open" },
   { fire = "x.y" },
   { log = "hi" },
-  { delay = 500, id = "t" },
-  { every = 1000, fire = "tick", id = "ticker" },
-  { cancel = "ticker" },
+  { start = "ticker" },
+  { stop = "ticker" },
 ]
 "#;
     let app = App::from_toml(toml).unwrap();
@@ -148,24 +147,14 @@ name = "x"
     assert_eq!(steps[3], Step::Log { log: "hi".into() });
     assert_eq!(
         steps[4],
-        Step::Delay {
-            delay: 500,
-            id: Some("t".into())
+        Step::Start {
+            start: "ticker".into()
         }
     );
     assert_eq!(
         steps[5],
-        Step::Every {
-            every: 1000,
-            fire: "tick".into(),
-            id: Some("ticker".into()),
-            with: Default::default()
-        }
-    );
-    assert_eq!(
-        steps[6],
-        Step::Cancel {
-            cancel: "ticker".into()
+        Step::Stop {
+            stop: "ticker".into()
         }
     );
 }

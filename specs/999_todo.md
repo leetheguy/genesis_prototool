@@ -56,11 +56,14 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 
 ## Open questions
 
-- **Timers and logs as system components.** Lee: "Timers and logs are types of components. They just don't
-  have a way to render to the UI. But they still mesh with the events, listeners, and actions system." A timer
-  has a string id, start and stop actions, and start, stop, and complete events; a log is called with an action.
-  Until that's specced, `delay`, `every`, `cancel`, and `log` still run in a component's own steps. From
-  [090](090_components.md) and [100](100_events.md).
+- **Which system timers, by what names.** The registry has none built in yet. Lee named toast vanishing and
+  connection timeouts; `toast` isn't built, and a connection's `timeout` runs on the server, per connection
+  ([030](030_connections.md)). Open: each built-in's name and length, and whether `timers.toml` may set a
+  built-in's `ms` or use its name. From [100](100_events.md), "Timers".
+- **Timer details built one way, not decided.** A running timer started again starts over; `stop` on one that
+  isn't running fires nothing; `repeat` is on or off, with no count; nothing starts a timer by itself (no
+  start when the app opens); and its events carry an empty payload. From [100](100_events.md), "Timers".
+- **How a stream is stopped.** [050](050_state.md) had a `cancel` naming the source, and `cancel` is gone.
 
 - **Sessions across `serve` restarts and replicas.** Sessions live in `serve`'s memory, so a restart signs
   everyone out (their state survives), and two `serve`s can't share sessions. That's fine for one server. A

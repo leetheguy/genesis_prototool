@@ -62,8 +62,8 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
 4. **Everything runs on one bus.** Actions do things. Every interaction and every completed action
    fires an event, with dotted names (`signout_btn.click`, `auth.logout.ok`, `app.page.changed`). Handlers
    (`[on]`) listen for event patterns and run actions. There are no conditionals: to branch, fire a
-   different event. One queue, one event at a time, a chain-depth limit, and timers (`delay`, `every`) for
-   loops. `sys.bus` shows who listens to what, and `sys.events` shows what happened. See [100](100_events.md).
+   different event. One queue, one event at a time, a chain-depth limit, and named timers
+   (`timers.toml`, run with `start` and `stop`) for anything on a clock. `sys.bus` shows who listens to what, and `sys.events` shows what happened. See [100](100_events.md).
 5. **Variables have scopes:** `app.*` for the whole app, `local.*` for one node or component,
    `sys.*` for Genesis's own (`theme`, `auth`, `errors`), plus `item.*`, `form.*`, and `props.*` where they apply.
    **A session persists:** what the user did (`app.*`, `sys.*`, locals, drafts) is kept on the device;

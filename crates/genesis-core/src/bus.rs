@@ -24,8 +24,8 @@
 //! ```
 
 use crate::config::{
-    App, Audio, Component, Handler, InputKind, Node, Source, Step, Video, as_steps, body_place,
-    child_place, prop_steps,
+    self, App, Audio, Component, Handler, InputKind, Node, Source, Step, Video, as_steps,
+    body_place, child_place, prop_steps,
 };
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
@@ -155,23 +155,10 @@ struct Frame {
     back: Option<Option<Scope>>,
 }
 
-/// Something waiting for the clock.
-struct Timer {
+/// A timer that's running: its name in the registry, and when it completes.
+struct Running {
+    name: String,
     due: u64,
-    /// The name `cancel` stops it by.
-    id: Option<String>,
-    kind: TimerKind,
-}
-
-enum TimerKind {
-    /// A run paused by `delay`.
-    Resume(Box<Run>),
-    /// An `every`: fires `fire` with `payload`, then sets itself again `interval` later.
-    Every {
-        fire: String,
-        payload: Value,
-        interval: u64,
-    },
 }
 
 /// One app's state and its queue of events.
@@ -200,7 +187,7 @@ pub struct Machine {
     /// The next call's id.
     next_call: u64,
     /// Waiting runs and repeating events, in the order they were set.
-    timers: Vec<Timer>,
+    timers: Vec<Running>,
     /// Trail entries kept for [`Machine::take_tapped`], once [`Machine::tap`] is called.
     tapped: Option<Vec<Value>>,
     /// Milliseconds since the app opened, as the host last said; stamps the trail.
@@ -487,6 +474,9 @@ impl Machine {
         } = wiring(&app);
         // A component instance's locals stay while it does, each while it's still declared with
         // the same kind of value.
+        // A running timer keeps running while the registry still holds it.
+        let registry = config::timers(&app);
+        self.timers.retain(|t| registry.contains_key(&t.name));
         self.state.locals.retain(|key, locals| {
             let Some(state) = instances
                 .get(form_of(key))
@@ -610,33 +600,23 @@ impl Machine {
         while let Some(i) = self.next_timer(until) {
             let timer = self.timers.remove(i);
             self.now = timer.due;
-            match timer.kind {
-                TimerKind::Resume(mut run) => {
-                    // After a pause the rest of the list starts a new chain, so a loop with a
-                    // delay in it never hits max_chain.
-                    run.event.chain.clear();
-                    self.execute(*run);
-                }
-                TimerKind::Every {
-                    fire,
-                    payload,
-                    interval,
-                } => {
-                    self.queue.push_back(Queued {
-                        name: fire.clone(),
-                        payload: payload.clone(),
-                        chain: Vec::new(),
-                        row: None,
-                        within: None,
-                        scope: None,
-                    });
-                    let kind = TimerKind::Every {
-                        fire,
-                        payload,
-                        interval,
-                    };
-                    self.set_timer(self.now + interval, timer.id, kind);
-                }
+            // A timer's `.complete` starts a new chain, so a repeating timer never hits max_chain.
+            self.queue.push_back(Queued {
+                name: format!("{}.complete", timer.name),
+                payload: json!({}),
+                chain: Vec::new(),
+                row: None,
+                within: None,
+                scope: None,
+            });
+            if let Some(again) = config::timers(&self.app)
+                .get(&timer.name)
+                .filter(|t| t.repeat)
+            {
+                self.timers.push(Running {
+                    due: self.now + again.ms,
+                    name: timer.name,
+                });
             }
             self.drain();
         }
@@ -662,8 +642,32 @@ impl Machine {
         due.min_by_key(|(_, t)| t.due).map(|(i, _)| i)
     }
 
-    fn set_timer(&mut self, due: u64, id: Option<String>, kind: TimerKind) {
-        self.timers.push(Timer { due, id, kind });
+    /// Starts the timer `name`, or starts it over, and fires `NAME.start`.
+    fn start_timer(&mut self, name: &str, cause: &Queued) -> Result<(), String> {
+        let timer = config::timers(&self.app)
+            .remove(name)
+            .ok_or_else(|| format!("there's no timer named {name}"))?;
+        self.timers.retain(|t| t.name != name);
+        self.timers.push(Running {
+            name: name.to_string(),
+            due: self.now + timer.ms,
+        });
+        self.enqueue(&format!("{name}.start"), json!({}), cause);
+        Ok(())
+    }
+
+    /// Stops the timer `name` and fires `NAME.stop`. One that isn't running stays stopped, and
+    /// nothing fires.
+    fn stop_timer(&mut self, name: &str, cause: &Queued) -> Result<(), String> {
+        if !config::timers(&self.app).contains_key(name) {
+            return Err(format!("there's no timer named {name}"));
+        }
+        let running = self.timers.len();
+        self.timers.retain(|t| t.name != name);
+        if self.timers.len() < running {
+            self.enqueue(&format!("{name}.stop"), json!({}), cause);
+        }
+        Ok(())
     }
 
     /// Starts keeping a copy of every trail entry as it's recorded, for [`Machine::take_tapped`].
@@ -771,20 +775,8 @@ impl Machine {
                     Some(prop) => self.enter_prop(&mut run, prop),
                     None => self.enter(&mut run, name),
                 },
-                Step::Delay { delay, id } => {
-                    self.set_timer(
-                        self.now + delay,
-                        id.clone(),
-                        TimerKind::Resume(Box::new(run)),
-                    );
-                    return;
-                }
-                Step::Every {
-                    every,
-                    fire,
-                    id,
-                    with,
-                } => self.every(*every, fire, id, with, &run.event),
+                Step::Start { start } => self.start_timer(start, &run.event),
+                Step::Stop { stop } => self.stop_timer(stop, &run.event),
                 Step::Call { call, params, .. } => {
                     match self.begin_call(call, params, &run.event) {
                         Ok(call) => {
@@ -827,11 +819,6 @@ impl Machine {
                             }
                             _ => Err(format!("{var} isn't a source")),
                         })
-                }
-                Step::Cancel { cancel } => {
-                    self.timers
-                        .retain(|t| t.id.as_deref() != Some(cancel.as_str()));
-                    Ok(())
                 }
                 other => self.run_step(other, &run.event),
             };
@@ -902,30 +889,6 @@ impl Machine {
             action: None,
             back: Some(back),
         });
-        Ok(())
-    }
-
-    /// Sets an `every` timer, its payload filled in now.
-    fn every(
-        &mut self,
-        every: u64,
-        fire: &str,
-        id: &Option<String>,
-        with: &Map<String, Value>,
-        event: &Queued,
-    ) -> Result<(), String> {
-        if every == 0 {
-            return Err("every must be at least 1 millisecond".into());
-        }
-        let payload = template::value(&Value::Object(with.clone()), |path| {
-            self.look(path, Some(event))
-        })?;
-        let kind = TimerKind::Every {
-            fire: fire.to_string(),
-            payload,
-            interval: every,
-        };
-        self.set_timer(self.now + every, id.clone(), kind);
         Ok(())
     }
 
@@ -1670,12 +1633,15 @@ fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<Strin
     for name in app.actions.keys() {
         names.extend([format!("{name}.done"), format!("{name}.failed")]);
     }
+    for name in config::timers(app).keys() {
+        names.extend(["start", "stop", "complete"].map(|e| format!("{name}.{e}")));
+    }
     let all_steps = handlers
         .iter()
         .map(|h| &h.steps)
         .chain(app.actions.values().map(|a| &a.steps));
     for step in all_steps.flatten() {
-        if let Step::Fire { fire, .. } | Step::Every { fire, .. } = step {
+        if let Step::Fire { fire, .. } = step {
             names.push(fire.clone());
         }
     }

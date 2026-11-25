@@ -300,6 +300,11 @@ on_submit = [{ call = "api.contacts.create" }]
 type = "button"
 label = "Again"
 on_click = [{ reload = ["app.contacts"] }]
+
+[[body]]
+type = "button"
+label = "Time"
+on_click = [{ start = "poll" }, { stop = "poll" }, { log = "hi" }]
 "#;
     let out = problems(&[("app.toml", APP), ("contact_card.toml", card)]);
     assert!(
@@ -308,6 +313,18 @@ on_click = [{ reload = ["app.contacts"] }]
     );
     assert!(out.contains("body.1: a component's own steps only fire events, so this step, which calls `api.contacts.create`"), "{out}");
     assert!(out.contains("body.1.children.0: a component's own steps only fire events, so this step, which reloads a source"), "{out}");
+    for what in [
+        "starts the timer `poll`",
+        "stops the timer `poll`",
+        "writes to the log",
+    ] {
+        assert!(
+            out.contains(&format!(
+                "body.2: a component's own steps only fire events, so this step, which {what}"
+            )),
+            "{out}"
+        );
+    }
 }
 
 #[test]

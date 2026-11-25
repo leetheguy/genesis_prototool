@@ -82,6 +82,7 @@ And `contact_row.toml`, anywhere in the folder, is a component ([090](090_compon
 | `[sources.NAME]` | app variables fed by an operation or a stream ([050](050_state.md)) | any file but a component |
 | `[on]` | handlers: event patterns and the actions they run ([100](100_events.md)) | any file but a component |
 | `[actions.NAME]` | custom actions: named lists of steps ([100](100_events.md)) | any file but a component |
+| timers | each table a timer: `ms`, and `repeat` ([100](100_events.md), "Timers") | `timers.toml` only |
 | `[connections.NAME]` | the APIs and their operations ([030](030_connections.md)) | any file but a component |
 | `[component]` | marks the file as a component, with its props ([090](090_components.md)) | a component |
 
@@ -159,3 +160,4 @@ Each problem is also written to the log ([110](110_agents.md)).
 ## Log
 
 - 2026-11-25: `[app] start` is gone, with `sys.view` and the `go` step ([100](100_events.md)). Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."
+- 2026-11-25: `timers.toml` holds the app's timers, each a table named by the timer ([100](100_events.md)).
