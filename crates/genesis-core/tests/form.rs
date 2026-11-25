@@ -306,3 +306,72 @@ fn a_draft_stays_across_a_reload_while_its_form_and_field_do() {
     assert_eq!(m.draft("contact", "name"), Some(json!("Grace")));
     assert_eq!(m.draft("contact", "email"), None);
 }
+
+/// A list of people, each with its own edit form starting from its row's `item`.
+const ROWS: &str = r#"
+[state]
+saved = {}
+people = [{ name = "Ada" }, { name = "Grace" }]
+
+[[body]]
+type = "cell"
+each = "app.people"
+
+[[body.children]]
+type = "form"
+id = "edit"
+data = "item"
+on_submit = [{ set = "app.saved", to = "{{ event.form }}" }]
+
+[[body.children.children]]
+type = "input"
+id = "name_box"
+name = "name"
+"#;
+
+#[test]
+fn a_form_in_each_row_of_an_each_has_its_own_draft() {
+    let mut m = machine(ROWS);
+    m.fire_at(
+        "name_box.change",
+        json!({ "value": "Ada L.", "item": { "name": "Ada" } }),
+        Some("0"),
+    );
+    m.fire_at(
+        "name_box.change",
+        json!({ "value": "Grace H.", "item": { "name": "Grace" } }),
+        Some("1"),
+    );
+    assert_eq!(m.draft_at("edit", Some("0"), "name"), Some(json!("Ada L.")));
+    assert_eq!(
+        m.draft_at("edit", Some("1"), "name"),
+        Some(json!("Grace H."))
+    );
+    assert_eq!(m.draft("edit", "name"), None);
+
+    m.fire_at(
+        "edit.submit",
+        json!({ "item": { "name": "Grace" } }),
+        Some("1"),
+    );
+    assert_eq!(m.get("app.saved"), Some(json!({ "name": "Grace H." })));
+    // Submitting row 1 leaves row 0's draft as it was.
+    assert_eq!(m.draft_at("edit", Some("1"), "name"), None);
+    assert_eq!(m.draft_at("edit", Some("0"), "name"), Some(json!("Ada L.")));
+}
+
+#[test]
+fn each_rows_draft_is_kept_and_comes_back_by_its_row() {
+    let mut m = machine(ROWS);
+    m.fire_at("name_box.change", json!({ "value": "Ada L." }), Some("0"));
+    let kept = m.kept();
+    assert_eq!(kept["drafts"], json!({ "edit#0": { "name": "Ada L." } }));
+
+    let mut again = machine(ROWS);
+    assert!(again.restore(&kept).is_empty());
+    assert_eq!(
+        again.draft_at("edit", Some("0"), "name"),
+        Some(json!("Ada L."))
+    );
+    assert_eq!(again.draft_at("edit", Some("1"), "name"), None);
+}

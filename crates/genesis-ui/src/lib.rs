@@ -118,7 +118,12 @@ impl Host {
 
     /// Fires an event, as a node does when something happens to it.
     pub fn fire(&self, name: &str, payload: Value) {
-        let effects = self.machine().fire(name, payload);
+        self.fire_at(name, payload, None);
+    }
+
+    /// Fires an event from a node drawn in `row` of an `each` ([`Machine::fire_at`]).
+    pub fn fire_at(&self, name: &str, payload: Value, row: Option<&str>) {
+        let effects = self.machine().fire_at(name, payload, row);
         self.after(effects);
     }
 
@@ -131,8 +136,13 @@ impl Host {
     /// What's typed into `form`'s control named `field`, not yet submitted ([`Machine::draft`]).
     /// Reading it inside a view makes that part of the view redraw when state changes.
     pub fn draft(&self, form: &str, field: &str) -> Option<Value> {
+        self.draft_at(form, None, field)
+    }
+
+    /// The same as [`Host::draft`], for a form drawn in `row` of an `each`.
+    pub fn draft_at(&self, form: &str, row: Option<&str>, field: &str) -> Option<Value> {
         self.changes.track();
-        self.machine().draft(form, field)
+        self.machine().draft_at(form, row, field)
     }
 
     /// The value at a dotted path (`app.clicks`, `sys.theme`). Reading it inside a view makes
@@ -225,14 +235,18 @@ pub struct Wired {
     placed: Placed,
     /// Inside an `each`, the element it's drawn for: `item.*`.
     item: Option<Value>,
+    /// Inside an `each`, which row it's drawn in: `"2"`, or `"0.2"` inside two.
+    row: Option<String>,
     /// Inside a `form`, that form.
     form: Option<FormAt>,
 }
 
-/// The form a node is inside: its name, and the variable its controls start from.
+/// The form a node is inside: its name, the row it's drawn in, and the variable its controls
+/// start from.
 #[derive(Clone)]
 pub(crate) struct FormAt {
     name: String,
+    row: Option<String>,
     data: Option<String>,
 }
 
@@ -242,7 +256,13 @@ impl Wired {
         if let (Some(item), Value::Object(fields)) = (&self.item, &mut payload) {
             fields.insert("item".into(), item.clone());
         }
-        self.host.fire(&format!("{}.{event}", self.name), payload);
+        // A control in a form fires from its form's row, which is the draft it fills.
+        let row = match &self.form {
+            Some(form) => form.row.as_deref(),
+            None => self.row.as_deref(),
+        };
+        self.host
+            .fire_at(&format!("{}.{event}", self.name), payload, row);
     }
 
     /// Display text with its templates filled from the current state (and `item.*` inside an
@@ -272,7 +292,7 @@ impl Wired {
         let named = match (name, &self.form) {
             (Some(name), Some(form)) => Some((
                 self.host.clone(),
-                form.name.clone(),
+                (form.name.clone(), form.row.clone()),
                 name.to_string(),
                 form.data
                     .as_ref()
@@ -282,8 +302,8 @@ impl Wired {
         };
         move || match (&read, &named) {
             (Some(read), _) => read(),
-            (None, Some((host, form, name, data))) => host
-                .draft(form, name)
+            (None, Some((host, (form, row), name, data))) => host
+                .draft_at(form, row.as_deref(), name)
                 .or_else(|| data.as_ref().and_then(|data| data())),
             (None, None) => None,
         }
@@ -293,7 +313,10 @@ impl Wired {
     pub(crate) fn group(&self, var: Option<&str>, name: Option<&str>) -> String {
         match (var, name, &self.form) {
             (Some(var), _, _) => var.to_string(),
-            (None, Some(name), Some(form)) => format!("{}.{name}", form.name),
+            (None, Some(name), Some(form)) => match &form.row {
+                Some(row) => format!("{}#{row}.{name}", form.name),
+                None => format!("{}.{name}", form.name),
+            },
             _ => String::new(),
         }
     }
@@ -303,6 +326,7 @@ impl Wired {
         Wired {
             form: Some(FormAt {
                 name: self.name.clone(),
+                row: self.row.clone(),
                 data,
             }),
             ..self.clone()
@@ -321,6 +345,7 @@ impl Wired {
             child_place(&self.place, i),
             &self.host,
             self.item.clone(),
+            self.row.clone(),
             self.form.clone(),
         )
     }
@@ -336,7 +361,7 @@ impl Wired {
         children: &[Node],
     ) -> impl IntoView + use<> {
         let (host, item, place) = (self.host.clone(), self.item.clone(), self.place.clone());
-        let form = self.form.clone();
+        let (form, row) = (self.form.clone(), self.row.clone());
         let (path, children) = (path.to_string(), children.to_vec());
         let empty = empty.unwrap_or("Nothing here.").to_string();
         let error = error.map(String::from);
@@ -349,7 +374,12 @@ impl Wired {
                 Some(Value::Array(elements)) if elements.is_empty() => empty_face(&empty),
                 Some(Value::Array(elements)) => elements
                     .into_iter()
-                    .flat_map(|element| {
+                    .enumerate()
+                    .flat_map(|(n, element)| {
+                        let row = Some(match &row {
+                            Some(outer) => format!("{outer}.{n}"),
+                            None => n.to_string(),
+                        });
                         children
                             .iter()
                             .enumerate()
@@ -359,6 +389,7 @@ impl Wired {
                                     child_place(&place, i),
                                     &host,
                                     Some(element.clone()),
+                                    row.clone(),
                                     form.clone(),
                                 )
                             })
@@ -449,13 +480,14 @@ fn kind(value: &Value) -> &'static str {
     }
 }
 
-/// Draws one node through its wiring; inside an `each`, `item` is the element it's drawn for, and
-/// inside a `form`, `form` is that form.
+/// Draws one node through its wiring; inside an `each`, `item` is the element it's drawn for and
+/// `row` where, and inside a `form`, `form` is that form.
 fn draw(
     node: &Node,
     place: String,
     host: &Host,
     item: Option<Value>,
+    row: Option<String>,
     form: Option<FormAt>,
 ) -> AnyView {
     let wired = Wired {
@@ -464,6 +496,7 @@ fn draw(
         place,
         placed: node.placed(),
         item,
+        row,
         form,
     };
     match node {
@@ -497,7 +530,7 @@ pub fn app_view(host: Host) -> AnyView {
             let body = host.machine().app().body.clone();
             body.iter()
                 .enumerate()
-                .map(|(i, node)| draw(node, body_place(i), &host, None, None))
+                .map(|(i, node)| draw(node, body_place(i), &host, None, None, None))
                 .collect_view()
         }
     };

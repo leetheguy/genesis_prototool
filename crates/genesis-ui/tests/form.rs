@@ -119,3 +119,14 @@ fn a_form_inside_an_each_starts_each_one_from_its_item() {
     assert!(out.contains(r#"value="Ada""#), "{out}");
     assert!(out.contains(r#"value="Grace""#), "{out}");
 }
+
+#[test]
+fn a_form_in_each_row_shows_only_its_own_rows_draft() {
+    let out = html(
+        "[state]\npeople = [{ name = \"Ada\" }, { name = \"Grace\" }]\n[[body]]\ntype = \"cell\"\neach = \"app.people\"\n[[body.children]]\ntype = \"form\"\nid = \"edit\"\ndata = \"item\"\n[[body.children.children]]\ntype = \"input\"\nid = \"name_box\"\nname = \"name\"",
+        |host| host.fire_at("name_box.change", json!({ "value": "Ada L." }), Some("0")),
+    );
+    assert!(out.contains(r#"value="Ada L.""#), "{out}");
+    assert!(out.contains(r#"value="Grace""#), "{out}");
+    assert!(!out.contains(r#"value="Ada""#), "{out}");
+}

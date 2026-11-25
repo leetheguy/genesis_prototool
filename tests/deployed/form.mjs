@@ -1,6 +1,7 @@
 // The form deployed check (spec 040, "Controls"): in a real browser, a form's named controls start
 // from its data, keep what's typed across a reload (except passwords), and go out on .submit, from
 // the submit button or Enter in a box, but not from any other button. Then the form starts over.
+// A form repeated by an each keeps one draft per row.
 //
 // It runs genesis-serve on a temporary app of its own. Run it with scripts/check-hello.sh.
 
@@ -28,6 +29,7 @@ name = "Form"
 [state]
 saved = "nothing yet"
 contact = { name = "Ada", email = "ada@example.com" }
+people = [{ name = "Ada" }, { name = "Grace" }]
 
 [[body]]
 type = "text"
@@ -82,6 +84,26 @@ submit = true
 type = "button"
 label = "Cancel"
 on_click = [{ set = "app.saved", to = "cancelled" }]
+
+[[body]]
+type = "cell"
+each = "app.people"
+
+[[body.children]]
+type = "form"
+id = "edit"
+data = "item"
+on_submit = [{ set = "app.saved", to = "row {{ event.form.name }}" }]
+
+[[body.children.children]]
+type = "input"
+name = "name"
+label = "Who: {{ item.name }}"
+
+[[body.children.children]]
+type = "button"
+label = "Keep {{ item.name }}"
+submit = true
 `,
 );
 
@@ -150,6 +172,19 @@ try {
   await page.getByRole("button", { name: "Save" }).click();
   await shows("saved=Linus <ada@example.com> size  agree  pass");
 
+  // Inside an each, each row's form has its own draft, kept across a reload, and submits alone.
+  await page.getByLabel("Who: Ada").fill("Ada L.");
+  await holds("Who: Grace", "Grace");
+  await page.waitForTimeout(300);
+  await page.reload();
+  await holds("Who: Ada", "Ada L.");
+  await holds("Who: Grace", "Grace");
+  await page.getByLabel("Who: Grace").fill("Grace H.");
+  await page.getByRole("button", { name: "Keep Grace" }).click();
+  await shows("saved=row Grace H.");
+  await holds("Who: Grace", "Grace");
+  await holds("Who: Ada", "Ada L.");
+
   // The mirror never holds what a password input held, in a draft or on the form's own events.
   // (This app's on_submit copies the password into app.saved; that's the config's own choice.)
   const dir = join(work, "state");
@@ -164,7 +199,7 @@ try {
   const state = JSON.parse(readFileSync(join(dir, client), "utf8"));
   if (JSON.stringify(state.drafts ?? {}).includes("s3cret")) throw new Error("the mirror's drafts hold a password");
   if (errors.length) throw new Error(`the page threw: ${errors.join(" / ")}`);
-  console.log("ok: the form started from data, kept its draft, and submitted only when asked");
+  console.log("ok: the form started from data, kept its draft (one per row in an each), and submitted only when asked");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;

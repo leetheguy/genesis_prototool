@@ -169,7 +169,8 @@ struct State {
     errors: VecDeque<Value>,
     /// `sys.sources`: each source's status: `idle`, `loading`, `ok`, or `failed`.
     sources: BTreeMap<String, &'static str>,
-    /// Each form's draft, by its name: the values typed and not yet submitted, by field.
+    /// Each form's draft, by its name (and row, inside an `each`: [`draft_key`]): the values
+    /// typed and not yet submitted, by field.
     drafts: BTreeMap<String, Map<String, Value>>,
 }
 
@@ -180,6 +181,8 @@ struct Queued {
     payload: Value,
     /// The names of the events that led to this one, oldest first. Its length is the depth.
     chain: Vec<String>,
+    /// Inside an `each`, the row the node that fired it is drawn in ([`Machine::fire_at`]).
+    row: Option<String>,
 }
 
 impl Machine {
@@ -248,7 +251,7 @@ impl Machine {
             .drafts
             .iter()
             .map(|(form, draft)| {
-                let hidden = self.forms.forms.get(form).map(|f| &f.hidden);
+                let hidden = self.forms.forms.get(form_of(form)).map(|f| &f.hidden);
                 let shown = draft
                     .iter()
                     .filter(|(field, _)| !hidden.is_some_and(|h| h.contains(*field)))
@@ -263,7 +266,16 @@ impl Machine {
     /// The value typed into `form`'s control named `field`, and not yet submitted. `None` when
     /// nothing has been: the control shows its form's `data` instead.
     pub fn draft(&self, form: &str, field: &str) -> Option<Value> {
-        self.state.drafts.get(form)?.get(field).cloned()
+        self.draft_at(form, None, field)
+    }
+
+    /// The same as [`Machine::draft`], for a form drawn in `row` of an `each`.
+    pub fn draft_at(&self, form: &str, row: Option<&str>, field: &str) -> Option<Value> {
+        self.state
+            .drafts
+            .get(&draft_key(form, row))?
+            .get(field)
+            .cloned()
     }
 
     /// Brings back what [`Machine::kept`] gave, before the app opens. A variable the config no
@@ -319,16 +331,18 @@ impl Machine {
         }
         let drafts = kept.get("drafts").and_then(Value::as_object);
         for (form, draft) in drafts.into_iter().flatten() {
-            let Some(wired) = self.forms.forms.get(form) else {
+            let Some(wired) = self.forms.forms.get(form_of(form)) else {
                 notes.push(format!(
-                    "the form {form} is gone from the config; dropped its draft"
+                    "the form {} is gone from the config; dropped its draft",
+                    form_of(form)
                 ));
                 continue;
             };
             for (field, value) in draft.as_object().into_iter().flatten() {
                 if !wired.fields.contains(field) {
                     notes.push(format!(
-                        "{form} has no control named {field} now; dropped what was typed in it"
+                        "{} has no control named {field} now; dropped what was typed in it",
+                        form_of(form)
                     ));
                 } else if !wired.hidden.contains(field) {
                     self.state
@@ -366,8 +380,8 @@ impl Machine {
             forms,
         } = wiring(&app);
         // A draft stays while its form and field do.
-        self.state.drafts.retain(|form, draft| {
-            let Some(wired) = forms.forms.get(form) else {
+        self.state.drafts.retain(|key, draft| {
+            let Some(wired) = forms.forms.get(form_of(key)) else {
                 return false;
             };
             draft.retain(|field, _| wired.fields.contains(field));
@@ -433,10 +447,18 @@ impl Machine {
     /// Fires the event `name` with its `payload`, and handles it and every event that follows,
     /// until the queue is empty. Returns what the host must do as a result.
     pub fn fire(&mut self, name: &str, payload: Value) -> Vec<Effect> {
+        self.fire_at(name, payload, None)
+    }
+
+    /// The same as [`Machine::fire`], for a node drawn inside an `each`: `row` is where it's
+    /// drawn, as the renderer writes it (`"2"`, or `"0.2"` inside two). A form drawn in a row
+    /// keeps a draft of its own for that row, so each row's form is filled and submitted apart.
+    pub fn fire_at(&mut self, name: &str, payload: Value, row: Option<&str>) -> Vec<Effect> {
         self.queue.push_back(Queued {
             name: name.to_string(),
             payload,
             chain: Vec::new(),
+            row: row.map(String::from),
         });
         self.drain();
         std::mem::take(&mut self.effects)
@@ -466,6 +488,7 @@ impl Machine {
                         name: fire.clone(),
                         payload: payload.clone(),
                         chain: Vec::new(),
+                        row: None,
                     });
                     let kind = TimerKind::Every {
                         fire,
@@ -933,6 +956,7 @@ impl Machine {
             name: name.to_string(),
             payload,
             chain,
+            row: None,
         });
     }
 
@@ -968,7 +992,7 @@ impl Machine {
             let value = event.payload.get("value").cloned().unwrap_or(Value::Null);
             self.state
                 .drafts
-                .entry(form)
+                .entry(draft_key(&form, event.row.as_deref()))
                 .or_default()
                 .insert(field, value);
             return;
@@ -979,7 +1003,11 @@ impl Machine {
         let Some(wired) = self.forms.forms.get(name) else {
             return;
         };
-        let draft = self.state.drafts.remove(name).unwrap_or_default();
+        let draft = self
+            .state
+            .drafts
+            .remove(&draft_key(name, event.row.as_deref()))
+            .unwrap_or_default();
         let data = wired
             .data
             .as_deref()
@@ -1176,6 +1204,20 @@ fn source_patterns(name: &str, source: &Source) -> Vec<String> {
     patterns.push(format!("app.{name}.reload"));
     patterns.dedup();
     patterns
+}
+
+/// Where a form's draft is kept: under its name, or, for a form drawn in a row of an `each`,
+/// its name and its row (`edit#2`).
+fn draft_key(form: &str, row: Option<&str>) -> String {
+    match row {
+        Some(row) => format!("{form}#{row}"),
+        None => form.to_string(),
+    }
+}
+
+/// The form a draft's key names.
+fn form_of(key: &str) -> &str {
+    key.split_once('#').map_or(key, |(form, _)| form)
 }
 
 /// An app's variables at their starting values: `[state]`, and each source, empty.
