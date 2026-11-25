@@ -24,7 +24,8 @@
 //! ```
 
 use crate::config::{
-    App, Audio, Component, Handler, InputKind, Node, Source, Step, Video, body_place, child_place,
+    App, Audio, Component, Handler, InputKind, Node, Source, Step, Video, as_steps, body_place,
+    child_place, prop_steps,
 };
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
@@ -69,6 +70,18 @@ pub struct Within {
     pub row: Option<String>,
     /// Its props, filled.
     pub props: Value,
+    /// The component instance its `use` node is inside, if any: where steps passed in as a prop
+    /// run.
+    pub outer: Option<Box<Within>>,
+}
+
+/// One `use` node, wired: its component, its props as written, and the `use` node it's inside,
+/// if any: where steps passed in as a prop run.
+#[derive(Debug, Clone, PartialEq)]
+struct Instance {
+    component: String,
+    props: Map<String, Value>,
+    outer: Option<String>,
 }
 
 /// The component a handler belongs to: the `use` node's name, and the component's.
@@ -137,6 +150,9 @@ struct Frame {
     next: usize,
     /// The custom action this list belongs to, if it's one; it fires `NAME.done` when the list ends.
     action: Option<String>,
+    /// For steps passed in as a prop, which run where the component is used: the component
+    /// instance to go back to when they end.
+    back: Option<Option<Scope>>,
 }
 
 /// Something waiting for the clock.
@@ -168,7 +184,7 @@ pub struct Machine {
     /// Which component each handler belongs to, if any, in step with `handlers`.
     handler_owners: Vec<Option<Owner>>,
     /// Every component instance's `use` node name, and its component's: whose locals may be kept.
-    instances: BTreeMap<String, String>,
+    instances: BTreeMap<String, Instance>,
     /// Every event name the config can fire, for `sys.bus`.
     fires: Vec<String>,
     /// Every form, and the named controls that fill them.
@@ -327,7 +343,7 @@ impl Machine {
             .get(&draft_key(instance, row))
             .and_then(|locals| locals.get(name))
             .or_else(|| {
-                let component = self.instances.get(instance)?;
+                let component = &self.instances.get(instance)?.component;
                 self.app.components.get(component)?.state.get(name)
             })
             .cloned()
@@ -422,7 +438,7 @@ impl Machine {
             let declared = self
                 .instances
                 .get(form_of(key))
-                .and_then(|c| self.app.components.get(c))
+                .and_then(|i| self.app.components.get(&i.component))
                 .map(|c| &c.state);
             let Some(declared) = declared else {
                 notes.push(format!(
@@ -480,7 +496,7 @@ impl Machine {
         self.state.locals.retain(|key, locals| {
             let Some(state) = instances
                 .get(form_of(key))
-                .and_then(|c| app.components.get(c))
+                .and_then(|i| app.components.get(&i.component))
                 .map(|c| &c.state)
             else {
                 return false;
@@ -718,25 +734,13 @@ impl Machine {
                 steps: self.handlers[i].steps.clone(),
                 next: 0,
                 action: None,
+                back: None,
             };
             let source = self.handler_sources[i].clone();
             let mut event = event.clone();
-            event.scope = self.handler_owners[i].as_ref().map(|owner| {
-                // The renderer says which instance fired; an event pushed in from outside is
-                // taken as the one in its row.
-                let (row, props) = match &event.within {
-                    Some(within) if within.name == owner.name => {
-                        (within.row.clone(), within.props.clone())
-                    }
-                    _ => (event.row.clone(), Value::Null),
-                };
-                Scope {
-                    name: owner.name.clone(),
-                    component: owner.component.clone(),
-                    key: draft_key(&owner.name, row.as_deref()),
-                    props,
-                }
-            });
+            event.scope = self.handler_owners[i]
+                .as_ref()
+                .map(|owner| scope_for(&owner.name, &owner.component, &event));
             self.execute(Run {
                 frames: vec![frame],
                 event,
@@ -756,14 +760,23 @@ impl Machine {
                 return;
             };
             let Some(step) = frame.steps.get(frame.next).cloned() else {
-                if let Some(name) = run.frames.pop().and_then(|f| f.action) {
+                let Some(frame) = run.frames.pop() else {
+                    continue;
+                };
+                if let Some(back) = frame.back {
+                    run.event.scope = back;
+                }
+                if let Some(name) = frame.action {
                     self.enqueue(&format!("{name}.done"), json!({}), &run.event);
                 }
                 continue;
             };
             frame.next += 1;
             let result = match &step {
-                Step::Run(name) => self.enter(&mut run, name),
+                Step::Run(name) => match prop_steps(name) {
+                    Some(prop) => self.enter_prop(&mut run, prop),
+                    None => self.enter(&mut run, name),
+                },
                 Step::Delay { delay, id } => {
                     self.set_timer(
                         self.now + delay,
@@ -849,6 +862,51 @@ impl Machine {
             steps: action.steps.clone(),
             next: 0,
             action: Some(name.to_string()),
+            back: None,
+        });
+        Ok(())
+    }
+
+    /// Starts the steps passed in as the prop `prop` of the component instance `run` is in. They
+    /// run where its `use` node is: in the app, or in the component instance it's inside, so a
+    /// prop passed on from one component to the next runs where it was first written. A prop
+    /// that's left out runs nothing.
+    fn enter_prop(&self, run: &mut Run, prop: &str) -> Result<(), String> {
+        let max = self.app.app.max_chain as usize;
+        if run.frames.len() > max {
+            return Err(format!("steps nested more than max_chain ({max}) deep"));
+        }
+        let mut at = run
+            .event
+            .scope
+            .as_ref()
+            .map(|scope| scope.name.clone())
+            .ok_or_else(|| format!("{{{{ props.{prop} }}}} runs only inside a component"))?;
+        let mut prop = prop.to_string();
+        let (steps, outer) = loop {
+            let instance = self
+                .instances
+                .get(&at)
+                .ok_or_else(|| format!("there's no component instance named {at}"))?;
+            let Some(value) = instance.props.get(&prop) else {
+                return Ok(());
+            };
+            let passed_on = value.as_str().and_then(prop_steps);
+            match (passed_on, &instance.outer) {
+                (Some(next), Some(outer)) => (at, prop) = (outer.clone(), next.to_string()),
+                _ => break (as_steps(value)?, instance.outer.clone()),
+            }
+        };
+        let caller = outer.map(|name| {
+            let component = self.instances[&name].component.clone();
+            scope_for(&name, &component, &run.event)
+        });
+        let back = std::mem::replace(&mut run.event.scope, caller);
+        run.frames.push(Frame {
+            steps,
+            next: 0,
+            action: None,
+            back: Some(back),
         });
         Ok(())
     }
@@ -1363,8 +1421,8 @@ struct Wiring {
     sources: Vec<Option<String>>,
     /// Which component each handler belongs to, if any.
     owners: Vec<Option<Owner>>,
-    /// Every `use` node's name, and its component's.
-    instances: BTreeMap<String, String>,
+    /// Every `use` node, by its name.
+    instances: BTreeMap<String, Instance>,
     fires: Vec<String>,
     forms: Forms,
 }
@@ -1394,7 +1452,7 @@ struct Wire<'a> {
     handlers: &'a mut Vec<Handler>,
     /// Which component each handler belongs to, in step with `handlers`.
     owners: &'a mut Vec<Option<Owner>>,
-    instances: &'a mut BTreeMap<String, String>,
+    instances: &'a mut BTreeMap<String, Instance>,
     components: &'a BTreeMap<String, Component>,
     events: &'a mut Vec<String>,
     forms: &'a mut Forms,
@@ -1425,6 +1483,24 @@ fn source_patterns(name: &str, source: &Source) -> Vec<String> {
     patterns.push(format!("app.{name}.reload"));
     patterns.dedup();
     patterns
+}
+
+/// The component instance whose `use` node is named `name`, for an event that fired inside it.
+/// The renderer says where it fired, its own instance and the ones it's inside; an event pushed in
+/// from outside is taken as the one in its row, with no props.
+fn scope_for(name: &str, component: &str, event: &Queued) -> Scope {
+    let within = std::iter::successors(event.within.as_ref(), |w| w.outer.as_deref())
+        .find(|w| w.name == name);
+    let (row, props) = match within {
+        Some(within) => (within.row.clone(), within.props.clone()),
+        None => (event.row.clone(), Value::Null),
+    };
+    Scope {
+        name: name.to_string(),
+        component: component.to_string(),
+        key: draft_key(name, row.as_deref()),
+        props,
+    }
 }
 
 /// Where a form's draft is kept: under its name, or, for a form drawn in a row of an `each`,
@@ -1561,7 +1637,14 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, owner: Option<&Owner>
             if let Some(component) = wire.components.get(&used.component)
                 && name.matches('.').count() < MAX_NESTING
             {
-                wire.instances.insert(name.clone(), used.component.clone());
+                wire.instances.insert(
+                    name.clone(),
+                    Instance {
+                        component: used.component.clone(),
+                        props: used.props.clone(),
+                        outer: owner.map(|o| o.name.clone()),
+                    },
+                );
                 let inner = Owner {
                     name: name.clone(),
                     component: used.component.clone(),

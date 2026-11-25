@@ -380,8 +380,9 @@ styled! {
         /// Its size: daisyUI's `"md"` unless it says otherwise.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub size: Option<crate::style::keys::ButtonSize>,
-        /// Shortcut for a handler on this button's `.click`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// Shortcut for a handler on this button's `.click`: a list of steps, or one step alone,
+        /// like `"{{ props.on_open }}"` inside a component.
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "one_or_more")]
         pub on_click: Option<Vec<Step>>,
         /// Submits the form it's in.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -773,6 +774,17 @@ impl Node {
         Some((var.as_deref(), name.as_deref()))
     }
 
+    /// The steps of its `on_*` shortcuts.
+    pub(crate) fn shortcuts(&self) -> impl Iterator<Item = &Step> {
+        let steps = match self {
+            Node::Button(n) => n.on_click.as_deref(),
+            Node::Form(n) => n.on_submit.as_deref(),
+            Node::Dialog(n) => n.on_close.as_deref(),
+            _ => None,
+        };
+        steps.into_iter().flatten()
+    }
+
     /// The nodes directly inside it: a cell's or a form's children.
     pub fn children(&self) -> &[Node] {
         match self {
@@ -803,8 +815,9 @@ styled! {
         /// The nodes inside it.
         #[serde(default)]
         pub children: Vec<Node>,
-        /// Shortcut for a handler on this dialog's `.close`, run after the variable is set `false`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// Shortcut for a handler on this dialog's `.close`, run after the variable is set `false`:
+        /// a list of steps, or one step alone.
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "one_or_more")]
         pub on_close: Option<Vec<Step>>,
     }
 }
@@ -858,10 +871,84 @@ styled! {
         /// with `name` starts from its `/name`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub data: Option<String>,
-        /// Shortcut for a handler on this form's `.submit`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// Shortcut for a handler on this form's `.submit`: a list of steps, or one step alone.
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "one_or_more")]
         pub on_submit: Option<Vec<Step>>,
     }
+}
+
+/// A node's `on_*` shortcut: a list of steps, or one step written alone (`on_click = "cheer"`, or
+/// `on_click = "{{ props.on_open }}"` inside a component).
+fn one_or_more<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Vec<Step>>, D::Error> {
+    let steps = match Value::deserialize(deserializer)? {
+        Value::Array(steps) => steps,
+        one => vec![one],
+    };
+    steps
+        .into_iter()
+        .map(|step| serde_json::from_value(step).map_err(|e| de::Error::custom(e.to_string())))
+        .collect::<Result<_, _>>()
+        .map(Some)
+}
+
+/// Steps passed in as a prop: a list of steps, or one step alone. A template among them is only
+/// ever a prop passed on (`"{{ props.NAME }}"`), and that only as the whole value.
+pub(crate) fn as_steps(value: &Value) -> Result<Vec<Step>, String> {
+    let list = match value {
+        Value::Array(steps) => steps.clone(),
+        one => vec![one.clone()],
+    };
+    list.into_iter()
+        .map(|step| match serde_json::from_value(step) {
+            Ok(Step::Run(name)) if name.contains("{{") => {
+                Err(format!("{name:?} isn't a step or a custom action's name"))
+            }
+            Ok(step) => Ok(step),
+            Err(e) => Err(e.to_string()),
+        })
+        .collect()
+}
+
+/// The props a component runs as steps: in its own nodes' `on_*` shortcuts, or passed on to a
+/// component it uses that runs them, each component looked at once (`seen`).
+fn step_props(
+    nodes: &[Node],
+    components: &BTreeMap<String, Component>,
+    seen: &mut BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    for node in nodes {
+        for step in node.shortcuts() {
+            if let Step::Run(name) = step
+                && let Some(prop) = prop_steps(name)
+            {
+                found.insert(prop.to_string());
+            }
+        }
+        if let Node::Use(used) = node
+            && let Some(component) = components.get(&used.component)
+            && seen.insert(used.component.clone())
+        {
+            let inner = step_props(&component.body, components, seen);
+            seen.remove(&used.component);
+            for (key, value) in &used.props {
+                if let Some(prop) = value.as_str().and_then(prop_steps)
+                    && inner.contains(key)
+                {
+                    found.insert(prop.to_string());
+                }
+            }
+        }
+        found.extend(step_props(node.children(), components, seen));
+    }
+    found
+}
+
+/// The prop a step runs, when the step is `"{{ props.NAME }}"`: the steps a component's caller
+/// passed in ([spec 090](../../../specs/090_components.md)).
+pub fn prop_steps(name: &str) -> Option<&str> {
+    let inner = name.trim().strip_prefix("{{")?.strip_suffix("}}")?.trim();
+    inner.strip_prefix("props.").filter(|p| is_plain(p))
 }
 
 /// One step of a handler or an action: a built-in action, or the name of a custom one.
@@ -1812,6 +1899,21 @@ fn check_node(
             _ => {}
         }
     }
+    for step in node.shortcuts() {
+        if let Step::Run(name) = step
+            && name.contains("{{")
+        {
+            if !inside {
+                problem(format!(
+                    "a step {name:?} runs steps passed into a component, so it works only inside one"
+                ));
+            } else if prop_steps(name).is_none() {
+                problem(format!(
+                    "a step can run a prop's steps as \"{{{{ props.NAME }}}}\", not {name:?}"
+                ));
+            }
+        }
+    }
     if let Node::Button(button) = node
         && button.submit
         && !in_form
@@ -1899,6 +2001,19 @@ fn check_node(
                 }
                 for prop in used.props.keys().filter(|p| !component.takes(p)) {
                     problem(format!("`{}` takes no prop `{prop}`", used.component));
+                }
+                let mut seen = BTreeSet::from([used.component.clone()]);
+                for prop in step_props(&component.body, checks.components, &mut seen) {
+                    let Some(value) = used.props.get(&prop) else {
+                        continue;
+                    };
+                    let passed_on = inside && value.as_str().and_then(prop_steps).is_some();
+                    if let (false, Err(e)) = (passed_on, as_steps(value)) {
+                        problem(format!(
+                            "`{}` runs `{prop}` as steps, so pass a list of steps, like [{{ go = \"contact\" }}]: {e}",
+                            used.component
+                        ));
+                    }
                 }
                 let mut seen = BTreeSet::from([used.component.clone()]);
                 let held = holds(&component.body, checks.components, &mut seen);

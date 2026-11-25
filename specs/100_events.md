@@ -57,7 +57,10 @@ actually changes.
 - Every handler whose pattern matches runs, in the order the file lists them.
 - **Shortcut:** `on_click = [...]` on a node is `"{id}.click" = [...]` in `[on]`; likewise `on_change`,
   and `on_submit`. The node then needs no `id`: it gets one from its place in the tree.
-- **Shortcut:** a step that's a plain string runs that action: `"sign_out"`.
+- **Shortcut:** a step that's a plain string runs that action: `"sign_out"`. A node's `on_*` takes one step
+  alone as well as a list: `on_click = "sign_out"`.
+- Inside a component, the step `"{{ props.NAME }}"` runs the steps its caller passed in as that prop
+  ([090](090_components.md)).
 
 Handlers never test anything. To branch, fire different events. A call's status already does that
 (`.ok` and `.failed`), and so does `event = "/outcome"` when the API should pick the branch.

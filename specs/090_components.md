@@ -82,6 +82,12 @@ props = { contact = "{{ item }}" }
 - A component can use other components. Using one in a loop (A uses B uses A) is a config error.
 - Props can carry steps: a caller can pass `on_open = [{ go = "contact" }]`, and the component
   runs it with `on_click = "{{ props.on_open }}"`. The steps still run in the app, against its state.
+  - `"{{ props.NAME }}"` is one step, so it can stand among others in a list
+    (`[{ toggle = "local.open" }, "{{ props.on_open }}"]`), and the list carries on after it.
+  - The steps run where they were written, with the event from inside: `event.item` is the element the
+    component is drawn for. A component that passes its own prop on (`on_open = "{{ props.on_pick }}"`)
+    runs it where it was first written.
+  - A prop run as steps takes a list of steps, or one step alone. An optional one that's left out runs nothing.
 - **Events inside a component** are named under the `use` node's `id`: a `more_btn` inside `id = "card"` fires
   `card.more_btn.click`. Ids inside a component are unique within it, and the `use` node's `id` makes them
   unique in the app. Every instance in an `each` fires the same name, and the payload's `item` tells them apart.
@@ -103,7 +109,10 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 - an undeclared `local.*`, or a `props.*` the component doesn't take, is a config error
 - `props.*` is read-only; writing it is a config error
 - a missing required prop, an unknown prop, an unknown component, and a loop of components are config errors
-- a passed step list runs against the app's state
+- a passed step list runs against the app's state, in its place among the component's own steps, and a prop
+  passed on runs where it was first written (in a real browser: `tests/deployed/components.mjs`)
+- a step `"{{ props.NAME }}"` outside a component, a step template that isn't one, and a prop run as steps
+  that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
 - `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
@@ -120,4 +129,4 @@ Milestone three ([999](999_todo.md)):
   with `props.*` (what's inside a component draws but isn't wired yet: its events and named controls come
   with the next task)
 - [x] local state per instance, and events named under the `use` node's `id`
-- [ ] props that carry steps
+- [x] props that carry steps

@@ -61,6 +61,7 @@ fn card(row: &str, name: &str) -> Option<Within> {
         name: "card".into(),
         row: Some(row.into()),
         props: json!({ "contact": { "name": name } }),
+        outer: None,
     })
 }
 
@@ -215,6 +216,7 @@ name = "email"
         name: "fields".into(),
         row: None,
         props: json!({}),
+        outer: None,
     });
     m.fire_within(
         "fields.email_box.change",
@@ -259,6 +261,7 @@ props = { contact = { name = "Ada" } }
             name: "editor".into(),
             row: None,
             props: json!({ "contact": { "name": "Ada" } }),
+            outer: None,
         });
         m.fire_within("editor.edit.submit", json!({}), None, within);
         assert_eq!(m.get("app.saved"), Some(json!({ "name": name })), "{data}");
@@ -275,6 +278,7 @@ fn a_control_writes_its_instances_local() {
             name: name.into(),
             row: None,
             props: Value::Null,
+            outer: None,
         })
     };
     m.fire_within("a.sw.change", json!({ "value": true }), None, at("a"));
@@ -307,6 +311,7 @@ fn components_inside_components_have_their_own_instances() {
         name: "box.counter".into(),
         row: None,
         props: Value::Null,
+        outer: None,
     });
     m.fire_within("box.counter.up.click", json!({}), None, within);
     assert_eq!(m.local("box.counter", None, "n"), Some(json!(1)));

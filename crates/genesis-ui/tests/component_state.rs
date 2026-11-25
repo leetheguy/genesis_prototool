@@ -65,6 +65,7 @@ fn each_instance_draws_its_own_local_state() {
             name: "card".into(),
             row: Some("1".into()),
             props: json!({ "contact": { "name": "Lin" } }),
+            outer: None,
         };
         host.fire_within(
             "card.more.click",
