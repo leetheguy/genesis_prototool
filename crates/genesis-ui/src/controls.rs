@@ -84,22 +84,30 @@ impl Component for Input {
         // What the person last typed. While it still means the variable's value, the box keeps it,
         // so "1." or "-" on the way to a number isn't wiped out by the variable's own text.
         let typed = RwSignal::new(None::<String>);
-        let showing = move || {
+        // A memo tells the box only when its text really changes: setting a box's value, even to
+        // what it already means, wipes a half-typed number the browser holds as "".
+        let showing = Memo::new(move |_| {
             let now = read().unwrap_or(Value::Null);
             match typed.get() {
                 Some(text) if meaning(kind, &text) == now => text,
                 _ => as_text(&now),
             }
-        };
+        });
         let fire = wired.clone();
         let on_input = move |ev| {
-            let text = event_target_value(&ev);
+            let input = event_target::<leptos::web_sys::HtmlInputElement>(&ev);
+            let text = input.value();
+            // A number box half typed ("-", "2.") reads as "" and fails its own check; it means
+            // nothing yet, so the variable keeps its value until the number is whole.
+            if kind == InputKind::Number && text.is_empty() && !input.check_validity() {
+                return;
+            }
             let value = meaning(kind, &text);
             typed.set(Some(text));
             fire.fire("change", json!({ "value": value }));
         };
         labelled(&wired, &self.label, "input", move |class| {
-            let (value, prop) = (showing.clone(), showing.clone());
+            let (value, prop) = (move || showing.get(), move || showing.get());
             let (placeholder, on_input) = (placeholder.clone(), on_input.clone());
             view! {
                 <input type=kind.as_str() class=class placeholder=placeholder value=value prop:value=prop
