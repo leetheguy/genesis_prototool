@@ -1,5 +1,5 @@
 //! The controls ([spec 040](../../../specs/040_catalog.md), "Controls"): `input`, `textarea`,
-//! `select`, `checkbox`, `toggle`, and `radio`, and the `form` that holds named ones.
+//! `select`, `checkbox`, `toggle`, `radio`, and `file`, and the `form` that holds named ones.
 //!
 //! Each shows its current value (its `var`'s, or inside a form, what's typed into it or its form's
 //! `data`) and, when the person types or picks, fires `NAME.change` with the new `value`, keeping
@@ -11,7 +11,7 @@
 use crate::style::ClassList;
 use crate::{Component, Wired, failed_face};
 use genesis_core::config::{
-    Checkbox, Form, Input, InputKind, Options, Radio, Select, Textarea, Toggle,
+    Checkbox, File, Form, Input, InputKind, Options, Radio, Select, Textarea, Toggle,
 };
 use genesis_core::template::as_text;
 use leptos::prelude::*;
@@ -330,5 +330,72 @@ impl Component for Form {
             wired.fire("submit", json!({}));
         };
         view! { <form class=class on:submit=on_submit>{children}</form> }.into_any()
+    }
+}
+
+impl Component for File {
+    const EVENTS: &'static [&'static str] = &["change"];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let (multiple, accept) = (self.multiple, self.accept.clone());
+        let max = self.max_size.unwrap_or(genesis_core::file::MAX_SIZE);
+        let read = wired.bound(None, self.name.as_deref());
+        // Why the last pick was refused, shown under the picker until the next pick.
+        let refused = RwSignal::new(None::<String>);
+        let fire = wired.clone();
+        let on_change = move |ev| {
+            let input = event_target::<web_sys::HtmlInputElement>(&ev);
+            let picked: Vec<web_sys::File> = input
+                .files()
+                .map(|list| (0..list.length()).filter_map(|i| list.get(i)).collect())
+                .unwrap_or_default();
+            let why = picked
+                .iter()
+                .find_map(|f| genesis_core::file::too_big(&f.name(), f.size() as u64, max));
+            refused.set(why.clone());
+            if why.is_some() {
+                // A refused pick fires nothing, and the picker lets go of it.
+                input.set_value("");
+                return;
+            }
+            let mut held: Vec<Value> = picked.into_iter().map(crate::files::hold).collect();
+            let value = match (multiple, held.pop()) {
+                (true, last) => Value::Array(held.into_iter().chain(last).collect()),
+                (false, Some(one)) => one,
+                (false, None) => Value::Null,
+            };
+            fire.fire("change", json!({ "value": value }));
+        };
+        // The browser won't let a page set what a picker holds, only empty it: so once the form's
+        // draft goes (after a submit), the picker empties too.
+        let picker = NodeRef::<leptos::html::Input>::new();
+        Effect::new(move |_| {
+            let empty = matches!(read(), None | Some(Value::Null));
+            if let (true, Some(input)) = (empty, picker.get()) {
+                input.set_value("");
+            }
+        });
+        let note = move || {
+            refused
+                .get()
+                .map(|why| view! { <p class="text-error text-sm">{why}</p> })
+        };
+        let input = view! {
+            <input type="file" node_ref=picker class="file-input" accept=accept multiple=multiple
+                on:change=on_change />
+        };
+        // The note sits inside the node's one element, so it never takes a place of its own.
+        match &self.label {
+            Some(label) => {
+                let text = wired.text(label);
+                let class = wired.class(ClassList::default().raw("fieldset"));
+                view! { <label class=class><span class="fieldset-legend">{text}</span>{input}{note}</label> }
+                    .into_any()
+            }
+            None => {
+                let class = wired.class(&mut ClassList::default());
+                view! { <div class=class>{input}{note}</div> }.into_any()
+            }
+        }
     }
 }

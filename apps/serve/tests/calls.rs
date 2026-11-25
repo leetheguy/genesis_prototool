@@ -35,8 +35,23 @@ async fn mock_api() -> String {
             json!({ "method": method.as_str(), "path": rest, "query": query, "headers": headers, "body": body }),
         )
     }
+    /// What reached the API as multipart: each part's name, file name, type, and text.
+    async fn parts(method: Method, mut form: axum::extract::Multipart) -> axum::Json<Value> {
+        let mut parts = Vec::new();
+        while let Some(part) = form.next_field().await.unwrap() {
+            let (name, file) = (
+                part.name().map(String::from),
+                part.file_name().map(String::from),
+            );
+            let kind = part.content_type().map(String::from);
+            let text = part.text().await.unwrap();
+            parts.push(json!({ "name": name, "file": file, "type": kind, "text": text }));
+        }
+        axum::Json(json!({ "method": method.as_str(), "parts": parts }))
+    }
     let api = axum::Router::new()
         .route("/echo/{*rest}", any(echo))
+        .route("/upload", any(parts))
         .route(
             "/status/{code}",
             get(|UrlPath(code): UrlPath<u16>| async move {
@@ -97,6 +112,14 @@ path = "/echo/contacts/{{id}}"
 [connections.api.ops.echo_post]
 method = "POST"
 path = "/echo/contacts"
+
+[connections.api.ops.upload]
+method = "POST"
+path = "/upload"
+
+[connections.api.ops.upload_get]
+method = "GET"
+path = "/upload"
 
 [connections.api.ops.missing]
 method = "GET"
@@ -172,6 +195,107 @@ async fn call(folders: &Folders, body: Value) -> (StatusCode, Value) {
         serde_json::from_slice(&bytes)
             .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned())),
     )
+}
+
+/// A call with files, as the browser sends it: the call as JSON in a `call` part, and each file
+/// (`(id, name, type, text)`) in a part named by its reference's ID.
+async fn call_with_files(
+    folders: &Folders,
+    body: Value,
+    files: &[(&str, &str, &str, &str)],
+) -> (StatusCode, Value) {
+    let boundary = "genesis-test-boundary";
+    let mut form =
+        format!("--{boundary}\r\ncontent-disposition: form-data; name=\"call\"\r\n\r\n{body}\r\n");
+    for (id, name, kind, text) in files {
+        form.push_str(&format!(
+            "--{boundary}\r\ncontent-disposition: form-data; name=\"{id}\"; filename=\"{name}\"\r\ncontent-type: {kind}\r\n\r\n{text}\r\n"
+        ));
+    }
+    form.push_str(&format!("--{boundary}--\r\n"));
+    let request = Request::post("/api/call/files")
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(Body::from(form))
+        .unwrap();
+    let response = router(folders.settings()).oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// A file reference, as a `file` control gives it.
+fn reference(id: &str, name: &str) -> Value {
+    json!({ "file": id, "name": name, "type": "text/plain", "size": 5 })
+}
+
+#[tokio::test]
+async fn params_holding_a_file_go_out_as_multipart_with_the_file_as_a_part() {
+    let folders = Folders::new("multipart").await;
+    let (status, reply) = call_with_files(
+        &folders,
+        json!({ "op": "api.upload", "params": { "title": "Q3", "doc": reference("file-1", "notes.txt") }, "headers": {} }),
+        &[("file-1", "notes.txt", "text/plain", "hello")],
+    )
+    .await;
+    assert_eq!(
+        (status, &reply["status"]),
+        (StatusCode::OK, &json!(200)),
+        "{reply}"
+    );
+    assert_eq!(
+        reply["body"]["parts"],
+        json!([
+            { "name": "title", "file": null, "type": null, "text": "Q3" },
+            { "name": "doc", "file": "notes.txt", "type": "text/plain", "text": "hello" },
+        ])
+    );
+}
+
+#[tokio::test]
+async fn a_list_of_files_is_one_part_each_whatever_the_method() {
+    let folders = Folders::new("multipart-list").await;
+    let docs = json!([reference("file-1", "a.txt"), reference("file-2", "b.txt")]);
+    let (_, reply) = call_with_files(
+        &folders,
+        json!({ "op": "api.upload_get", "params": { "docs": docs }, "headers": {} }),
+        &[
+            ("file-1", "a.txt", "text/plain", "one"),
+            ("file-2", "b.txt", "text/plain", "two"),
+        ],
+    )
+    .await;
+    assert_eq!(reply["body"]["method"], "GET");
+    let parts = reply["body"]["parts"].as_array().unwrap();
+    let texts: Vec<_> = parts.iter().map(|p| (&p["name"], &p["text"])).collect();
+    assert_eq!(
+        texts,
+        [
+            (&json!("docs"), &json!("one")),
+            (&json!("docs"), &json!("two"))
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_file_reference_whose_file_is_gone_fails_the_call() {
+    let folders = Folders::new("multipart-gone").await;
+    let call_body = json!({ "op": "api.upload", "params": { "doc": reference("file-9", "notes.txt") }, "headers": {} });
+    for (_, reply) in [
+        call_with_files(&folders, call_body.clone(), &[]).await,
+        call(&folders, call_body).await,
+    ] {
+        let error = reply["error"].as_str().unwrap_or_default();
+        assert!(
+            error.contains("notes.txt") && error.contains("gone"),
+            "{reply}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -133,8 +133,12 @@ bytes the browser holds. With `multiple = true` it's a list of those. A call who
 `serve` to the API, with each referenced file as a part and every other param as a field, whatever the
 operation's method would otherwise send. So a PurpleFlow webhook gets it just as it gets any upload. A
 reference is good while its page is open; one that's gone fails the call, loudly. `accept` limits what the
-picker offers (`"image/*"`, `".pdf,.csv"`). A file bigger than `max_size` (default 10 MB, in bytes; `0` for
-no limit) fails its control's check with a message naming both sizes.
+picker offers (`"image/*"`, `".pdf,.csv"`). A file bigger than `max_size` (in bytes; 100 MB, PurpleFlow's
+`max_file_size` default, unless it says otherwise; `0` for no limit) is refused as it's picked: a note under
+the picker names both sizes, the picker lets go of it, and nothing fires. Each reference's ID is a fresh
+UUID, so one kept from before a reload never finds another file. `serve` takes the call at
+`POST /api/call/files` (the call as a `call` part, each file as a part named by its ID) with no size limit
+of its own.
 
 A `select` takes `options` (`[{ label, value }]`, or `options = "app.companies"` with `option_label` and
 `option_value` pointers, `/label` and `/value` unless they say otherwise). It picks the option whose value
@@ -291,8 +295,8 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - `audio` and `video` take `src` with templates and default to controls on, autoplay off; with an `id` they fire `.play`, `.pause`, and `.ended` (in a real browser: `tests/deployed/media.mjs`), and without one they fire nothing
 - `iframe` is sandboxed unless `sandbox = false`, full width and 24rem tall unless its keys say otherwise; one with no `title` is a config error
 - radios with one `name` in a form, or one `var`, are one group: picking one sets the group's value to its `value`, with its JSON type, and unpicks the rest
-- a `file` gives `{ file, name, type, size }` (a list with `multiple`), never its bytes; one over `max_size` fails its check; a `file` with `var`, or outside a `form`, is a config error
-- a call whose params hold a file reference reaches the API as `multipart/form-data`, the file as a part with its name and type and the other params as fields; a reference that's gone fails the call
+- a `file` gives `{ file, name, type, size }` (a list with `multiple`), never its bytes; one over `max_size` is refused with a note naming both sizes, and fires nothing (in a real browser: `tests/deployed/file.mjs`); a `file` with `var`, or outside a `form`, is a config error
+- a call whose params hold a file reference reaches the API as `multipart/form-data`, the file as a part with its name and type and the other params as fields; a reference that's gone fails the call (in a real browser: `tests/deployed/file.mjs`)
 - a `form` starts its controls from `data` (an `item` inside an `each`), shows what's typed over it, and changes no state until `.submit`
 - a `submit` button, or Enter in a box, fires `.submit` with each named control in `form` (typed, else from `data`, else `null`), and the draft starts over; another button in a form doesn't submit (in a real browser: `tests/deployed/form.mjs`)
 - a form an `each` repeats keeps a draft per row: each row fills, keeps, and submits its own (in a real browser: `tests/deployed/form.mjs`)
@@ -329,6 +333,6 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `each`, with its faces in `Wired`, and `item.*`
 - [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` and checks come with display logic, [080](080_display_logic.md))
 - [x] `form`, controls with `name`, and the `submit` button (`.invalid` comes with checks, [080](080_display_logic.md))
-- [ ] `file`, and calls that send files as multipart through `serve`
+- [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and a check that a file was picked, come with display logic, [080](080_display_logic.md))
 - [ ] `dialog`
 - [ ] `markdown`

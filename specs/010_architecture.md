@@ -47,6 +47,7 @@ The state folder holds the mirror ([050](050_state.md)): `serve` writes it, and 
 | `GET /` | the renderer, drawing the app |
 | `GET /api/config` | server-sent events: the app's config whenever it loads, good or bad ([060](060_hot_reload.md)), and pushed events ([110](110_agents.md)) |
 | `POST /api/call` | fire one of the app's operations; the reply is the response, or a stream of it ([030](030_connections.md)) |
+| `POST /api/call/files` | the same, as a multipart form: the call as its `call` part, and each file its params reference as a part named by the file's ID ([040](040_catalog.md)) |
 | `POST /api/mirror` | the client's state and event trail, written to the state folder ([050](050_state.md)) |
 | `POST /api/push/{name}` | fire `push.{name}` in every open client, behind `GENESIS_AGENT_TOKEN` ([110](110_agents.md)) |
 | `GET /api/log` | the log of every failure, behind `GENESIS_AGENT_TOKEN` ([110](110_agents.md)) |

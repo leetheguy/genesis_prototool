@@ -63,7 +63,7 @@ reload, connections and sources with server-held credentials, sessions kept on t
 Compose with dufs for agents. **Milestone three is under way:** `serve` runs one app, the configs
 folder, at `/`, and most of the atoms are built (cells with style keys and `each`, text, images, links,
 buttons, dividers, svg, audio, video, iframes, the controls (inputs, textareas, selects, checkboxes,
-toggles, and radios), and forms). Next come `file`, `dialog`, `markdown`, components, and what
+toggles, and radios), forms, and file pickers, whose files go out with a call as multipart). Next come `dialog`, `markdown`, components, and what
 agents need to build a screen on their own. The design is in
 [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 

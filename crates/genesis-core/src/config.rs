@@ -136,6 +136,8 @@ pub enum Node {
     Radio(Radio),
     /// A form: its named controls fill a draft, which goes out on `.submit`.
     Form(Form),
+    /// A file picker, inside a form.
+    File(File),
 }
 
 impl Node {
@@ -159,6 +161,7 @@ impl Node {
             Node::Toggle(n) => n.placed(),
             Node::Radio(n) => n.placed(),
             Node::Form(n) => n.placed(),
+            Node::File(n) => n.placed(),
         }
     }
 
@@ -182,6 +185,7 @@ impl Node {
             Node::Toggle(n) => n.id.as_deref(),
             Node::Radio(n) => n.id.as_deref(),
             Node::Form(n) => n.id.as_deref(),
+            Node::File(n) => n.id.as_deref(),
         }
     }
 
@@ -666,6 +670,7 @@ impl Node {
             Node::Checkbox(n) => (&n.var, &n.name),
             Node::Toggle(n) => (&n.var, &n.name),
             Node::Radio(n) => (&n.var, &n.name),
+            Node::File(n) => (&n.var, &n.name),
             _ => return None,
         };
         Some((var.as_deref(), name.as_deref()))
@@ -678,6 +683,38 @@ impl Node {
             Node::Form(n) => &n.children,
             _ => &[],
         }
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "file"`: a file picker. Inside a form, with `name`, its value is a reference to the
+    /// bytes the browser holds, `{ file, name, type, size }` (a list with `multiple`), never the
+    /// bytes themselves ([`crate::file`]).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct File {
+        /// The node's name; its `.change` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// Never set: a file works only inside a form. Read so the mistake is named.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        /// Its name in the form it's in.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        /// Its label; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub label: Option<String>,
+        /// What the picker offers: `"image/*"`, `".pdf,.csv"`. Anything, unless it says otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub accept: Option<String>,
+        /// Takes several files, as a list.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pub multiple: bool,
+        /// The biggest file it takes, in bytes: 100 MB unless it says otherwise; `0` for no limit.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub max_size: Option<u64>,
     }
 }
 
@@ -1348,7 +1385,9 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
 fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<ConfigError>) {
     let mut problem =
         |message: String| problems.push(problem_in("app.toml", format!("{place}: {message}")));
-    if node.control().is_some() {
+    if matches!(node, Node::File(_)) && (node.var().is_some() || !in_form) {
+        problem("a `file` works only inside a `form`, with `name`".into());
+    } else if node.control().is_some() {
         match (node.var(), node.field()) {
             (Some(_), Some(_)) => {
                 problem("a control takes `name` (inside a form) or `var`, not both".into())
