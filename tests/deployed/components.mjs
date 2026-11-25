@@ -3,7 +3,7 @@
 // from changes, keeps each instance's local state apart (and across a reload of the page), fires
 // its events under the use node for the app to hear, runs the steps its caller passes in, and every
 // place that uses it redraws when its file is edited. The app's outlet draws its default, go swaps
-// in another component whose nodes fire under its own name, and a reload opens on the default again.
+// in another component whose nodes fire under its own name, and a reload reopens on that component.
 //
 // It runs genesis-serve on a temporary app of its own. Run it with scripts/check-hello.sh.
 
@@ -194,8 +194,8 @@ try {
   await page.waitForTimeout(500);
   await page.reload();
   await page.getByText("Card: Lin at lin@example.com, 2 clicks").waitFor();
-  // sys.outlet isn't kept: a reload opens on the default.
-  await page.getByText("Home page").waitFor();
+  // sys.outlet is kept, and so are the locals of the component in it: the page reopens as it was left.
+  await page.getByText("Notes, 1 taps").waitFor();
   // Its props come from the app's state where it's used, so a change there draws it again.
   await page.getByRole("button", { name: "Rename" }).click();
   await page.getByText("Card: Grace at grace@example.com, 0 clicks").waitFor();
