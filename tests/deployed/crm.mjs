@@ -56,7 +56,8 @@ try {
   await page.goto(`${base}/`);
 
   const button = (name, within = page) => within.getByRole("button", { name, exact: true });
-  const named = (text) => page.getByText(text, { exact: true });
+  // Only what shows: a closed dialog's company picker holds every company's name too.
+  const named = (text) => page.getByText(text, { exact: true }).filter({ visible: true });
   const gone = (what, locator) => until(what, async () => (await locator.count()) === 0);
   // A list's row: the innermost block that holds the name and the row's buttons.
   const row = (name, has = "Edit") =>
