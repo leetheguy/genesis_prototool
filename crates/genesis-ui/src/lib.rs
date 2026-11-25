@@ -635,7 +635,9 @@ impl Wired {
 }
 
 /// Looks `path` up: `item` and `item.*` in the element being drawn, `props.*` and `local.*` in
-/// the component it's inside, anything else in state.
+/// the component it's inside, anything else in state. `app.*` is there only for what `app.toml`
+/// draws: its own body, and a component it draws (by a `use` node in its body, or in its outlet).
+/// A component drawn inside another reads none of it; it gets what it needs as props.
 fn look(
     host: &Host,
     item: Option<&Value>,
@@ -648,6 +650,7 @@ fn look(
     };
     let base = match (head, item, scope) {
         ("item", Some(item), _) => item.clone(),
+        ("app", _, Some(scope)) if scope.parent.is_some() => return None,
         ("local", _, Some(scope)) => {
             let (key, rest) = match rest?.split_once('.') {
                 Some((key, rest)) => (key, Some(rest)),

@@ -91,10 +91,14 @@ props = { contact = "{{ item }}" }
 - **Events inside a component** are named under the `use` node's `id`: a `more_btn` inside `id = "card"` fires
   `card.more_btn.click`. Ids inside a component are unique within it, and the `use` node's `id` makes them
   unique in the app. Every instance in an `each` fires the same name, and the payload's `item` tells them apart.
-- A partial sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
-  screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
-  A page in the outlet is the one exception ([The outlet](#the-outlet)): a component that reads `app.*` is a page,
-  and a `use` node drawing it is a config error. No component writes `app.*`: a `set`, `step`, or `toggle` of it,
+- **What `app.toml` draws gets `app.*`; nothing else does.** A component `app.toml` draws, by a `use` node in
+  its body or in its outlet ([The outlet](#the-outlet)), reads the app's variables as `app.toml` does, with no
+  wiring. A component drawn inside another component sees only what it's given: its props, its locals, and
+  `sys.*`, which is visible everywhere. A component that wants to give one inside it something from `app.*`
+  passes it down as a prop. The rule is about where a component is drawn, not what's in it: any component
+  loads and draws either way, and nothing checks or labels it. Drawn inside another, its `app.*` reads nothing,
+  as an unset variable does: a template shows it empty, and a step of its own that reads it fails loudly,
+  saying the component is drawn inside another. No component writes `app.*`: a `set`, `step`, or `toggle` of it,
   or a control or dialog bound to it, is a config error; it fires an event, and the app's handler sets it.
 - **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
   props' steps, and `fire` events. A custom action, a `call`, a `reload`, a `go`, a timer's `start` or
@@ -116,7 +120,8 @@ out of the outlet, as `contacts.local.*`, kept on the device like any instance's
 The outlet hands its page the whole of `app.*`, with no wiring: a page reads `{{ app.contacts }}`, repeats
 `each = "app.contacts"`, and starts a form from `data = "app.contact"`, just as `app.toml`'s body does, and it
 follows the app's variables as they change. It reads them as it reads props: it never writes them, and changes
-state by firing events the app handles. Any partial it uses still gets only what the page passes it as props.
+state by firing events the app handles. It gets them because `app.toml` draws it, as a `use` node in
+`app.toml`'s body would; a component it draws gets only what it passes as props.
 
 ## What a component isn't
 
@@ -138,8 +143,11 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 - a step `"{{ props.NAME }}"` outside a component, a step template that isn't one, and a prop run as steps
   that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
-- a partial reading `app.*`, in a template or a variable's path, is a config error where a `use` node draws it; `sys.*` isn't
-- a page in the outlet reads `app.*` in its templates, its `each`, and its form's `data`, and follows it as it changes
+- a component `app.toml` draws, by a `use` node in its body or in its outlet, reads `app.*` in its templates, its
+  `each`, its conditions, and its form's `data`, and follows it as it changes
+- a component drawn inside another reads no `app.*`: its templates show it empty, and its own steps that read it
+  fail, saying why; what's passed to it as props it reads
+- reading `app.*` is never a config error in a component, wherever it's drawn
 - writing `app.*` in a component, by a step or a bound control, is a config error
 - a custom action, a `call`, a `reload`, a `go`, a `start`, a `stop`, or a `log` in a component's own steps is a config error; its `fire` keeps the
   event's name, and the app's handlers for it run
@@ -162,6 +170,7 @@ Milestone three ([999](999_todo.md)):
 - [x] props that carry steps
 - [x] the `outlet`, which `go` fills
 - [x] a page in the outlet reads `app.*`
+- [x] any component `app.toml` draws reads `app.*`, and no other
 
 ## Log
 
@@ -186,3 +195,11 @@ Milestone three ([999](999_todo.md)):
   like the top-level page it sits in. They're read-only, as props are. A component that reads `app.*` is a page,
   and a `use` node can't draw it, so partials stay blind and reusable. Before this, an outlet page could show
   only its own locals and `sys.*`.
+- 2026-11-25: who reads `app.*` is decided by where a component is drawn, not by what it reads. The entry above
+  made a component that reads `app.*` a page, and a `use` node drawing it a config error. Lee: "Any component
+  should work both ways. Once again, this is an architectural thing. As long as it's clear that anything being
+  loaded by app.toml gets app.*. That's it. No restrictions. If it's not loaded by app.toml, it doesn't get
+  app.*. End of story. Unless it passes it deliberately to its subcomponents." So a component `app.toml` draws,
+  in its outlet or by a `use` node in its body, reads `app.*`; one drawn inside another doesn't, unless it's
+  passed down as props; and nothing is refused at load. "Loaded by app.toml" is read as drawn by `app.toml`
+  itself, so a `use` node in `app.toml`'s body counts as well as the outlet.

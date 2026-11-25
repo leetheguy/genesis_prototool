@@ -143,22 +143,32 @@ fn a_loop_of_components_is_a_config_error_once() {
 }
 
 #[test]
-fn a_component_reading_app_is_a_page_and_use_cant_draw_it() {
+fn a_component_reading_app_loads_wherever_its_drawn() {
+    // Read in a template and as an `each`: drawn by app.toml it gets `app.*`; drawn inside
+    // another component it reads nothing there. Neither is a load problem.
     let card = component(
         "props = [\"contact\"]",
-        "[[body]]\ntype = \"text\"\ntext = \"Hi {{ app.user }}\"\n",
+        r#"
+[[body]]
+type = "text"
+text = "Hi {{ app.user }}"
+
+[[body]]
+type = "cell"
+each = "app.contacts"
+"#,
     );
-    let out = problems(&[("app.toml", APP), ("contact_card.toml", &card)]);
-    assert!(
-        out.contains("app.toml: body.0.children.0: `contact_card` reads `app.*`, so it's a page"),
-        "{out}"
+    let list = component(
+        "",
+        "[[body]]\ntype = \"use\"\ncomponent = \"contact_card\"\nprops = { contact = { name = \"Ada\" } }\n",
     );
-    let card = component(
-        "props = [\"contact\"]",
-        "[[body]]\ntype = \"cell\"\neach = \"app.contacts\"\n",
-    );
-    let out = problems(&[("app.toml", APP), ("contact_card.toml", &card)]);
-    assert!(out.contains("`contact_card` reads `app.*`"), "{out}");
+    let app = format!("{APP}\n[[body]]\ntype = \"use\"\ncomponent = \"list\"\n");
+    let loaded = load(&[
+        ("app.toml", &app),
+        ("contact_card.toml", &card),
+        ("list.toml", &list),
+    ]);
+    assert!(loaded.is_ok(), "{loaded:?}");
 }
 
 #[test]

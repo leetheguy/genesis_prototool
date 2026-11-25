@@ -268,7 +268,7 @@ show = { all = [{ var = "local.open", is = true }, { var = "props.contact.name",
 }
 
 #[test]
-fn a_component_whose_condition_reads_app_is_a_page() {
+fn a_component_whose_condition_reads_app_loads_where_a_use_node_draws_it() {
     let card = r#"
 [component]
 
@@ -278,6 +278,6 @@ text = "hi"
 show = { var = "app.view", is = "a" }
 "#;
     let app = format!("{HEAD}\n[[body]]\ntype = \"use\"\ncomponent = \"card\"\n");
-    let said = problem(&[("app.toml", &app), ("card.toml", card)]);
-    assert!(said.contains("it's a page"), "{said}");
+    let loaded = App::from_files([("app.toml", app.as_str()), ("card.toml", card)]);
+    assert!(loaded.is_ok(), "{loaded:?}");
 }
