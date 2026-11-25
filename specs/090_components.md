@@ -91,8 +91,11 @@ props = { contact = "{{ item }}" }
 - **Events inside a component** are named under the `use` node's `id`: a `more_btn` inside `id = "card"` fires
   `card.more_btn.click`. Ids inside a component are unique within it, and the `use` node's `id` makes them
   unique in the app. Every instance in an `each` fires the same name, and the payload's `item` tells them apart.
-- A component sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
+- A partial sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
   screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
+  A page in the outlet is the one exception ([The outlet](#the-outlet)): a component that reads `app.*` is a page,
+  and a `use` node drawing it is a config error. No component writes `app.*`: a `set`, `step`, or `toggle` of it,
+  or a control or dialog bound to it, is a config error; it fires an event, and the app's handler sets it.
 - **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
   props' steps, and `fire` events. A custom action, a `call`, a `reload`, a `go`, a timer's `start` or
   `stop`, or a `log` written in a component is a config error. To change what's shown, a component fires an event and the app's handler for it sets the app's
@@ -109,6 +112,11 @@ draws one component at a time, its `default` first, and `{ go = "NAME" }` swaps 
 component is a partial, drawn by a `use` node. In the outlet, a component is drawn as if by a `use` node
 named after it, with no props: its nodes fire as `contacts.save_btn.click`, and its locals stay while it's
 out of the outlet, as `contacts.local.*`, kept on the device like any instance's.
+
+The outlet hands its page the whole of `app.*`, with no wiring: a page reads `{{ app.contacts }}`, repeats
+`each = "app.contacts"`, and starts a form from `data = "app.contact"`, just as `app.toml`'s body does, and it
+follows the app's variables as they change. It reads them as it reads props: it never writes them, and changes
+state by firing events the app handles. Any partial it uses still gets only what the page passes it as props.
 
 ## What a component isn't
 
@@ -130,7 +138,9 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 - a step `"{{ props.NAME }}"` outside a component, a step template that isn't one, and a prop run as steps
   that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
-- `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
+- a partial reading `app.*`, in a template or a variable's path, is a config error where a `use` node draws it; `sys.*` isn't
+- a page in the outlet reads `app.*` in its templates, its `each`, and its form's `data`, and follows it as it changes
+- writing `app.*` in a component, by a step or a bound control, is a config error
 - a custom action, a `call`, a `reload`, a `go`, a `start`, a `stop`, or a `log` in a component's own steps is a config error; its `fire` keeps the
   event's name, and the app's handlers for it run
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
@@ -151,6 +161,7 @@ Milestone three ([999](999_todo.md)):
 - [x] local state per instance, and events named under the `use` node's `id`
 - [x] props that carry steps
 - [x] the `outlet`, which `go` fills
+- [x] a page in the outlet reads `app.*`
 
 ## Log
 
@@ -170,3 +181,8 @@ Milestone three ([999](999_todo.md)):
   top-level page." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."
 - 2026-11-25: a component keeps its locals while it's out of the outlet. Lee: "Yes to components maintaining
   their own state while out of the outlet as well."
+- 2026-11-25: a page in the outlet reads the app's variables. Lee: "Outlet should be passed the whole app.* by default behind the scenes. No extra wiring necessary." It reads them as `app.*`, as `app.toml`'s
+  body does, rather than as `props.app.*`, because that's the plainest: nothing new to learn, and the page reads
+  like the top-level page it sits in. They're read-only, as props are. A component that reads `app.*` is a page,
+  and a `use` node can't draw it, so partials stay blind and reusable. Before this, an outlet page could show
+  only its own locals and `sys.*`.

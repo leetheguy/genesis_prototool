@@ -376,3 +376,51 @@ default = "home"
     m.fire_within("contacts.add.click", json!({}), None, in_outlet("contacts"));
     assert_eq!(m.local("contacts", None, "added"), Some(json!(1)));
 }
+
+#[test]
+fn a_page_reads_the_apps_variables_in_its_templates_its_each_and_its_forms_data() {
+    let page = r#"
+[component]
+
+[[body]]
+type = "text"
+text = "{{ app.heard }} heard"
+
+[[body]]
+type = "cell"
+each = "app.rows"
+
+[[body.children]]
+type = "text"
+text = "{{ item }}"
+
+[[body]]
+type = "form"
+id = "edit"
+data = "app.person"
+
+[[body.children]]
+type = "input"
+name = "name"
+
+[[body]]
+type = "button"
+id = "tell"
+label = "Tell"
+on_click = { fire = "told", with = { heard = "{{ app.heard }}" } }
+"#;
+    let app = APP.replace(
+        "heard = 0",
+        "heard = 3\nrows = [1]\nperson = { name = \"Ada\" }\ntold = 0",
+    ) + "\"told\" = [{ set = \"app.told\", to = \"{{ event.heard }}\" }]\n\"to_page.click\" = [{ go = \"page\" }]\n";
+    let mut all = files(&app);
+    all.push(("page.toml", page));
+    let mut m = Machine::new(load(&all).expect("a page reads app.* and loads"));
+    m.open();
+    m.fire("to_page.click", json!({}));
+    m.fire_within("page.tell.click", json!({}), None, in_outlet("page"));
+    assert_eq!(m.get("app.told"), Some(json!(3)));
+    m.fire_within("page.edit.submit", json!({}), None, in_outlet("page"));
+    let submitted = m.get("sys.events").unwrap()[0]["payload"]["form"].clone();
+    assert_eq!(submitted, json!({ "name": "Ada" }));
+}

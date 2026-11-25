@@ -60,7 +60,7 @@ An `outlet` is where the app swaps whole screens. There's at most one, in `app.t
 outlet draws one component, `default` at first, and `{ go = "NAME" }` swaps in another
 ([100](100_events.md)). Every other component is a partial, drawn by a `use` node. The component in the
 outlet is drawn as if by `use` with no props, named by the component: its nodes fire as
-`contacts.save_btn.click`. `sys.outlet` says which one it is ([050](050_state.md)).
+`contacts.save_btn.click`. It reads the app's variables, `app.*`, as `app.toml`'s body does ([090](090_components.md)). `sys.outlet` says which one it is ([050](050_state.md)).
 
 A `dialog` is daisyUI's modal, open while its `open` variable (`app.NAME`) holds anything but `false` or
 `null`. When the person closes it (Escape, or a click outside its box), it fires `.close`, which sets the

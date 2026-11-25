@@ -143,37 +143,48 @@ fn a_loop_of_components_is_a_config_error_once() {
 }
 
 #[test]
-fn app_inside_a_component_is_a_config_error_in_templates_and_paths() {
+fn a_component_reading_app_is_a_page_and_use_cant_draw_it() {
+    let card = component(
+        "props = [\"contact\"]",
+        "[[body]]\ntype = \"text\"\ntext = \"Hi {{ app.user }}\"\n",
+    );
+    let out = problems(&[("app.toml", APP), ("contact_card.toml", &card)]);
+    assert!(
+        out.contains("app.toml: body.0.children.0: `contact_card` reads `app.*`, so it's a page"),
+        "{out}"
+    );
+    let card = component(
+        "props = [\"contact\"]",
+        "[[body]]\ntype = \"cell\"\neach = \"app.contacts\"\n",
+    );
+    let out = problems(&[("app.toml", APP), ("contact_card.toml", &card)]);
+    assert!(out.contains("`contact_card` reads `app.*`"), "{out}");
+}
+
+#[test]
+fn a_component_never_writes_app() {
     let card = component(
         "props = [\"contact\"]",
         r#"
 [[body]]
-type = "text"
-text = "Hi {{ app.user }}"
-
-[[body]]
-type = "cell"
-each = "app.contacts"
-
-[[body]]
 type = "button"
 label = "Go"
 on_click = [{ set = "app.page", to = 2 }]
+
+[[body]]
+type = "input"
+var = "app.query"
 "#,
     );
     let out = problems(&[("app.toml", APP), ("contact_card.toml", &card)]);
-    assert!(
-        out.contains("contact_card.toml: body.0: a component sees no `app.*`"),
-        "{out}"
-    );
-    assert!(
-        out.contains("contact_card.toml: body.1: a component sees no `app.*`"),
-        "{out}"
-    );
-    assert!(
-        out.contains("contact_card.toml: body.2: a component sees no `app.*`"),
-        "{out}"
-    );
+    for place in ["body.0", "body.1"] {
+        assert!(
+            out.contains(&format!(
+                "contact_card.toml: {place}: a component reads `app.*` but never writes it"
+            )),
+            "{out}"
+        );
+    }
 }
 
 #[test]

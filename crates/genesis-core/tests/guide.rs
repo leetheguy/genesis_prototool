@@ -138,8 +138,15 @@ fn the_api_picks_the_branch() {
 #[test]
 fn pages_go_by_the_apps_handlers() {
     let mut m = Machine::new(example("Pages"));
-    m.open();
+    let list = calls(&m.open());
+    answer(
+        &mut m,
+        list[0].0,
+        200,
+        json!({ "rows": [{ "name": "Ada" }], "total": 1 }),
+    );
     assert_eq!(m.get("sys.outlet"), Some(json!("home")));
+    assert_eq!(m.get("app.count"), Some(json!(1)));
     m.fire("nav.new_contact", json!({}));
     assert_eq!(m.get("sys.outlet"), Some(json!("new_contact")));
     let call = calls(&m.fire(
