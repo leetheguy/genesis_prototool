@@ -11,7 +11,9 @@ the open screens.
 
 As in PurpleFlow (its spec 090): `GET /agents` answers with `AGENTS.md` from the top of the configs
 folder, as Markdown, with every `BASE` replaced by the address the request came to
-(`https://my-domain.com`). It's open, since an agent needs it before it has a token, and it holds only
+(`https://my-domain.com`): the scheme and host a proxy in front passes on (`X-Forwarded-Proto` and
+`X-Forwarded-Host`), else `http` and the request's `Host`. Only `BASE` as a word of its own is replaced,
+not `DATABASE`. It's open, since an agent needs it before it has a token, and it holds only
 what's in that file. Without the file, it's a `404` that says to add one.
 
 A person sends an agent to `my-domain.com/agents` and hands it `GENESIS_AGENT_TOKEN`; the guide covers
@@ -83,6 +85,7 @@ Authorization: Bearer $GENESIS_AGENT_TOKEN
 
 - `GET /agents` answers the configs folder's `AGENTS.md` with `BASE` filled in from the request, and needs no token
 - `GET /agents` with no `AGENTS.md` is a `404` saying to add one
+- `BASE` takes the scheme and host a proxy passes on; a host that isn't a host name (with an optional port) isn't used
 - a load problem is logged with its time, file, line, and column; a clean load after a bad one logs `load ok`
 - a failed call is logged with its operation, status, answer, client, and starting event, and no headers or credentials
 - a `run` failure a client reports through the mirror is logged once, though the mirror sends it again
@@ -105,3 +108,10 @@ Milestone three ([999](999_todo.md)):
 - [ ] the log: `run` lines from the mirror
 - [ ] `GET /api/log`, with `since` and `tail`
 - [ ] the push route, over the config stream, with its `push` lines and a deployed check
+
+## Log
+
+- 2026-11-25: `BASE` is the scheme and host a proxy in front passes on (`X-Forwarded-Proto`, `X-Forwarded-Host`),
+  else `http` and `Host`, since `serve` sits behind one in Compose ([010](010_architecture.md)). A host header
+  that isn't a host name, with an optional port, falls back to `serve`'s own `--listen` address, so a request
+  can't put a link to anywhere else in the guide it gets.
