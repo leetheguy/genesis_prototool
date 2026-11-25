@@ -64,11 +64,10 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   TOML file by the name it goes by, its file name without `.toml` (`{ go = "contacts" }` for
   `views/contacts.toml`), written out, not a template, and not a path. Any component without required props
   can be that page. To check with Lee. From [100](100_events.md), "Going".
-- **When a bad `go` fails.** A name `go` can't use (no such component, one that needs props, or no outlet)
-  fails when the step runs, not at load. Being confirmed with Lee. From [100](100_events.md), "Going".
 - **The outlet's other details, built the smaller way.** The component in the outlet gets no props, and an
-  outlet inside a `form` or an `each` is a config error. Decided by Lee: `sys.outlet` is kept on the device,
-  and a component keeps its locals while it's out of the outlet ([050](050_state.md)).
+  outlet inside a `form` or an `each` is a config error. Decided by Lee: `sys.outlet` is kept on the device;
+  a component keeps its locals while it's out of the outlet ([050](050_state.md)); and a name `go` can't use
+  fails when the step runs, not at load ([100](100_events.md)).
 - **How a stream is stopped.** [050](050_state.md) had a `cancel` naming the source, and `cancel` is gone.
 
 - **Sessions across `serve` restarts and replicas.** Sessions live in `serve`'s memory, so a restart signs

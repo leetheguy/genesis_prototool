@@ -274,3 +274,5 @@ Milestone three ([999](999_todo.md)):
   well." On what `go` names: "Go's target should be a TOML page." Read as: `go` names a component's TOML
   file, by the name it goes by (`contacts` for `views/contacts.toml`), written out; logged in [999](999_todo.md)
   for him to check.
+- 2026-11-25: a `go` naming a page that isn't there (or can't go there) fails when it runs, not at load,
+  so a page can show up later. Lee, on load or run: "When it runs".
