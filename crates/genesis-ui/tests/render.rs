@@ -133,10 +133,17 @@ fn headings_draw_at_levels_one_and_three_too() {
 
 #[test]
 fn advancing_the_clock_runs_timers_and_redraws() {
-    let toml = "[app]\nname = \"x\"\n[state]\nn = 0\n[[body]]\ntype = \"text\"\ntext = \"n={{ app.n }}\"\n[on]\n\"app.opened\" = [{ every = 100, fire = \"tick\" }]\n\"tick\" = [{ step = \"app.n\" }]\n";
-    let out = html(toml, |host| {
+    let toml = "[app]\nname = \"x\"\n[state]\nn = 0\n[[body]]\ntype = \"text\"\ntext = \"n={{ app.n }}\"\n[on]\n\"app.opened\" = [{ start = \"tick\" }]\n\"tick.complete\" = [{ step = \"app.n\" }]\n";
+    let app = App::from_files([
+        ("app.toml", toml),
+        ("timers.toml", "[tick]\nms = 100\nrepeat = true\n"),
+    ])
+    .expect("app loads");
+    let out = Owner::new().with(|| {
+        let host = Host::new(app);
         host.open();
         host.advance(250);
+        app_view(host).to_html()
     });
     assert!(out.contains("n=2"), "{out}");
 }

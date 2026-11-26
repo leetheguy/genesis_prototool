@@ -113,10 +113,18 @@ fn a_fired_event_can_carry_a_payload() {
 fn advance_moves_the_clock_and_runs_timers() {
     let app = AppDir::new(
         "timers",
-        "[app]\nname = \"x\"\n[on]\n\"app.opened\" = [{ every = 100, fire = \"tick\" }]\n",
+        "[app]\nname = \"x\"\n[on]\n\"app.opened\" = [{ start = \"tick\" }]\n",
     );
+    std::fs::write(
+        app.0.join("timers.toml"),
+        "# A timer for the test.\n[tick]\nms = 100\nrepeat = true\n",
+    )
+    .unwrap();
     let out = bench(&app.0, "{\"advance\": 250}\n");
-    let ticks = lines(&out).iter().filter(|l| l["name"] == "tick").count();
+    let ticks = lines(&out)
+        .iter()
+        .filter(|l| l["name"] == "tick.complete")
+        .count();
     assert_eq!(ticks, 2);
 }
 

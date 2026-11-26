@@ -58,6 +58,35 @@ pub struct App {
     /// file of its own, never a table in `app.toml`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub components: BTreeMap<String, Component>,
+    /// The app's timers, by name, from `timers.toml` ([spec 100](../../../specs/100_events.md),
+    /// "Timers"). They join Genesis's own in one registry ([`timers`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub timers: BTreeMap<String, Timer>,
+}
+
+/// A timer: how long it runs, and whether it starts again each time it completes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Timer {
+    /// Milliseconds from its start to its `.complete`. At least 1.
+    pub ms: u64,
+    /// Starts again each time it completes, until stopped. Default `false`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub repeat: bool,
+}
+
+/// Genesis's own timers, built in ([spec 100](../../../specs/100_events.md), "Timers"). None yet: the
+/// first comes with `toast`.
+const SYSTEM_TIMERS: [(&str, Timer); 0] = [];
+
+/// Every timer the app can start, by name: Genesis's own, then the app's from `timers.toml`.
+pub fn timers(app: &App) -> BTreeMap<String, Timer> {
+    let mut all: BTreeMap<String, Timer> = SYSTEM_TIMERS
+        .into_iter()
+        .map(|(name, timer)| (name.to_string(), timer))
+        .collect();
+    all.extend(app.timers.clone());
+    all
 }
 
 /// A component: a file with a `[component]` table, used by its file name with a `use` node
@@ -995,31 +1024,15 @@ pub enum Step {
         /// The line; may hold templates.
         log: String,
     },
-    /// Waits, then carries on with the list.
-    Delay {
-        /// Milliseconds.
-        delay: u64,
-        /// A name `cancel` can stop it by.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
+    /// Starts a timer by its name, or starts it over ([spec 100](../../../specs/100_events.md), "Timers").
+    Start {
+        /// The timer's name.
+        start: String,
     },
-    /// Fires an event on a repeating timer.
-    Every {
-        /// Milliseconds between events.
-        every: u64,
-        /// The event's name.
-        fire: String,
-        /// A name `cancel` can stop it by.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        /// The events' payload.
-        #[serde(skip_serializing_if = "Map::is_empty")]
-        with: Map<String, Value>,
-    },
-    /// Stops the `delay` or `every` with that `id`.
-    Cancel {
-        /// The `id`.
-        cancel: String,
+    /// Stops a timer by its name.
+    Stop {
+        /// The timer's name.
+        stop: String,
     },
     /// Calls these sources again: `app.NAME`, each a `[sources.NAME]`.
     Reload {
@@ -1338,6 +1351,7 @@ impl App {
         let mut component_files: BTreeMap<String, String> = BTreeMap::new();
         // Components whose files didn't read: their uses aren't checked, past that problem.
         let mut broken = BTreeSet::new();
+        let mut timers = BTreeMap::new();
         for (path, text) in &files {
             let (path, text) = (path.as_ref(), text.as_ref());
             let file_name = path.rsplit('/').next().unwrap_or(path).to_string();
@@ -1351,6 +1365,29 @@ impl App {
                 continue;
             }
             seen_files.insert(file_name.clone(), path.to_string());
+            if file_name == "timers.toml" {
+                match toml::from_str::<BTreeMap<String, Timer>>(text) {
+                    Ok(read) => {
+                        for (name, timer) in &read {
+                            if !is_plain(name) {
+                                problems.push(problem_in(
+                                    path,
+                                    format!("a timer's name is a plain name, like \"poll\", not {name:?}"),
+                                ));
+                            }
+                            if timer.ms == 0 {
+                                problems.push(problem_in(
+                                    path,
+                                    format!("the timer `{name}` needs `ms` of at least 1"),
+                                ));
+                            }
+                        }
+                        timers = read;
+                    }
+                    Err(e) => problems.push(toml_problem(path, text, &e)),
+                }
+                continue;
+            }
             let is_component = path != "app.toml"
                 && toml::from_str::<toml::Table>(text).is_ok_and(|t| t.contains_key("component"));
             if is_component {
@@ -1420,6 +1457,13 @@ impl App {
                 ));
             }
             app.components = components;
+            if !app.timers.is_empty() {
+                problems.push(problem_in(
+                    "app.toml",
+                    "timers go in a file of their own, timers.toml, each a table named by the timer".into(),
+                ));
+            }
+            app.timers = timers;
             let checks = Checks {
                 file: "app.toml",
                 components: &app.components,
@@ -1733,7 +1777,7 @@ fn check_component(component: &Component, checks: &Checks, problems: &mut Vec<Co
 }
 
 /// Looks through a component's own steps for one that reaches past it: a custom action, a `call`,
-/// or a `reload`. A component's steps work on its own `local.*`, run its props' steps, and fire
+/// a `reload`, a timer's `start` or `stop`, or a `log`. A component's steps work on its own `local.*`, run its props' steps, and fire
 /// events; the app's handlers for those events can do anything ([spec 090](../../../specs/090_components.md)).
 fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
     for step in node.shortcuts() {
@@ -1743,6 +1787,9 @@ fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
             }
             Step::Call { call, .. } => format!("calls `{call}`"),
             Step::Reload { .. } => "reloads a source".to_string(),
+            Step::Start { start } => format!("starts the timer `{start}`"),
+            Step::Stop { stop } => format!("stops the timer `{stop}`"),
+            Step::Log { .. } => "writes to the log".to_string(),
             _ => continue,
         };
         problem(format!(
@@ -2149,10 +2196,9 @@ fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
     (line, column)
 }
 
-/// The step kinds, keyed by the TOML key that names each one. `every` comes before `fire`
-/// because an `every` step has a `fire` key too.
-const STEP_KINDS: [&str; 10] = [
-    "call", "reload", "every", "set", "step", "toggle", "fire", "log", "delay", "cancel",
+/// The step kinds, keyed by the TOML key that names each one.
+const STEP_KINDS: [&str; 9] = [
+    "call", "reload", "set", "step", "toggle", "fire", "log", "start", "stop",
 ];
 
 impl<'de> Deserialize<'de> for Step {
@@ -2167,6 +2213,14 @@ impl<'de> Deserialize<'de> for Step {
                 )));
             }
         };
+        if let Some(gone) = ["delay", "every", "cancel"]
+            .into_iter()
+            .find(|k| fields.contains_key(*k))
+        {
+            return Err(de::Error::custom(format!(
+                "there's no `{gone}` step: a timer is named in timers.toml, and `start` and `stop` run it"
+            )));
+        }
         let Some(kind) = STEP_KINDS.into_iter().find(|k| fields.contains_key(*k)) else {
             let keys: Vec<&str> = fields.keys().map(String::as_str).collect();
             return Err(de::Error::custom(format!(
@@ -2211,22 +2265,11 @@ impl<'de> Deserialize<'de> for Step {
                     .map_err(wrong)?
                     .log,
             },
-            "delay" => {
-                let s: steps::Delay = serde_json::from_value(fields).map_err(wrong)?;
-                Step::Delay {
-                    delay: s.delay,
-                    id: s.id,
-                }
-            }
-            "every" => {
-                let s: steps::Every = serde_json::from_value(fields).map_err(wrong)?;
-                Step::Every {
-                    every: s.every,
-                    fire: s.fire,
-                    id: s.id,
-                    with: s.with,
-                }
-            }
+            "start" => Step::Start {
+                start: serde_json::from_value::<steps::Start>(fields)
+                    .map_err(wrong)?
+                    .start,
+            },
             "reload" => Step::Reload {
                 reload: serde_json::from_value::<steps::Reload>(fields)
                     .map_err(wrong)?
@@ -2241,10 +2284,10 @@ impl<'de> Deserialize<'de> for Step {
                     event: s.event,
                 }
             }
-            _ => Step::Cancel {
-                cancel: serde_json::from_value::<steps::Cancel>(fields)
+            _ => Step::Stop {
+                stop: serde_json::from_value::<steps::Stop>(fields)
                     .map_err(wrong)?
-                    .cancel,
+                    .stop,
             },
         })
     }
@@ -2294,19 +2337,8 @@ mod steps {
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
-    pub struct Delay {
-        pub delay: u64,
-        pub id: Option<String>,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct Every {
-        pub every: u64,
-        pub fire: String,
-        pub id: Option<String>,
-        #[serde(default)]
-        pub with: Map<String, Value>,
+    pub struct Start {
+        pub start: String,
     }
 
     #[derive(Deserialize)]
@@ -2328,8 +2360,8 @@ mod steps {
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
-    pub struct Cancel {
-        pub cancel: String,
+    pub struct Stop {
+        pub stop: String,
     }
 }
 

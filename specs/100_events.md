@@ -80,9 +80,8 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 | `{ call = "crm.contacts.update", params = {...}, into = {...}, event = "/ptr" }` | calls an operation ([030](030_connections.md)); waits for the reply | `crm.contacts.update.ok` / `.failed` / `.{status}` |
 | `{ reload = ["app.contacts"] }` | calls those sources again ([050](050_state.md)) | their calls' events |
 | `{ fire = "ticker.tick", with = {...} }` | fires an event | that event |
-| `{ delay = 5000, id = "ticker" }` | waits, then carries on with the list | — |
-| `{ every = 5000, fire = "ticker.tick", id = "ticker" }` | fires an event on a repeating timer | that event, each time |
-| `{ cancel = "ticker" }` | stops the `delay` or `every` with that `id` | — |
+| `{ start = "poll" }` | starts the timer `poll`, or starts it over ([Timers](#timers)) | `poll.start`, then `poll.complete` when its time is up |
+| `{ stop = "poll" }` | stops the timer `poll`, if it's running | `poll.stop` |
 | `{ confirm = "Delete this contact?" }` | asks; "no" stops the list quietly | — |
 | `{ toast = "Saved.", variant = "success" }` | shows a short message | — |
 | `{ log = "..." }` | adds a line to `sys.events` and the mirror ([050](050_state.md)) | — |
@@ -97,20 +96,48 @@ action that runs itself stops instead of running forever.
 
 - **One queue, first in, first out, one event at a time.** For each event, every matching handler
   runs in file order. Events those handlers fire join the back of the queue.
-- **A `call` or `delay` pauses its list, not the bus.** Other events keep flowing. The list carries on
-  when the reply arrives (or the time is up), in its turn on the queue.
+- **A `call` pauses its list, not the bus.** Other events keep flowing. The list carries on when the
+  reply arrives, in its turn on the queue.
 - **Chains have a depth limit.** An event fired by a handler is one deeper than the event that ran
   it. Past `[app] max_chain` (default `100`) the event is dropped, and `chain.too_deep` fails loud with
-  the chain's names. A timer starts a new chain: `every` fires at depth 0, and a list resumed after a
-  `delay` fires its events as if the event that started it had just arrived. So a polling loop
-  (`delay`, then `fire`) runs forever, while a runaway loop with no pause is stopped.
-- **Timers stop** with `cancel`, on `wipe_state`, and when the app closes. Two due at the same moment
-  run in the order they were set. `every = 0` is a failure.
+  the chain's names. A timer's `.complete` starts a new chain at depth 0, so a repeating timer runs
+  forever, while a runaway loop with no timer in it is stopped.
 - **Failures are always logged.** Every `*.failed` event goes into `sys.errors` and the event trail
   before any handler runs. If no handler's pattern matches it, Genesis also shows a toast. A handler
   can take over the display; it can't make a failure disappear. A step that fails in a handler's own
   list (not inside a custom action, which reports its own `.failed`) stops that list, and is logged under
   the event's name and toasted.
+
+## Timers
+
+A timer is named, and lives in one registry: Genesis's own system timers, built in, and the app's, from a
+file always called `timers.toml`. An app doesn't build the basic ones itself. Each table in `timers.toml`
+is a timer, named by the table:
+
+```toml
+# timers.toml: the app's timers, each started and stopped by name.
+[poll]
+ms = 5000          # from start to .complete
+repeat = true      # start again each time it completes, until stopped (default false)
+
+[save_timeout]
+ms = 10000
+```
+
+- `{ start = "poll" }` starts it and fires `poll.start`. A running timer started again starts over.
+- When its time is up it fires `poll.complete`. With `repeat = true` it then starts again, so it fires
+  `.complete` each time round (not on every tick), until `{ stop = "poll" }`, which fires `poll.stop`.
+  Stopping a timer that isn't running fires nothing.
+- `start` or `stop` naming no timer fails, like a step naming no action.
+- `ms` is at least `1`, a timer's name is a plain name, and a timer takes only `ms` and `repeat`. `[timers]`
+  anywhere but `timers.toml` is a config error.
+- Two due at the same moment complete in the order they were started.
+- Timers stop on `wipe_state` and when the app closes. Over a config reload a running timer keeps
+  running, unless the registry no longer holds it.
+- Inside a component, the steps can't `start` or `stop` a timer ([090](090_components.md)). A timer that
+  keeps running after the screen changes is the app author's choice to make.
+- Genesis has no system timers yet. The first comes with `toast`, whose messages go away on their own
+  ([999](999_todo.md)). A connection's `timeout` stays the server's, on the connection ([030](030_connections.md)).
 
 ## What the bus shows
 
@@ -149,8 +176,14 @@ makes is printed as `{"call": ...}`; with `--mock mocks.toml` (`[[mock]]` tables
 - `*` and `?` match as in the examples; every matching handler runs, in file order
 - a plain-string step runs that action
 - events are handled in order, one at a time; a paused list resumes in queue order while other events flow
-- a chain past `max_chain` is dropped and fails loud with its names; a `delay` loop runs past the limit
-- `every` repeats until `cancel`; `wipe_state` and closing the app stop all timers
+- a chain past `max_chain` is dropped and fails loud with its names; a repeating timer runs past the limit
+- a timer fires `.start`, then `.complete` when its time is up; a repeating one completes each time round
+  until `stop`; started again it starts over; `stop` on one not running fires nothing; `start` or `stop`
+  naming no timer fails
+- `timers.toml` fills the registry; `ms` under 1, a name that isn't plain, an unknown key, and `[timers]`
+  outside `timers.toml` are config errors; a `delay`, `every`, or `cancel` step is a config error that
+  points to `timers.toml`
+- over a reload a running timer keeps running while it's still declared
 - every `*.failed` lands in `sys.errors` and the trail; with no matching handler it also toasts
 - a step failing in a handler's own list is logged under the event's name and toasted
 - `sys.bus` lists every pattern with its handlers and every event the config can fire
@@ -168,10 +201,13 @@ The first milestone ([999](999_todo.md)): the bus, worked out on the bench first
 - [x] core: `set`, `step`, `toggle`, and `.changed` events (`go` too, until it was taken out: see the log)
 - [x] core: custom actions with `.done` and `.failed`; stop at the first failure
 - [x] core: chain depth and `max_chain`; failures always logged
-- [x] core: `delay`, `every`, and `cancel` on a clock tests control
+- [x] core: `delay`, `every`, and `cancel` on a clock tests control (replaced by named timers: see the log)
 - [x] `genesis-bench`: stdin events, the printed trail, and the final state (no calls yet)
 
 Milestone three ([999](999_todo.md)):
+
+- [x] core: named timers in one registry, the app's from `timers.toml`, with `start` and `stop`, and
+  `.start`, `.stop`, and `.complete` events; `delay`, `every`, and `cancel` are gone
 
 - [ ] `confirm`: asks in a dialog; "no" stops the list quietly
 - [ ] `toast`: a short message, with its variant
@@ -182,3 +218,9 @@ Milestone three ([999](999_todo.md)):
   hiding another is all the navigation there is: set a variable the app declares (`app.view`) and show on it
   ([080](080_display_logic.md)). A file that holds every such handler is a convention an author may choose,
   not part of Genesis. `go` may come back later as a convenience. Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."
+- 2026-11-25: timers are named, in one registry, and `delay`, `every`, and `cancel` are gone. Lee: "I think a central table is best. There should be default system timers baked in, so there should be an
+  internal registry within the app somewhere. And whatever is in a file that's always called timers.toml gets added
+  to that registry." On repeating: "A repeating timer would fire complete every time the timer completes. Every tick
+  would be kind of noisy." And: "a timer that runs in the background after the view has changed is an architecture
+  problem, not one of ours." A
+  `log` stays an action, and fires no event: "log is yet another system tool, and that's all there is to it."

@@ -186,7 +186,7 @@ label = "Go"
 [on]
 "go_btn.click" = [{ fire = "went" }]
 [actions.cheer]
-do = [{ every = 10, fire = "tick" }]
+do = [{ fire = "tick" }]
 "#,
     );
     let fires = m.get("sys.bus").unwrap()["fires"].clone();

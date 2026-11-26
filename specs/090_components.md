@@ -94,8 +94,8 @@ props = { contact = "{{ item }}" }
 - A component sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
   screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
 - **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
-  props' steps, and `fire` events. A custom action, a `call`, or a `reload` written in a component is a config
-  error. To change what's shown, a component fires an event and the app's handler for it sets the app's
+  props' steps, and `fire` events. A custom action, a `call`, a `reload`, a timer's `start` or `stop`, or a
+  `log` written in a component is a config error. To change what's shown, a component fires an event and the app's handler for it sets the app's
   variables, so all of an app's navigation can sit in one file if its author wants that (a convention, not
   part of Genesis). Events are universal, though: an event a component fires keeps the name it's given, and the app's
   handlers for it can do anything. Genesis sets no structure on event names. Any scoping a user wants is a
@@ -122,7 +122,7 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
   that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
 - `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
-- a custom action, a `call`, or a `reload` in a component's own steps is a config error; its `fire` keeps the
+- a custom action, a `call`, a `reload`, a `start`, a `stop`, or a `log` in a component's own steps is a config error; its `fire` keeps the
   event's name, and the app's handlers for it run
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
 - a component with named controls or a submit button used outside a form, and one holding a form used inside
@@ -149,3 +149,5 @@ Milestone three ([999](999_todo.md)):
   the event and call the action. This has the added bonus of allowing a person or agent to put all of the
   navigation into a single file without having to chase all over the whole app to figure out where the heck the
   navigation just fired from." There's no `go` step at all now ([100](100_events.md)). Timers and `log` are next: Lee calls them system components ([999](999_todo.md)).
+- 2026-11-25: a component's own steps can't `start` or `stop` a timer or `log`; they fire events and the app's
+  handlers do the rest ([100](100_events.md), "Timers"). Lee, on the question: "Yes to number five."

@@ -46,7 +46,7 @@ A source is a shortcut for handlers ([100](100_events.md)), Rails-style: the con
 - **Streams:** with a `stream` operation, each message updates the source. `mode = "replace"` (the
   default) keeps the latest, which suits a ticker. `mode = "append"` adds to it: text is joined onto
   text, which suits a streamed AI answer, and anything else is pushed onto a list. A stream reconnects
-  when its params change, and stops on a `cancel` naming the source.
+  when its params change, and stops on a step naming the source (which step is open in [999](999_todo.md), since `cancel` is gone).
 
 Every source has a status, `sys.sources.NAME`: `idle`, `loading`, `ok`, or `failed`. A node showing a source
 shows loading and failure in its own place on its own ([040](040_catalog.md)). Conditions can test it with
@@ -159,3 +159,4 @@ Milestone two ([999](999_todo.md)):
   There are no pages, so there's no view to track: an app that wants one declares its own variable
   (`app.view`) and shows and hides on it ([080](080_display_logic.md)). A `sys.view` kept on a device from
   before is ignored. Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."
+- 2026-11-25: `cancel` is gone ([100](100_events.md), "Timers"), so how a stream is stopped is open again ([999](999_todo.md)).
