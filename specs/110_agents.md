@@ -105,7 +105,7 @@ Milestone three ([999](999_todo.md)):
 
 - [x] `GET /agents`, as PurpleFlow's
 - [x] the log: `load` and `call` lines, `log_lines`, and the logs folder in Compose
-- [ ] the log: `run` lines from the mirror
+- [x] the log: `run` lines from the mirror
 - [ ] `GET /api/log`, with `since` and `tail`
 - [ ] the push route, over the config stream, with its `push` lines and a deployed check
 
@@ -126,3 +126,8 @@ Milestone three ([999](999_todo.md)):
     credential's value redacted.
   - Each entry is one line: a line break inside one is written as a space.
   - `log_lines` is read from the app as it last loaded clean, else the default.
+- 2026-11-25: `run` lines: each mirror post holds the client's whole `sys.errors`, so `serve` compares it with the
+  mirror it last wrote for that client and logs each entry that wasn't there, oldest first, as
+  `run  client ID: EVENT: MESSAGE`. The mirror on disk is the memory of what's been logged, so a reload of the
+  page or of `serve` logs nothing twice. A failed call shows twice, once as `serve` saw it (`call`) and once as
+  the client did (`run`, its `OP.failed`). The line's time is when `serve` heard of it.

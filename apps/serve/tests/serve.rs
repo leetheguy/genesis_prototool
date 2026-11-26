@@ -466,3 +466,36 @@ async fn base_takes_the_scheme_and_host_a_proxy_passes_on_and_only_a_host_name()
         assert_eq!(&body, want, "{headers:?}");
     }
 }
+
+#[tokio::test]
+async fn a_run_failure_a_client_reports_through_the_mirror_is_logged_once() {
+    let folders = Folders::new("log-run");
+    let first = json!({ "name": "save_btn.click", "message": "app.nope isn't declared", "at": 10 });
+    let second = json!({ "name": "chain.too_deep", "message": "a chain of events went past max_chain", "at": 20 });
+    let mirror = |errors: Value| json!({ "client": "c7f3a", "state": { "app": {}, "sys": { "errors": errors } }, "events": [] });
+    let log = || {
+        std::fs::read_to_string(folders.path("logs/genesis.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| line.split_once(' ').unwrap().1.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        post(&folders, "/api/mirror", mirror(json!([first]))).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        log(),
+        ["run  client c7f3a: save_btn.click: app.nope isn't declared"]
+    );
+    // The mirror sends sys.errors whole, newest first, each time: only what's new is logged.
+    post(&folders, "/api/mirror", mirror(json!([second, first]))).await;
+    post(&folders, "/api/mirror", mirror(json!([second, first]))).await;
+    assert_eq!(
+        log(),
+        [
+            "run  client c7f3a: save_btn.click: app.nope isn't declared",
+            "run  client c7f3a: chain.too_deep: a chain of events went past max_chain",
+        ]
+    );
+}
