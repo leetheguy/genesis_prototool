@@ -25,8 +25,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
   no action, a bad template, all caught at load with a line number, and logged. The bus already fails them
   loudly at runtime ([100](100_events.md)).
-- **`docs/authoring.md`**, the guide, written as each piece lands. It's written for agents, and starts from what
-  Genesis is for: a way to show a person what's most useful, on the fly, and to work with them by more than words.
 - **The CRM**, as a sample with its own API: two tables, companies and contacts (each contact at one company),
   each with full CRUD. Lists you can search (the API filters), a company's page with its contacts, forms to add
   and edit with checks, deletes that ask first, toasts when things save, and loud failures. Built only from

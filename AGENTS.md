@@ -63,6 +63,8 @@ about data: that logic lives behind the API. So:
 every other spec.
 
 **Changing what a config can say?** Every doc under the **docs** binding changes in the same
-commit, `docs/authoring.md` above all: it's how other agents learn to build Genesis screens.
+commit, `docs/authoring.md` above all: it's how other agents learn to build Genesis screens. Its
+whole-app examples (a ` ```toml ` block starting `# app.toml`, and the file blocks after it) must load, and
+`crates/genesis-core/tests/guide.rs` checks that they do. Anything not built yet goes under its "Not built yet".
 
 **Versions:** check current versions on crates.io and npm before adding any dependency.
