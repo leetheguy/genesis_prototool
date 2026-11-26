@@ -27,6 +27,7 @@ use style::ClassList;
 
 mod components;
 mod controls;
+pub mod files;
 pub mod style;
 
 /// Makes a call and answers it, as [`Host::set_caller`] takes it.
@@ -517,6 +518,7 @@ fn draw(
         Node::Toggle(n) => n.view(wired),
         Node::Radio(n) => n.view(wired),
         Node::Form(n) => n.view(wired),
+        Node::File(n) => n.view(wired),
     }
 }
 

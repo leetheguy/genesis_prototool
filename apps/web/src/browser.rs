@@ -115,15 +115,29 @@ fn keep(host: Host) {
     );
 }
 
-/// Makes the machine's calls through serve, and hands each answer back.
+/// Makes the machine's calls through serve, and hands each answer back. A call whose params hold
+/// file references goes as a multipart form, the call as its `call` part and each file as a part
+/// named by its ID, so serve can send the bytes on (spec 040, "file").
 fn caller(host: Host) {
-    let url = "/api/call".to_string();
     let replies = host.clone();
     host.set_caller(move |call| {
-        let (host, url) = (replies.clone(), url.clone());
+        let host = replies.clone();
         leptos::task::spawn_local(async move {
             let body = json!({ "op": call.op, "params": call.params, "headers": call.headers });
-            let reply = match fetch_json(&url, &body).await {
+            let ids: Vec<String> = call
+                .params
+                .as_object()
+                .map(|params| genesis_core::file::references(params))
+                .unwrap_or_default()
+                .into_iter()
+                .map(String::from)
+                .collect();
+            let sent = if ids.is_empty() {
+                fetch_json("/api/call", &body).await
+            } else {
+                fetch_files("/api/call/files", &body, &ids).await
+            };
+            let reply = match sent {
                 Ok((200, answer)) => reply_from(answer),
                 Ok((status, answer)) => Reply::Failed(format!(
                     "serve refused the call to {} ({status}): {}",
@@ -153,11 +167,34 @@ fn reply_from(answer: Value) -> Reply {
 /// POSTs `body` as JSON, and gives back the status and the answer (as JSON, or as text).
 async fn fetch_json(url: &str, body: &Value) -> Result<(u16, Value), String> {
     let init = web_sys::RequestInit::new();
-    init.set_method("POST");
     init.set_body(&body.to_string().into());
     let headers = web_sys::Headers::new().map_err(|e| format!("{e:?}"))?;
     let _ = headers.set("content-type", "application/json");
     init.set_headers(&headers);
+    fetch(url, init).await
+}
+
+/// POSTs `body` as the `call` part of a multipart form, with each held file in `ids` as a part
+/// named by its ID. A file the page no longer holds is left out, and serve says so.
+async fn fetch_files(url: &str, body: &Value, ids: &[String]) -> Result<(u16, Value), String> {
+    let form = web_sys::FormData::new().map_err(|e| format!("{e:?}"))?;
+    form.append_with_str("call", &body.to_string())
+        .map_err(|e| format!("{e:?}"))?;
+    for id in ids {
+        if let Some(file) = genesis_ui::files::get(id) {
+            form.append_with_blob_and_filename(id, &file, &file.name())
+                .map_err(|e| format!("{e:?}"))?;
+        }
+    }
+    let init = web_sys::RequestInit::new();
+    // The browser sets the content type itself, with the form's boundary.
+    init.set_body(&form);
+    fetch(url, init).await
+}
+
+/// POSTs `init`, and gives back the status and the answer (as JSON, or as text).
+async fn fetch(url: &str, init: web_sys::RequestInit) -> Result<(u16, Value), String> {
+    init.set_method("POST");
     let response =
         wasm_bindgen_futures::JsFuture::from(window().fetch_with_str_and_init(url, &init))
             .await

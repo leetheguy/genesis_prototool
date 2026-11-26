@@ -26,7 +26,7 @@ any change to the Dockerfile, `docker-compose.yml`, or `/fs/`.
 **Browser checks:** `scripts/check-hello.sh` builds the bundle and `serve`, then drives the hello app in headless
 Chromium: clicks and the mirror (`tests/deployed/hello.mjs`), live edits (`tests/deployed/reload.mjs`), calls
 through `serve` to a mock API and PurpleFlow (`tests/deployed/calls.mjs`; `GENESIS_PF_HOOKS` points it at another
-PurpleFlow), grid layout (`tests/deployed/layout.mjs`), media (`tests/deployed/media.mjs`), `each` (`tests/deployed/each.mjs`), the controls (`tests/deployed/controls.mjs`), and forms (`tests/deployed/form.mjs`). Run it after any change to the renderer, `apps/web`, or `serve`.
+PurpleFlow), grid layout (`tests/deployed/layout.mjs`), media (`tests/deployed/media.mjs`), `each` (`tests/deployed/each.mjs`), the controls (`tests/deployed/controls.mjs`), forms (`tests/deployed/form.mjs`), and files (`tests/deployed/file.mjs`). Run it after any change to the renderer, `apps/web`, or `serve`.
 
 ## Genesis rules
 

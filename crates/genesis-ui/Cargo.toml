@@ -10,6 +10,8 @@ publish.workspace = true
 genesis-core.workspace = true
 leptos.workspace = true
 serde_json.workspace = true
+# The file picker's files. Leptos brings web-sys already; these add the parts it doesn't use.
+web-sys = { version = "0.3", features = ["File", "FileList", "Blob", "Crypto", "Window"] }
 
 [dev-dependencies]
 # Tests render to HTML natively, which is Leptos's server-side mode. The browser build turns on

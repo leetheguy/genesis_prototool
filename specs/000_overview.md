@@ -20,7 +20,7 @@ design they add up to.
 (layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
 and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; the controls (`input`, `textarea`,
 `select`, `checkbox`, `toggle`, and `radio` groups), with `var` or with `name` in a `form`, and the `submit`
-button. 040's task list says what's next: `file`, `dialog`, and `markdown`. Still to come after them are components, display logic, and what
+button; and `file`, whose picked files go out with a call as multipart, through `serve`. 040's task list says what's next: `dialog` and `markdown`. Still to come after them are components, display logic, and what
 agents need from `serve`: a guide, one log, and a webhook ([110](110_agents.md)).
 
 ## What this is

@@ -10,6 +10,7 @@
 //! | `GET /_genesis/*` | the renderer's bundle (`trunk build` output) |
 //! | `GET /api/config` | server-sent events: `config` with the loaded app as JSON, or `problems` with each one's `app.toml:LINE:COLUMN` |
 //! | `POST /api/call` | makes a call to one of the app's operations: `{"op", "params", "headers"}` in, `{"status", "body"}` or `{"error"}` out |
+//! | `POST /api/call/files` | the same, as `multipart/form-data`: the call as JSON in a `call` part, and each file a part named by its reference's ID |
 //! | `POST /api/mirror` | a client's state and trail entries, written to the state folder |
 //! | `/fs/*` | the files service (dufs), for agents with `Authorization: Bearer GENESIS_AGENT_TOKEN` |
 //! | `GET /health` | `200` when the server is up |
@@ -20,7 +21,7 @@
 //! (to a temporary file, then renamed), and its events are appended as JSON lines, keeping the last
 //! [`EVENTS_KEPT`].
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse, Response};
@@ -262,6 +263,11 @@ fn routes(server: Arc<Server>) -> Router {
         .route("/api/config", get(config))
         .route("/api/mirror", post(mirror))
         .route("/api/call", post(call))
+        // Files can be big; how big is the app's call (each `file` control's `max_size`).
+        .route(
+            "/api/call/files",
+            post(call_with_files).layer(DefaultBodyLimit::disable()),
+        )
         .route("/fs", any(files))
         // `/fs/{*rest}` needs something after the slash, and the folder root is what agents list first.
         .route("/fs/", any(files))
@@ -402,6 +408,58 @@ async fn mirror(State(server): Shared, Json(body): Json<Value>) -> Response {
 }
 
 async fn call(State(server): Shared, Json(body): Json<Value>) -> Response {
+    run_call(&server, body, &BTreeMap::new()).await
+}
+
+/// One file the browser sent with a call: its name, its type, and its bytes.
+struct Upload {
+    name: String,
+    kind: String,
+    bytes: Vec<u8>,
+}
+
+/// A call whose params hold file references: the call in a `call` part, and each file's bytes in
+/// a part named by its reference's ID.
+async fn call_with_files(State(server): Shared, mut parts: Multipart) -> Response {
+    let mut body = Value::Null;
+    let mut files = BTreeMap::new();
+    loop {
+        let part = match parts.next_field().await {
+            Ok(Some(part)) => part,
+            Ok(None) => break,
+            Err(e) => {
+                return refuse(
+                    StatusCode::BAD_REQUEST,
+                    format!("the call's files broke off: {e}"),
+                );
+            }
+        };
+        let id = part.name().unwrap_or_default().to_string();
+        let name = part.file_name().unwrap_or(&id).to_string();
+        let kind = part
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = match part.bytes().await {
+            Ok(bytes) => bytes.to_vec(),
+            Err(e) => {
+                return refuse(
+                    StatusCode::BAD_REQUEST,
+                    format!("the call's files broke off: {e}"),
+                );
+            }
+        };
+        if id == "call" {
+            body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        } else {
+            files.insert(id, Upload { name, kind, bytes });
+        }
+    }
+    run_call(&server, body, &files).await
+}
+
+/// Makes the call `body` names, with `files` for any file references in its params.
+async fn run_call(server: &Server, body: Value, files: &BTreeMap<String, Upload>) -> Response {
     let app = match load(&server.settings.configs).await {
         Ok(app) => app,
         Err(problems) => {
@@ -422,7 +480,7 @@ async fn call(State(server): Shared, Json(body): Json<Value>) -> Response {
     };
     let params = body["params"].as_object().cloned().unwrap_or_default();
     let sent = body["headers"].as_object().cloned().unwrap_or_default();
-    let reply = match make_call(&server, op_name, &op, params, &sent).await {
+    let reply = match make_call(server, op_name, &op, params, &sent, files).await {
         Ok((status, body)) => serde_json::json!({ "status": status, "body": body }),
         Err(why) => serde_json::json!({ "error": server.settings.creds.redact(&why) }),
     };
@@ -436,6 +494,7 @@ async fn make_call(
     op: &Operation,
     mut params: Map<String, Value>,
     sent: &Map<String, Value>,
+    files: &BTreeMap<String, Upload>,
 ) -> Result<(u16, Value), String> {
     let url = fill_path(op_name, &op.url, &mut params)?;
     let method =
@@ -450,7 +509,10 @@ async fn make_call(
             request = request.header(header, value);
         }
     }
+    let with_files = !genesis_core::file::references(&params).is_empty();
     request = match op.method {
+        // Params holding files go out as multipart, whatever the method would otherwise send.
+        _ if with_files => request.multipart(multipart(op_name, params, files)?),
         Method::Get | Method::Head | Method::Delete => {
             let pairs: Vec<(String, String)> = params
                 .iter()
@@ -488,6 +550,51 @@ async fn make_call(
             Value::String(String::from_utf8_lossy(&bytes).into_owned()),
         )),
     }
+}
+
+/// Params as `multipart/form-data`: each file reference as a part with its bytes, name, and type
+/// (a list of them as one part each, under the same name), and every other param as a text field.
+fn multipart(
+    op_name: &str,
+    params: Map<String, Value>,
+    files: &BTreeMap<String, Upload>,
+) -> Result<reqwest::multipart::Form, String> {
+    let part = |value: &Value| -> Result<Option<reqwest::multipart::Part>, String> {
+        let Some(id) = genesis_core::file::reference(value) else {
+            return Ok(None);
+        };
+        let upload = files.get(id).ok_or_else(|| {
+            format!(
+                "{op_name} sends {}, but its file is gone (a file is held only while its page is open); pick it again",
+                as_text(&value["name"])
+            )
+        })?;
+        let part = reqwest::multipart::Part::bytes(upload.bytes.clone())
+            .file_name(upload.name.clone())
+            .mime_str(&upload.kind)
+            .map_err(|e| format!("{op_name}: {} has a bad type: {e}", upload.name))?;
+        Ok(Some(part))
+    };
+    let mut form = reqwest::multipart::Form::new();
+    for (key, value) in params {
+        let items = match &value {
+            Value::Array(items)
+                if items
+                    .iter()
+                    .any(|v| genesis_core::file::reference(v).is_some()) =>
+            {
+                items.clone()
+            }
+            _ => vec![value.clone()],
+        };
+        for item in &items {
+            form = match part(item)? {
+                Some(file) => form.part(key.clone(), file),
+                None => form.text(key.clone(), as_text(item)),
+            };
+        }
+    }
+    Ok(form)
 }
 
 /// The URL with each `{name}` replaced by the param `name`, URL-encoded, and taken out of the params.

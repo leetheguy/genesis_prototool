@@ -1269,7 +1269,8 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
         | Node::Select(_)
         | Node::Checkbox(_)
         | Node::Toggle(_)
-        | Node::Radio(_) => {
+        | Node::Radio(_)
+        | Node::File(_) => {
             wire.events.push(format!("{name}.change"));
             if let (Some(field), Some(form)) = (node.field(), form) {
                 // A named control fills its form's draft; nothing changes state until `.submit`.

@@ -9,6 +9,7 @@
 
 pub mod bus;
 pub mod config;
+pub mod file;
 pub mod pattern;
 pub mod style;
 pub mod svg;
