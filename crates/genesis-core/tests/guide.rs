@@ -261,3 +261,32 @@ fn a_new_contact_with_a_broken_email_never_reaches_the_api() {
     assert!(calls(&effects).is_empty());
     assert!(m.tried("new_contact", None));
 }
+
+#[test]
+fn delete_asks_first_and_keep_deletes_nothing() {
+    let mut m = Machine::new(example("Delete"));
+    m.open();
+    let ada = json!({ "item": { "id": 7, "name": "Ada" } });
+    let asked = m.fire_at("delete.click", ada.clone(), Some("0"));
+    assert!(
+        calls(&asked).is_empty(),
+        "nothing is called before the answer"
+    );
+    let id = m.get("sys.asking.0.id").unwrap().as_u64().unwrap();
+    assert_eq!(m.get("sys.asking.0.text"), Some(json!("Delete Ada?")));
+    assert!(
+        calls(&m.answer(id, false)).is_empty(),
+        "Keep deletes nothing"
+    );
+
+    m.fire_at("delete.click", ada, Some("0"));
+    let id = m.get("sys.asking.0.id").unwrap().as_u64().unwrap();
+    let effects = m.answer(id, true);
+    let [(call, op, params)] = calls(&effects).try_into().unwrap();
+    assert_eq!(
+        (op.as_str(), params),
+        ("crm.contacts.delete", json!({ "id": 7 }))
+    );
+    answer(&mut m, call, 200, json!({}));
+    assert_eq!(m.get("sys.toasts.0.text"), Some(json!("Deleted Ada.")));
+}

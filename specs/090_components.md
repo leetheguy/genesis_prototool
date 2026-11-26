@@ -102,7 +102,7 @@ props = { contact = "{{ item }}" }
   or a control or dialog bound to it, is a config error; it fires an event, and the app's handler sets it.
 - **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
   props' steps, and `fire` events. A custom action, a `call`, a `reload`, a `go`, a timer's `start` or
-  `stop`, or a `log` written in a component is a config error. To change what's shown, a component fires an event and the app's handler for it sets the app's
+  `stop`, a `log`, a `toast`, or a `confirm` written in a component is a config error. To change what's shown, a component fires an event and the app's handler for it sets the app's
   variables, so all of an app's navigation can sit in one file if its author wants that (a convention, not
   part of Genesis). Events are universal, though: an event a component fires keeps the name it's given, and the app's
   handlers for it can do anything. Genesis sets no structure on event names. Any scoping a user wants is a
@@ -149,7 +149,7 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
   fail, saying why; what's passed to it as props it reads
 - reading `app.*` is never a config error in a component, wherever it's drawn
 - writing `app.*` in a component, by a step or a bound control, is a config error
-- a custom action, a `call`, a `reload`, a `go`, a `start`, a `stop`, or a `log` in a component's own steps is a config error; its `fire` keeps the
+- a custom action, a `call`, a `reload`, a `go`, a `start`, a `stop`, a `log`, a `toast`, or a `confirm` in a component's own steps is a config error; its `fire` keeps the
   event's name, and the app's handlers for it run
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
 - a component with named controls or a submit button used outside a form, and one holding a form used inside

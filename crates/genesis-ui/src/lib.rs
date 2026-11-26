@@ -44,8 +44,6 @@ pub struct Host {
     machine: Arc<Mutex<Machine>>,
     /// Notified after every event, so whatever read state redraws.
     changes: RwSignal<()>,
-    /// Toasts waiting to be seen, oldest first.
-    toasts: RwSignal<Vec<String>>,
     /// Notified when a new config is swapped in, so the screen redraws from it.
     config: RwSignal<()>,
     /// The latest bad config's problems, shown over the last good screen.
@@ -66,7 +64,6 @@ impl Host {
         Host {
             machine: Arc::new(Mutex::new(machine)),
             changes: RwSignal::new(()),
-            toasts: RwSignal::new(Vec::new()),
             config: RwSignal::new(()),
             problems: RwSignal::new(None),
             calls: Arc::new(Mutex::new(Vec::new())),
@@ -212,11 +209,23 @@ impl Host {
         self.after(effects);
     }
 
+    /// Answers the question `id` ([`Machine::answer`]): yes carries its list on, no stops it.
+    pub fn answer(&self, id: u64, yes: bool) {
+        let effects = self.machine().answer(id, yes);
+        self.after(effects);
+    }
+
+    /// Takes the toast `id` off the screen ([`Machine::dismiss`]).
+    pub fn dismiss(&self, id: u64) {
+        self.machine().dismiss(id);
+        self.changes.notify();
+    }
+
     fn after(&self, effects: Vec<Effect>) {
-        let mut texts = Vec::new();
         for effect in effects {
             match effect {
-                Effect::Toast { text } => texts.push(text),
+                // The screen draws `sys.toasts` and `sys.asking`, so these need nothing more.
+                Effect::Toast { .. } | Effect::Confirm { .. } => {}
                 Effect::Call(call) => {
                     // Cloned out first, so the caller runs with no lock held.
                     let caller = self
@@ -234,9 +243,6 @@ impl Host {
                     }
                 }
             }
-        }
-        if !texts.is_empty() {
-            self.toasts.update(|toasts| toasts.extend(texts));
         }
         self.changes.notify();
     }
@@ -900,7 +906,9 @@ pub fn app_view(host: Host) -> AnyView {
                 .unwrap_or_default()
         }
     };
-    let (toasts, problems) = (host.toasts, host.problems);
+    let problems = host.problems;
+    let toasts = toasts(host.clone());
+    let asking = asking(host.clone());
     view! {
         <div data-theme=theme class="min-h-screen bg-base-100 text-base-content p-6">
             {move || problems.get().map(|text| view! {
@@ -912,10 +920,89 @@ pub fn app_view(host: Host) -> AnyView {
                 </div>
             })}
             {nodes}
-            <div class="toast toast-end">
-                {move || toasts.get().into_iter().map(|text| view! { <div class="alert alert-error">{text}</div> }).collect_view()}
-            </div>
+            {toasts}
+            {asking}
         </div>
+    }
+    .into_any()
+}
+
+/// `sys.toasts`, in the corner, each in its variant's color; a tap takes one away.
+fn toasts(host: Host) -> AnyView {
+    // Memoized, so the clock's ticks (which notify every reader) redraw them only when they change.
+    let shown = Memo::new({
+        let host = host.clone();
+        move |_| {
+            host.get("sys.toasts")
+                .and_then(|t| t.as_array().cloned())
+                .unwrap_or_default()
+        }
+    });
+    view! {
+        <div class="toast toast-end">
+            {move || shown.get().into_iter().map(|toast| {
+                let id = toast["id"].as_u64().unwrap_or_default();
+                let text = toast["text"].as_str().unwrap_or_default().to_string();
+                let class = match toast["variant"].as_str() {
+                    Some("success") => "alert alert-success cursor-pointer",
+                    Some("warning") => "alert alert-warning cursor-pointer",
+                    Some("error") => "alert alert-error cursor-pointer",
+                    _ => "alert alert-info cursor-pointer",
+                };
+                let host = host.clone();
+                view! { <div role="status" class=class on:click=move |_| host.dismiss(id)>{text}</div> }
+            }).collect_view()}
+        </div>
+    }
+    .into_any()
+}
+
+/// The first question in `sys.asking`, in a modal dialog with its yes and no buttons. Closing it
+/// any other way (Escape, a click outside it) answers no.
+fn asking(host: Host) -> AnyView {
+    // Memoized, so the dialog is drawn once per question, not again on every tick of the clock.
+    let first = Memo::new({
+        let host = host.clone();
+        move |_| host.get("sys.asking.0")
+    });
+    view! {
+        {move || first.get().map(|question| untrack(|| {
+            let id = question["id"].as_u64().unwrap_or_default();
+            let label = |key: &str| question[key].as_str().unwrap_or_default().to_string();
+            let (text, yes, no) = (label("text"), label("yes"), label("no"));
+            let dialog = NodeRef::<leptos::html::Dialog>::new();
+            // The browser makes a dialog modal only through `showModal()`.
+            leptos::prelude::Effect::new(move |_| {
+                if let Some(element) = dialog.get()
+                    && !element.open()
+                {
+                    let _ = element.show_modal();
+                }
+            });
+            let still = {
+                let host = host.clone();
+                move || host.machine().get("sys.asking").is_some_and(|a| {
+                    a.as_array().is_some_and(|a| a.iter().any(|q| q["id"].as_u64() == Some(id)))
+                })
+            };
+            let on_close = {
+                let (host, still) = (host.clone(), still.clone());
+                move |_| if still() { host.answer(id, false) }
+            };
+            let (host_yes, host_no) = (host.clone(), host.clone());
+            view! {
+                <dialog node_ref=dialog class="modal" on:close=on_close>
+                    <div class="modal-box">
+                        <p class="py-2">{text}</p>
+                        <div class="modal-action">
+                            <button class="btn" on:click=move |_| host_no.answer(id, false)>{no}</button>
+                            <button class="btn btn-primary" on:click=move |_| host_yes.answer(id, true)>{yes}</button>
+                        </div>
+                    </div>
+                    <form method="dialog" class="modal-backdrop"><button>"close"</button></form>
+                </dialog>
+            }
+        }))}
     }
     .into_any()
 }

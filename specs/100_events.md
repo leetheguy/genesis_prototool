@@ -83,8 +83,8 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 | `{ go = "contacts" }` | puts the component `contacts` in the outlet, swapping out what was there ([Going](#going)) | `sys.outlet.changed` |
 | `{ start = "poll" }` | starts the timer `poll`, or starts it over ([Timers](#timers)) | `poll.start`, then `poll.complete` when its time is up |
 | `{ stop = "poll" }` | stops the timer `poll`, if it's running | `poll.stop` |
-| `{ confirm = "Delete this contact?" }` | asks; "no" stops the list quietly | — |
-| `{ toast = "Saved.", variant = "success" }` | shows a short message | — |
+| `{ confirm = "Delete {{ event.item.name }}?", yes = "Delete", no = "Keep" }` | asks, and waits for the answer; "no" stops the list quietly ([Toast and confirm](#toast-and-confirm)) | — |
+| `{ toast = "Saved.", variant = "success", ms = 3000 }` | shows a short message, which goes away on its own ([Toast and confirm](#toast-and-confirm)) | — |
 | `{ log = "..." }` | adds a line to `sys.events` and the mirror ([050](050_state.md)) | — |
 | `"wipe_state"` | clears kept state back to the starting values | `state.wiped` |
 | `{ sign_in = {...} }`, `"sign_out"` | as in [050](050_state.md) | `auth.in` / `auth.out` |
@@ -124,6 +124,39 @@ default = "home"
 - `go` naming no component, or one that needs props, fails, like a step naming no action. So does `go`
   in an app with no outlet. A component's own steps can't `go` ([090](090_components.md)): it fires an
   event, and the app's handler goes.
+
+## Toast and confirm
+
+```toml
+"contacts.delete.click" = [
+  { confirm = "Delete {{ event.item.name }}?", yes = "Delete", no = "Keep" },
+  { call = "crm.contacts.delete", params = { id = "{{ event.item.id }}" } },
+  { toast = "Deleted {{ event.item.name }}.", variant = "success" },
+]
+```
+
+- **`toast`** shows a short message over the screen, in the corner, and it goes away on its own after
+  `ms` milliseconds: the step's own `ms`, else `[app] toast_ms` (default `5000`). Tapping it closes it
+  sooner. `variant` is `info` (the default), `success`, `warning`, or `error`, daisyUI's alert colors.
+  Its text may hold templates, filled as display text is: what's missing shows as nothing, so a toast
+  never fails.
+- **Every failure nobody handles** is toasted the same way, as an `error` ([The bus](#the-bus)).
+- **`confirm`** asks a question in a dialog, with two buttons: `yes` (default `"Yes"`) and `no` (default
+  `"No"`). The list waits for the answer, as it waits on a call: other events keep flowing. Yes carries
+  on with the next step. No stops the list quietly: nothing fails, nothing fires, and a custom action it's
+  in fires neither `.done` nor `.failed`. Closing the dialog any other way (Escape, a click outside it)
+  is a no. Its text may hold templates, as a toast's.
+- Two questions asked at once wait their turn: the dialog shows the first asked, and the next when that's
+  answered.
+- **`sys.toasts`** holds the toasts on screen, oldest first, and **`sys.asking`** the questions waiting for
+  an answer, oldest first: each with an `id`, its text, and its `variant` or its `yes` and `no`. Both are
+  read-only, and neither is kept on the device: closing the app drops them, and the list a question held
+  up never carries on.
+- A component's own steps can't `toast` or `confirm` ([090](090_components.md)): it fires an event, and the
+  app's handler shows or asks.
+- The host shows them and answers: `Machine::answer` with the question's `id` and yes or no, and
+  `Machine::dismiss` with a toast's `id`. `genesis-bench` takes `{"answer": true}` (or `false`), which
+  answers the first question waiting ([The workbench](#the-workbench)).
 
 ## The bus
 
@@ -169,8 +202,9 @@ ms = 10000
   running, unless the registry no longer holds it.
 - Inside a component, the steps can't `start` or `stop` a timer ([090](090_components.md)). A timer that
   keeps running after the screen changes is the app author's choice to make.
-- Genesis has no system timers yet. The first comes with `toast`, whose messages go away on their own
-  ([999](999_todo.md)). A connection's `timeout` stays the server's, on the connection ([030](030_connections.md)).
+- Genesis has no system timers yet. A toast goes away on its own after `[app] toast_ms` or its own `ms`
+  ([Toast and confirm](#toast-and-confirm)), on the same clock, but it isn't a named timer: it fires nothing
+  and `start` can't name it ([999](999_todo.md)). A connection's `timeout` stays the server's, on the connection ([030](030_connections.md)).
 
 ## What the bus shows
 
@@ -194,7 +228,8 @@ the logic belongs behind the API, in PurpleFlow or wherever else.
 (a folder holding `app.toml`, or the file), opens it, and reads one JSON object per line from stdin:
 `{"fire": "NAME", "payload": {...}}` fires an event, and `{"advance": MS}` moves the clock on. After
 each line it prints every trail entry recorded (events with their handlers, and `log` lines) and any
-`{"toast": ...}`, one JSON object per line, and at the end `{"state": ...}`. An app that doesn't load
+`{"toast": ...}` and `{"confirm": ...}`, one JSON object per line, and at the end `{"state": ...}`.
+`{"answer": true}` (or `false`) answers the first question waiting. An app that doesn't load
 exits `2`, each problem as `FILE:LINE:COLUMN: ...`; a script line it can't read exits `1`. Each call the app
 makes is printed as `{"call": ...}`; with `--mock mocks.toml` (`[[mock]]` tables of `op` and a `status` and
 `body`, or an `error`) it's answered at once, and a call with no mock fails saying so.
@@ -248,8 +283,8 @@ Milestone three ([999](999_todo.md)):
   `.start`, `.stop`, and `.complete` events; `delay`, `every`, and `cancel` are gone
 - [x] core: `go`, `sys.outlet`, and the outlet's components wired under their own names
 
-- [ ] `confirm`: asks in a dialog; "no" stops the list quietly
-- [ ] `toast`: a short message, with its variant
+- [x] `confirm`: asks in a dialog; "no" stops the list quietly
+- [x] `toast`: a short message, with its variant, gone after `ms` or `[app] toast_ms`
 
 ## Log
 
@@ -279,3 +314,9 @@ Milestone three ([999](999_todo.md)):
   so a page can show up later. Lee, on load or run: "When it runs".
 - 2026-11-25: `go` names a page by its plain file name, without a path or template: `{ go = "contacts" }` is
   `views/contacts.toml`. Lee: "That's perfect. Yes, and that's why I said that all files should be uniquely named."
+- 2026-11-25: `confirm` and `toast` are built. Choices made in building, each the smaller one: a toast lasts
+  `[app] toast_ms` (default `5000`) or its own `ms`, and isn't a named system timer, so which system timers
+  there are stays open ([999](999_todo.md)); a `confirm`'s buttons default to "Yes" and "No" and take `yes` and
+  `no`; a "no" stops the list without a `.failed`; both show in `sys.toasts` and `sys.asking`, neither kept on
+  the device; and a component's own steps can't use either, as with `log` (Lee: a component's steps "can just
+  call events").

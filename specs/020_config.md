@@ -76,7 +76,7 @@ And `contact_row.toml`, anywhere in the folder, is a component ([090](090_compon
 
 | Table | What | Where |
 |---|---|---|
-| `[app]` | `name` (required), `theme` (default `"light"`), `forget` (app variables never kept, [050](050_state.md)), `locale` (the language formats write in, [080](080_display_logic.md)), `log_lines` ([110](110_agents.md)), `[app.auth]` (signing in, [050](050_state.md)) | `app.toml` only |
+| `[app]` | `name` (required), `theme` (default `"light"`), `forget` (app variables never kept, [050](050_state.md)), `locale` (the language formats write in, [080](080_display_logic.md)), `log_lines` ([110](110_agents.md)), `toast_ms` (how long a toast shows, default `5000`, [100](100_events.md)), `[app.auth]` (signing in, [050](050_state.md)) | `app.toml` only |
 | `[[body]]` | the screen: a list of nodes ([040](040_catalog.md)) | `app.toml`, or a component |
 | `[state]` | app variables and their starting values (in a component, its local ones) | any file |
 | `[sources.NAME]` | app variables fed by an operation or a stream ([050](050_state.md)) | any file but a component |

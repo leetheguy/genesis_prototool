@@ -464,8 +464,9 @@ stay on their device, so the app reopens as they left it. What an API said is fe
 List anything that should always start fresh in `[app] forget = ["scratch"]`.
 
 **`sys.*`** holds `theme`, `outlet` (the page in the outlet), `errors` (every loud failure, newest
-first), `events` (the recent event trail), `bus` (every handler, and every event the app can fire) and
-`sources` (each source's status: `idle`, `loading`, `ok` or `failed`).
+first), `events` (the recent event trail), `bus` (every handler, and every event the app can fire),
+`sources` (each source's status: `idle`, `loading`, `ok` or `failed`), `toasts` (the toasts on screen)
+and `asking` (the questions waiting for an answer).
 
 ## Events, handlers and steps
 
@@ -509,12 +510,25 @@ that matches runs, in the order the files list them (`app.toml` first). `on_clic
 | `{ reload = ["app.contacts"] }` | fetches those sources again | their calls' events |
 | `{ go = "contacts" }` | puts a page in the outlet | `sys.outlet.changed` |
 | `{ start = "poll" }`, `{ stop = "poll" }` | starts a timer (or starts it over), or stops it | `poll.start`, `poll.stop` |
+| `{ toast = "Saved.", variant = "success" }` | shows a short message in the corner, gone on its own | |
+| `{ confirm = "Delete Ada?", yes = "Delete", no = "Keep" }` | asks in a dialog, and waits: yes carries on, no stops the list | |
 | `{ log = "..." }` | writes a line in the event trail | |
 | `"sign_up"` | runs the custom action `sign_up` | `sign_up.done` or `.failed` |
 
 The steps of a list run in order. A step that fails stops its list, and the failure is logged and shown.
 A `call` pauses its list, not the app: other events keep flowing, and the list carries on when the
 answer comes.
+
+**`toast` and `confirm`** talk to the person without any nodes of your own:
+
+- A **toast** goes away after `[app] toast_ms` (5000 by default), or its own `ms`, and a tap closes it
+  sooner. `variant` is `info` (the default), `success`, `warning` or `error`. Its text may hold templates;
+  what's missing shows as nothing, so a toast never fails.
+- A **confirm** waits like a `call` does: the rest of the list runs only on yes. No (the `no` button,
+  Escape, or a click outside) stops the list quietly: nothing fails and nothing fires. The buttons say
+  "Yes" and "No" unless you name them.
+- `sys.toasts` and `sys.asking` show what's up right now. A component's own steps can't use either; it
+  fires an event, and the app's handler toasts or asks.
 
 **Custom actions** name a list of steps so you can run it from many places:
 
@@ -818,6 +832,57 @@ type = "button"
 label = "Open"
 on_click = "{{ props.on_open }}"
 ```
+
+### Delete, asking first
+
+```toml
+# app.toml: each contact has a Delete button; the app asks, deletes, and says so.
+[app]
+name = "Delete"
+
+[[body]]
+type = "cell"
+each = "app.contacts"
+
+[[body.children]]
+type = "cell"
+flow = "row"
+gap = 2
+
+[[body.children.children]]
+type = "text"
+text = "{{ item.name }}"
+
+[[body.children.children]]
+type = "button"
+id = "delete"
+label = "Delete"
+variant = "error"
+
+[connections.crm]
+base_url = "https://pf.example.com/webhook/crm"
+headers = { Authorization = "Bearer {{ creds.PF_TOKEN }}" }
+
+[connections.crm.crud.contacts]
+style = "post"
+
+[sources.contacts]
+call = "crm.contacts.list"
+select = "/rows"
+
+[on]
+"delete.click" = [
+  { confirm = "Delete {{ event.item.name }}?", yes = "Delete", no = "Keep" },
+  { call = "crm.contacts.delete", params = { id = "{{ event.item.id }}" } },
+  { reload = ["app.contacts"] },
+  { toast = "Deleted {{ event.item.name }}.", variant = "success" },
+]
+```
+
+- The button inside the `each` fires `delete.click` with the row's `item`, so the question names who.
+- Keep stops the list before the call: nothing is deleted, and nothing is said.
+- A failed delete stops the list at the call, and the failure is toasted as an error on its own, so
+  there's no `"Deleted"` to take back.
 
 ### Save a form, and branch on the answer
 
@@ -1376,7 +1441,6 @@ If you have the Genesis repo, `genesis-bench FOLDER` runs an app with no screen:
 
 These are designed but not yet in Genesis. Don't use them: the app won't load, or they'll do nothing.
 
-- The `confirm` and `toast` steps. Use a dialog for both for now.
 - Signing in (`[app.auth]`, `sign_in`, `sign_out`, `{{ session.token }}`) and `wipe_state`.
 - Streaming answers (`stream` on an operation, and a source's `mode`).
 - `on_click` on a cell, and `state` on a node outside a component's `[state]`.

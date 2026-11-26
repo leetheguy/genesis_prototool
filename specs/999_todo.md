@@ -18,8 +18,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   `iframe`, `link`, `button`, `input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`, `form`, `dialog`,
   and `markdown`. A cell with `each` repeats.
 - **Components** ([090](090_components.md)): TOML files of atoms with props and local state, used by name.
-- **Display logic** ([080](080_display_logic.md)): conditions for `show` and `disabled`, checks on controls, and formats.
-- **`confirm` and `toast`** ([100](100_events.md)).
 - **For agents** ([110](110_agents.md)): the guide at `GET /agents`; one log of every failure, read at
   `GET /api/log`; and `POST /api/push/{name}`, which fires `push.{name}` in every open client.
 - **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
@@ -55,7 +53,8 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 ## Open questions
 
 - **Which system timers, by what names.** The registry has none built in yet. Lee named toast vanishing and
-  connection timeouts; `toast` isn't built, and a connection's `timeout` runs on the server, per connection
+  connection timeouts. A toast goes away after `[app] toast_ms` or its own `ms`, on the machine's clock, but
+  isn't a named timer, and a connection's `timeout` runs on the server, per connection
   ([030](030_connections.md)). Open: each built-in's name and length, and whether `timers.toml` may set a
   built-in's `ms` or use its name. From [100](100_events.md), "Timers".
 - **The outlet's other details, built the smaller way.** The component in the outlet gets no props (it reads
@@ -91,3 +90,5 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   restrictions." A component `app.toml` draws reads `app.*`; one drawn inside another doesn't, unless it's passed
   down as props. The load check that refused a `use` node drawing a component that reads `app.*` is gone
   ([090](090_components.md), Log).
+- 2026-11-25: display logic ([080](080_display_logic.md)) and `confirm` and `toast` ([100](100_events.md)) are built, so
+  they're off milestone three's list.
