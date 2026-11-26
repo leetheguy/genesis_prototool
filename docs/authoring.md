@@ -222,6 +222,7 @@ A cell with `each` draws its children once for each element of a list, with `ite
 [[body]]
 type = "cell"
 each = "app.contacts"
+key = "item.id"
 empty = "No contacts yet."
 gap = 2
 
@@ -229,6 +230,12 @@ gap = 2
 type = "text"
 text = "{{ item.name }} at {{ item.company }}"
 ```
+
+`key` says what tells the rows apart, usually the record's id (`item` itself for a list of text). Give
+one whenever the elements have an id: then each row belongs to its record, so when a row is added or
+taken out, what's typed in the others stays with the right record. Every element needs its own key; a
+missing or shared one is a loud error in the list's place. Without `key`, rows are kept by their place in
+the list, which is fine for a list that only grows or changes in place.
 
 The cell looks after the list's other states on its own: a loading state while it's first fetched, a
 loud error in its place if the fetch failed, and `empty` when there's nothing. When the list loads again,

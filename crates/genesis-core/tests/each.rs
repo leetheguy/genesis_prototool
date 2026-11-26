@@ -72,3 +72,31 @@ fn empty_or_error_without_each_is_a_problem_naming_the_cell() {
         ]
     );
 }
+
+#[test]
+fn key_is_a_path_into_the_element_and_goes_with_each() {
+    for key in ["item.id", "item", "item.meta.record-id"] {
+        let app = app(&format!(
+            "[[body]]\ntype = \"cell\"\neach = \"app.rows\"\nkey = \"{key}\"\n"
+        ))
+        .unwrap_or_else(|e| panic!("{key}: {e:?}"));
+        let Node::Cell(cell) = &app.body[0] else {
+            panic!("not a cell")
+        };
+        assert_eq!(cell.key.as_deref(), Some(key));
+    }
+    for key in ["id", "app.rows.id", "item.", "{{ item.id }}", "items.id"] {
+        assert_eq!(
+            problems(&format!(
+                "[[body]]\ntype = \"cell\"\neach = \"app.rows\"\nkey = \"{key}\"\n"
+            )),
+            [format!(
+                "app.toml: body.0: `key` is a path into each row's element, like \"item.id\" (or \"item\" for a list of text), not {key:?}"
+            )],
+        );
+    }
+    assert_eq!(
+        problems("[[body]]\ntype = \"cell\"\nkey = \"item.id\"\n"),
+        ["app.toml: body.0: `key` goes with `each`"]
+    );
+}

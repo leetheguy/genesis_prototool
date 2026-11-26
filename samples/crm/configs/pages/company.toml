@@ -51,6 +51,7 @@ variant = "primary"
 [[body]]
 type = "cell"
 each = "app.company_contacts"
+key = "item.id"
 empty = "No contacts here yet."
 gap = 2
 

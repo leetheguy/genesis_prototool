@@ -32,6 +32,7 @@ placeholder = "Search contacts"
 [[body]]
 type = "cell"
 each = "app.contacts"
+key = "item.id"
 empty = "No contacts match."
 gap = 2
 
