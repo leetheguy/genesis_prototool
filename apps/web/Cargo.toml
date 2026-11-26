@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Genesis in the browser: the wasm entry that trunk builds and serve hands out."
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 # Everything is wasm-only. Built natively (as cargo test --workspace does) this is an empty

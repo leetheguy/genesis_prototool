@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Genesis's server: hands out the renderer and the app's config, makes its calls, and writes the mirror."
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]

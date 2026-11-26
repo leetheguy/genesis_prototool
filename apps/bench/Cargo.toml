@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Runs a Genesis app's event bus with no screen, for tests and agents."
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]

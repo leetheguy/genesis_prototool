@@ -5,6 +5,7 @@ members = ["crates/genesis-core", "crates/genesis-ui", "apps/bench", "apps/deskt
 [workspace.package]
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/leetheguy/genesis_prototool"
 publish = false
 
 [workspace.dependencies]
