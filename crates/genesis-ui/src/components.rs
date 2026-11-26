@@ -6,7 +6,7 @@
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
 use genesis_core::config::{
-    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Markdown, Svg, Text, Video,
+    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Markdown, Svg, Text, Use, Video,
 };
 use genesis_core::style::{BySize, Color, Height, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
@@ -311,5 +311,27 @@ impl Component for Markdown {
                 .typed(self.typed()),
         );
         view! { <div class=class inner_html=html></div> }.into_any()
+    }
+}
+
+impl Component for Use {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        // Loading checks that the component exists; a config swapped in later is checked too.
+        let Some(component) = wired.find_component(&self.component) else {
+            return crate::failed_face(
+                None,
+                &format!("there's no component named {}", self.component),
+            );
+        };
+        let body = wired.component(&component, &self.props);
+        // Without placement keys, its body sits straight in the parent's layout.
+        let mut own = ClassList::default();
+        if !wired.is_placed() {
+            own.raw("contents");
+        }
+        let class = wired.class(&mut own);
+        view! { <div class=class>{body}</div> }.into_any()
     }
 }

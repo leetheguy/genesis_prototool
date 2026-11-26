@@ -20,7 +20,9 @@ design they add up to.
 (layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
 and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; the controls (`input`, `textarea`,
 `select`, `checkbox`, `toggle`, and `radio` groups), with `var` or with `name` in a `form`, and the `submit`
-button; `file`, whose picked files go out with a call as multipart, through `serve`; `dialog`; and `markdown`. That's every atom on 040's task list. Still to come are components, display logic, and what
+button; `file`, whose picked files go out with a call as multipart, through `serve`; `dialog`; and `markdown`. That's every atom on 040's task list. Components
+([090](090_components.md)) are under way: component files, the `use` node, and `props.*` are built, and local
+state, events inside a component, and props that carry steps are next. Still to come are display logic, and what
 agents need from `serve`: a guide, one log, and a webhook ([110](110_agents.md)).
 
 ## What this is

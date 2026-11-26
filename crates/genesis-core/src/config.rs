@@ -20,10 +20,11 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::style::styled;
+use crate::template;
 
 /// A whole app: the top-level tables of `app.toml` and every other file, put together.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,6 +54,57 @@ pub struct App {
     /// `[[body]]`: the screen, as a tree of nodes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub body: Vec<Node>,
+    /// Every component, by its file name ([spec 090](../../../specs/090_components.md)). Each is a
+    /// file of its own, never a table in `app.toml`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub components: BTreeMap<String, Component>,
+}
+
+/// A component: a file with a `[component]` table, used by its file name with a `use` node
+/// ([spec 090](../../../specs/090_components.md)).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Component {
+    /// The props every caller passes in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub props: Vec<String>,
+    /// Props a caller may leave out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub optional: Vec<String>,
+    /// `[state]`: each instance's own variables (`local.*`) and their starting values.
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub state: Map<String, Value>,
+    /// `[[body]]`: what it draws, in the `use` node's place.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub body: Vec<Node>,
+}
+
+impl Component {
+    /// Whether `name` is one of its props, required or optional.
+    pub fn takes(&self, name: &str) -> bool {
+        self.props.iter().chain(&self.optional).any(|p| p == name)
+    }
+}
+
+/// A component's file, as written: `[component]`, `[state]`, and `[[body]]`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComponentFile {
+    component: ComponentHead,
+    #[serde(default)]
+    state: Map<String, Value>,
+    #[serde(default)]
+    body: Vec<Node>,
+}
+
+/// `[component]`: its props.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComponentHead {
+    #[serde(default)]
+    props: Vec<String>,
+    #[serde(default)]
+    optional: Vec<String>,
 }
 
 /// `[app]`: the app's name and its settings, each with a default.
@@ -142,6 +194,8 @@ pub enum Node {
     Dialog(Dialog),
     /// Markdown, drawn safely.
     Markdown(Markdown),
+    /// A component, by name, with its props.
+    Use(Use),
 }
 
 impl Node {
@@ -168,6 +222,7 @@ impl Node {
             Node::File(n) => n.placed(),
             Node::Dialog(n) => n.placed(),
             Node::Markdown(n) => n.placed(),
+            Node::Use(n) => n.placed(),
         }
     }
 
@@ -194,6 +249,7 @@ impl Node {
             Node::File(n) => n.id.as_deref(),
             Node::Dialog(n) => n.id.as_deref(),
             Node::Markdown(n) => n.id.as_deref(),
+            Node::Use(n) => n.id.as_deref(),
         }
     }
 
@@ -276,6 +332,23 @@ styled! {
         pub id: Option<String>,
         /// The Markdown; may hold templates, filled in before it's read as Markdown.
         pub text: String,
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "use"`: draws a component in its place ([spec 090](../../../specs/090_components.md)).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Use {
+        /// The node's name; events inside the component fire under it (`card.more_btn.click`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The component's name: its file name, without `.toml`.
+        pub component: String,
+        /// What it passes in, by prop: templates, filled where the `use` node is drawn.
+        #[serde(default, skip_serializing_if = "Map::is_empty")]
+        pub props: Map<String, Value>,
     }
 }
 
@@ -1147,7 +1220,8 @@ impl App {
     /// between folders) and its text, in any order.
     ///
     /// `app.toml` at the top holds `[app]` and `[[body]]`; every other file may add `[state]`,
-    /// `[sources]`, `[connections]`, `[actions]`, and `[on]`. Handlers keep their order: `app.toml`'s
+    /// `[sources]`, `[connections]`, `[actions]`, and `[on]`, or, with a `[component]` table, is a
+    /// component named by its file name. Handlers keep their order: `app.toml`'s
     /// first, then each other file's in path order. Fails with every problem in every file at once:
     /// a file that doesn't read, a table where it can't go, two files with one name in any folders, or
     /// one variable, source, connection, or action defined twice ([spec 020](../../../specs/020_config.md), "Checks").
@@ -1180,6 +1254,11 @@ impl App {
         let mut parts = Vec::new();
         let mut names = Defined::default();
         let mut seen_files: BTreeMap<String, String> = BTreeMap::new();
+        let mut components: BTreeMap<String, Component> = BTreeMap::new();
+        // Where each component is written, for its problems.
+        let mut component_files: BTreeMap<String, String> = BTreeMap::new();
+        // Components whose files didn't read: their uses aren't checked, past that problem.
+        let mut broken = BTreeSet::new();
         for (path, text) in &files {
             let (path, text) = (path.as_ref(), text.as_ref());
             let file_name = path.rsplit('/').next().unwrap_or(path).to_string();
@@ -1192,13 +1271,45 @@ impl App {
                 ));
                 continue;
             }
-            seen_files.insert(file_name, path.to_string());
+            seen_files.insert(file_name.clone(), path.to_string());
+            let is_component = path != "app.toml"
+                && toml::from_str::<toml::Table>(text).is_ok_and(|t| t.contains_key("component"));
+            if is_component {
+                let name = file_name
+                    .strip_suffix(".toml")
+                    .unwrap_or(&file_name)
+                    .to_string();
+                if let Some(problem) = misplaced(path, text, true) {
+                    problems.push(problem);
+                    broken.insert(name);
+                    continue;
+                }
+                match toml::from_str::<ComponentFile>(text) {
+                    Ok(file) => {
+                        component_files.insert(name.clone(), path.to_string());
+                        components.insert(
+                            name,
+                            Component {
+                                props: file.component.props,
+                                optional: file.component.optional,
+                                state: file.state,
+                                body: file.body,
+                            },
+                        );
+                    }
+                    Err(e) => {
+                        problems.push(toml_problem(path, text, &e));
+                        broken.insert(name);
+                    }
+                }
+                continue;
+            }
             let read = if path == "app.toml" {
                 toml::from_str::<App>(text).map(|app| {
                     top = Some(app);
                 })
             } else {
-                match misplaced(path, text) {
+                match misplaced(path, text, false) {
                     Some(problem) => {
                         problems.push(problem);
                         continue;
@@ -1222,10 +1333,33 @@ impl App {
                 },
             );
         }
-        if let Some(app) = &top {
-            for (i, node) in app.body.iter().enumerate() {
-                check_node(node, &body_place(i), false, &mut problems);
+        if let Some(app) = &mut top {
+            if !app.components.is_empty() {
+                problems.push(problem_in(
+                    "app.toml",
+                    "a component is a file of its own, with a [component] table, not a table in app.toml".into(),
+                ));
             }
+            app.components = components;
+            let checks = Checks {
+                file: "app.toml",
+                components: &app.components,
+                broken: &broken,
+                component: None,
+            };
+            for (i, node) in app.body.iter().enumerate() {
+                check_node(node, &body_place(i), false, &checks, &mut problems);
+            }
+            for (name, component) in &app.components {
+                let checks = Checks {
+                    file: &component_files[name],
+                    components: &app.components,
+                    broken: &broken,
+                    component: Some(name),
+                };
+                check_component(component, &checks, &mut problems);
+            }
+            loops(&app.components, &component_files, &mut problems);
         }
         names.clashes(&mut problems);
         match top {
@@ -1364,15 +1498,17 @@ fn problem_in(path: &str, message: String) -> ConfigError {
 }
 
 /// `[app]` or `[[body]]` in a file other than `app.toml`, where its header is written.
-fn misplaced(path: &str, text: &str) -> Option<ConfigError> {
+fn misplaced(path: &str, text: &str, component: bool) -> Option<ConfigError> {
     let mut offset = 0;
     for line in text.split_inclusive('\n') {
         let trimmed = line.trim();
         let table = match trimmed {
             "[app]" => "[app]",
             _ if trimmed.starts_with("[app.") => "[app]",
-            "[[body]]" => "[[body]]",
-            _ if trimmed.starts_with("[body") || trimmed.starts_with("[[body.") => "[[body]]",
+            "[[body]]" if !component => "[[body]]",
+            _ if !component && (trimmed.starts_with("[body") || trimmed.starts_with("[[body.")) => {
+                "[[body]]"
+            }
             _ => {
                 offset += line.len();
                 continue;
@@ -1381,7 +1517,14 @@ fn misplaced(path: &str, text: &str) -> Option<ConfigError> {
         let (line, column) = line_and_column(text, offset + (line.len() - line.trim_start().len()));
         return Some(ConfigError {
             file: Some(path.into()),
-            message: format!("{table} goes only in app.toml, at the top of the configs folder"),
+            message: format!(
+                "{table} goes only in app.toml, at the top of the configs folder{}",
+                if table == "[[body]]" {
+                    ", or in a component"
+                } else {
+                    ""
+                }
+            ),
             line: Some(line),
             column: Some(column),
         });
@@ -1430,11 +1573,204 @@ fn unknown_key_offset(text: &str, table_start: usize, message: &str) -> Option<u
     None
 }
 
+/// What [`check_node`] checks against: the file the node is written in, the app's components, and
+/// the component it's inside, if any.
+struct Checks<'a> {
+    file: &'a str,
+    components: &'a BTreeMap<String, Component>,
+    /// Components whose files didn't read, already reported.
+    broken: &'a BTreeSet<String>,
+    component: Option<&'a str>,
+}
+
+/// What a component holds, through the components it uses.
+#[derive(Default)]
+struct Holds {
+    /// A named control, a file picker, or a submit button outside a form of its own: it fills the
+    /// form it's used in, so it needs one.
+    form_parts: bool,
+    /// A form.
+    form: bool,
+}
+
+/// What `nodes` hold, through the components they use, each looked at once (`seen`), so a loop of
+/// components ends.
+fn holds(
+    nodes: &[Node],
+    components: &BTreeMap<String, Component>,
+    seen: &mut BTreeSet<String>,
+) -> Holds {
+    let mut found = Holds::default();
+    for node in nodes {
+        match node {
+            Node::Form(_) => found.form = true,
+            Node::Button(b) if b.submit => found.form_parts = true,
+            Node::Use(u) => {
+                if let Some(c) = components.get(&u.component)
+                    && seen.insert(u.component.clone())
+                {
+                    let inner = holds(&c.body, components, seen);
+                    found.form_parts |= inner.form_parts;
+                    found.form |= inner.form;
+                }
+            }
+            _ if node.field().is_some() || matches!(node, Node::File(_)) => found.form_parts = true,
+            _ => {}
+        }
+        if !matches!(node, Node::Form(_)) {
+            let inner = holds(node.children(), components, seen);
+            found.form_parts |= inner.form_parts;
+            found.form |= inner.form;
+        }
+    }
+    found
+}
+
+/// The checks for one component: its props, and that it reads nothing of the app's and writes none
+/// of its props. Its body is checked as a body is, but without knowing whether it's used in a form;
+/// each `use` of it checks that.
+fn check_component(component: &Component, checks: &Checks, problems: &mut Vec<ConfigError>) {
+    let mut problem = |message: String| problems.push(problem_in(checks.file, message));
+    let mut named = BTreeSet::new();
+    for prop in component.props.iter().chain(&component.optional) {
+        if !is_plain(prop) {
+            problem(format!(
+                "a prop is a plain name, like \"contact\", not {prop:?}"
+            ));
+        } else if !named.insert(prop) {
+            problem(format!("the prop `{prop}` is named twice"));
+        }
+    }
+    let body = serde_json::to_value(&component.body).unwrap_or_default();
+    for (i, node) in body.as_array().into_iter().flatten().enumerate() {
+        scan(node, &body_place(i), None, &mut problem);
+    }
+    for (i, node) in component.body.iter().enumerate() {
+        check_node(node, &body_place(i), false, checks, problems);
+    }
+}
+
+/// The keys whose value is a variable's path rather than a template.
+const PATH_KEYS: [&str; 8] = [
+    "var", "each", "data", "open", "options", "set", "step", "toggle",
+];
+/// Of those, the ones that write the variable.
+const WRITE_KEYS: [&str; 5] = ["var", "open", "set", "step", "toggle"];
+
+/// Looks through a component's node, as JSON, for a read of `app.*` (a template, or a path key)
+/// and a write of `props.*`. `place` names the node it's in; `key` is the key `value` is under.
+fn scan(value: &Value, place: &str, key: Option<&str>, problem: &mut impl FnMut(String)) {
+    match value {
+        Value::String(text) => {
+            let head = |path: &str| path.split('.').next().unwrap_or_default().to_string();
+            let mut paths: Vec<String> = template::paths(text).into_iter().map(head).collect();
+            if key.is_some_and(|k| PATH_KEYS.contains(&k)) {
+                paths.push(head(text));
+            }
+            if paths.iter().any(|h| h == "app") {
+                problem(format!(
+                    "{place}: a component sees no `app.*`, only its props, so {text:?} won't work here; pass it in as a prop"
+                ));
+            }
+            if key.is_some_and(|k| WRITE_KEYS.contains(&k)) && head(text) == "props" {
+                problem(format!(
+                    "{place}: `props.*` is read-only, so a component can't write {text:?}"
+                ));
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                scan(item, place, key, problem);
+            }
+        }
+        Value::Object(fields) => {
+            for (k, v) in fields {
+                if k == "children" {
+                    for (i, child) in v.as_array().into_iter().flatten().enumerate() {
+                        scan(child, &child_place(place, i), None, problem);
+                    }
+                } else {
+                    scan(v, place, Some(k), problem);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A loop of components (A uses B uses A), once each, written in the file of the first one in it.
+fn loops(
+    components: &BTreeMap<String, Component>,
+    files: &BTreeMap<String, String>,
+    problems: &mut Vec<ConfigError>,
+) {
+    fn uses<'a>(nodes: &'a [Node], out: &mut Vec<&'a str>) {
+        for node in nodes {
+            if let Node::Use(u) = node {
+                out.push(&u.component);
+            }
+            uses(node.children(), out);
+        }
+    }
+    fn walk<'a>(
+        name: &'a str,
+        components: &'a BTreeMap<String, Component>,
+        path: &mut Vec<&'a str>,
+        done: &mut BTreeSet<&'a str>,
+        found: &mut Vec<Vec<&'a str>>,
+    ) {
+        if let Some(at) = path.iter().position(|n| *n == name) {
+            found.push(path[at..].to_vec());
+            return;
+        }
+        if !done.insert(name) {
+            return;
+        }
+        let Some(component) = components.get(name) else {
+            return;
+        };
+        path.push(name);
+        let mut next = Vec::new();
+        uses(&component.body, &mut next);
+        for used in next {
+            walk(used, components, path, done, found);
+        }
+        path.pop();
+    }
+    let mut found = Vec::new();
+    let mut done = BTreeSet::new();
+    for name in components.keys() {
+        walk(name, components, &mut Vec::new(), &mut done, &mut found);
+    }
+    for cycle in found {
+        let mut chain: Vec<&str> = cycle.clone();
+        chain.push(cycle[0]);
+        problems.push(problem_in(
+            &files[cycle[0]],
+            format!(
+                "components use each other in a loop: {}",
+                chain.join(" uses ")
+            ),
+        ));
+    }
+}
+
 /// Checks what one key can't: a node's keys that only make sense apart. `place` names the node,
-/// since it may have no `id`; `in_form` says whether it's inside a `form`.
-fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<ConfigError>) {
+/// since it may have no `id`; `in_form` says whether it's inside a `form`. Inside a component,
+/// a control with `name` or a submit button is fine anywhere: the form it fills is where the
+/// component is used.
+fn check_node(
+    node: &Node,
+    place: &str,
+    in_form: bool,
+    checks: &Checks,
+    problems: &mut Vec<ConfigError>,
+) {
     let mut problem =
-        |message: String| problems.push(problem_in("app.toml", format!("{place}: {message}")));
+        |message: String| problems.push(problem_in(checks.file, format!("{place}: {message}")));
+    let inside = checks.component.is_some();
+    let in_form_here = in_form;
+    let in_form = in_form || inside;
     if matches!(node, Node::File(_)) && (node.var().is_some() || !in_form) {
         problem("a `file` works only inside a `form`, with `name`".into());
     } else if node.control().is_some() {
@@ -1460,6 +1796,7 @@ fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<Config
     }
     if let Node::Dialog(dialog) = node
         && !is_writable_path(&dialog.open)
+        && !(inside && dialog.open.starts_with("props."))
     {
         problem(format!(
             "a dialog's `open` is an app variable, like \"app.editing\", not {:?}",
@@ -1467,16 +1804,19 @@ fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<Config
         ));
     }
     if let Node::Form(form) = node {
-        if in_form {
+        if in_form_here {
             problem("a form can't hold another form".into());
         }
-        if let Some(data) = form.data.as_deref().filter(|d| !is_list_path(d)) {
+        if let Some(data) = form.data.as_deref().filter(|d| !is_list_path(d, inside)) {
             problem(format!(
                 "`data` is a variable's path, like \"app.contact\" or \"item\", not {data:?}"
             ));
         }
     }
-    if node.var().is_some_and(|var| !is_writable_path(var)) {
+    if node
+        .var()
+        .is_some_and(|var| !is_writable_path(var) && !(inside && var.starts_with("props.")))
+    {
         problem(format!(
             "`var` is an app variable, like \"app.query\", or sys.view or sys.theme, not {:?}",
             node.var().unwrap_or_default()
@@ -1484,7 +1824,7 @@ fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<Config
     }
     if let Node::Select(select) = node {
         match &select.options {
-            Options::From(path) if !is_list_path(path) => problem(format!(
+            Options::From(path) if !is_list_path(path, inside) => problem(format!(
                 "`options` is a list, or a variable's path like \"app.companies\", not {path:?}"
             )),
             Options::From(_) => {}
@@ -1505,7 +1845,7 @@ fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<Config
             problem("a cell lays out by `flow` or by `grid`, not both".into());
         }
         match &cell.each {
-            Some(path) if !is_list_path(path) => problem(format!(
+            Some(path) if !is_list_path(path, inside) => problem(format!(
                 "`each` is a variable's path, like \"app.contacts\" or \"item.tags\", not {path:?}"
             )),
             Some(_) => {}
@@ -1521,9 +1861,42 @@ fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<Config
             }
         }
     }
-    let in_form = in_form || matches!(node, Node::Form(_));
+    if let Node::Use(used) = node {
+        match checks.components.get(&used.component) {
+            None if checks.broken.contains(&used.component) => {}
+            None => problem(format!(
+                "there's no component named {:?}; a component is a .toml file with a [component] table, named by its file name",
+                used.component
+            )),
+            Some(component) => {
+                for prop in &component.props {
+                    if !used.props.contains_key(prop) {
+                        problem(format!("`{}` needs the prop `{prop}`", used.component));
+                    }
+                }
+                for prop in used.props.keys().filter(|p| !component.takes(p)) {
+                    problem(format!("`{}` takes no prop `{prop}`", used.component));
+                }
+                let mut seen = BTreeSet::from([used.component.clone()]);
+                let held = holds(&component.body, checks.components, &mut seen);
+                if held.form_parts && !in_form {
+                    problem(format!(
+                        "`{}` holds a control with `name`, a file picker, or a submit button, which fill a form, so use it inside a `form`",
+                        used.component
+                    ));
+                }
+                if held.form && in_form_here {
+                    problem(format!(
+                        "`{}` holds a form, and a form can't hold another form",
+                        used.component
+                    ));
+                }
+            }
+        }
+    }
+    let in_form = in_form_here || matches!(node, Node::Form(_));
     for (i, child) in node.children().iter().enumerate() {
-        check_node(child, &child_place(place, i), in_form, problems);
+        check_node(child, &child_place(place, i), in_form, checks, problems);
     }
 }
 
@@ -1550,8 +1923,8 @@ fn is_writable_path(path: &str) -> bool {
 }
 
 /// Whether `path` names a variable an `each` can repeat over: `item`, or a dotted path under
-/// `app.` or `item.` of plain names.
-fn is_list_path(path: &str) -> bool {
+/// `app.` or `item.` of plain names, and `inside` a component, under `props.` too.
+fn is_list_path(path: &str, inside: bool) -> bool {
     let mut parts = path.split('.');
     let plain = |part: &str| {
         !part.is_empty()
@@ -1561,7 +1934,7 @@ fn is_list_path(path: &str) -> bool {
     };
     match parts.next() {
         Some("item") => parts.all(plain),
-        Some("app") => {
+        Some(root) if root == "app" || (inside && root == "props") => {
             let rest: Vec<&str> = parts.collect();
             !rest.is_empty() && rest.into_iter().all(plain)
         }
