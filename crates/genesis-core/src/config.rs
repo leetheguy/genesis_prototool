@@ -138,6 +138,8 @@ pub enum Node {
     Form(Form),
     /// A file picker, inside a form.
     File(File),
+    /// A modal dialog, open while its variable says so.
+    Dialog(Dialog),
 }
 
 impl Node {
@@ -162,6 +164,7 @@ impl Node {
             Node::Radio(n) => n.placed(),
             Node::Form(n) => n.placed(),
             Node::File(n) => n.placed(),
+            Node::Dialog(n) => n.placed(),
         }
     }
 
@@ -186,6 +189,7 @@ impl Node {
             Node::Radio(n) => n.id.as_deref(),
             Node::Form(n) => n.id.as_deref(),
             Node::File(n) => n.id.as_deref(),
+            Node::Dialog(n) => n.id.as_deref(),
         }
     }
 
@@ -681,8 +685,34 @@ impl Node {
         match self {
             Node::Cell(n) => &n.children,
             Node::Form(n) => &n.children,
+            Node::Dialog(n) => &n.children,
             _ => &[],
         }
+    }
+}
+
+styled! {
+    [placed]
+    /// `type = "dialog"`: a modal `dialog`, open while its variable is anything but `false` or
+    /// `null`. When the person closes it (Escape, or a click outside), `.close` fires and sets the
+    /// variable `false`; setting the variable `false` closes it without firing anything.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Dialog {
+        /// The node's name; its `.close` fires under it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        /// The variable that opens it: `app.NAME`.
+        pub open: String,
+        /// A heading at its top; may hold templates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub title: Option<String>,
+        /// The nodes inside it.
+        #[serde(default)]
+        pub children: Vec<Node>,
+        /// Shortcut for a handler on this dialog's `.close`, run after the variable is set `false`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub on_close: Option<Vec<Step>>,
     }
 }
 
@@ -1407,6 +1437,14 @@ fn check_node(node: &Node, place: &str, in_form: bool, problems: &mut Vec<Config
         && !in_form
     {
         problem("`submit` works on a button inside a `form`".into());
+    }
+    if let Node::Dialog(dialog) = node
+        && !is_writable_path(&dialog.open)
+    {
+        problem(format!(
+            "a dialog's `open` is an app variable, like \"app.editing\", not {:?}",
+            dialog.open
+        ));
     }
     if let Node::Form(form) = node {
         if in_form {

@@ -47,12 +47,18 @@ never a composite.
 | `radio` | a radio button | `name` or `var` (its group), `value`, `label`, `disabled` |
 | `file` | a file picker | `name`, `label`, `accept`, `multiple`, `max_size`, `disabled`, checks |
 | `form` | `form` | `children`, `data` (to start from) |
-| `dialog` | `dialog` | `children`, `open` (a variable), `title` |
+| `dialog` | `dialog` | `children`, `open` (a variable), `title`, `on_close` |
 | `markdown` | Markdown, drawn safely (no raw HTML) | `text` |
 | `use` | a component ([090](090_components.md)) | `component`, `props` |
 
 A `text` with `level` is a heading (`h1`–`h3`) for screen readers, with a heading's size and weight
 unless its own keys say otherwise. `markdown` is for longer prose, and for streamed AI answers later.
+
+A `dialog` is daisyUI's modal, open while its `open` variable (`app.NAME`) holds anything but `false` or
+`null`. When the person closes it (Escape, or a click outside its box), it fires `.close`, which sets the
+variable `false` the one way anything changes state, a `set`, and then runs `on_close`. Setting the
+variable `false` from an action, say a button inside it, closes it without firing `.close`. What goes
+inside, and whether it has buttons to close it, is the app's to say.
 
 ### Media and embeds
 
@@ -241,7 +247,7 @@ precommit checks that the built CSS has every class in it (`scripts/check-css.sh
 
 ## Events each node fires
 
-A node with an `id` fires these ([100](100_events.md)); `on_click`, `on_change`, and `on_submit` are shortcuts that wire them inline.
+A node with an `id` fires these ([100](100_events.md)); `on_click`, `on_change`, `on_submit`, and `on_close` are shortcuts that wire them inline.
 
 | Type | Events | Payload |
 |---|---|---|
@@ -285,7 +291,7 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a value that isn't a list shows a loud failure; a bad `each` path, or `empty` or `error` without `each`, is a config error
 - a cell with `each` shows loading, the loud failure (with detail even when `error` is set), `empty`, and its children, as its source moves through each status
 - value display with no `format`: string, number, boolean, `null`, array, object
-- `dialog` opens with its variable, and closing it sets the variable false and fires `.close`
+- `dialog` opens with its variable, as a modal; the person closing it fires `.close`, which sets the variable false and runs `on_close`; setting the variable false closes it without `.close` (in a real browser: `tests/deployed/dialog.mjs`); an `open` that isn't an app variable is a config error
 - `link` opens an outside URL in a new tab, and any other in the same one
 - an `image` without `alt` is a config error
 - `button`'s `variant` and `size` give daisyUI's classes, by screen size too
@@ -334,5 +340,5 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] controls with `var`: `input`, `textarea`, `select`, `checkbox`, `toggle`, and `radio` groups (`disabled` and checks come with display logic, [080](080_display_logic.md))
 - [x] `form`, controls with `name`, and the `submit` button (`.invalid` comes with checks, [080](080_display_logic.md))
 - [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and a check that a file was picked, come with display logic, [080](080_display_logic.md))
-- [ ] `dialog`
+- [x] `dialog`
 - [ ] `markdown`

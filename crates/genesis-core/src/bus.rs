@@ -1260,6 +1260,19 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
                 },
             );
         }
+        Node::Dialog(dialog) => {
+            // The person closed it: its variable says so the one way anything does, a `set`.
+            wire.events.push(format!("{name}.close"));
+            let mut steps = vec![Step::Set {
+                set: dialog.open.clone(),
+                to: json!(false),
+            }];
+            steps.extend(dialog.on_close.iter().flatten().cloned());
+            wire.handlers.push(Handler {
+                pattern: format!("{name}.close"),
+                steps,
+            });
+        }
         Node::Audio(Audio { id: Some(id), .. }) | Node::Video(Video { id: Some(id), .. }) => {
             wire.events
                 .extend(["play", "pause", "ended"].map(|e| format!("{id}.{e}")));
