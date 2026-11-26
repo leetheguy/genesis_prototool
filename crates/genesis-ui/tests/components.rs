@@ -276,3 +276,51 @@ default = "people"
         assert!(out.contains("Hello Grace"), "{out}");
     });
 }
+
+#[test]
+fn app_toml_hands_app_to_what_it_draws_and_no_further() {
+    // `tag` shows `app.user` and what it's handed. app.toml draws it once directly, and once
+    // inside `frame`, which hands `app.user` down as a prop.
+    let tag = r#"
+[component]
+optional = ["user"]
+
+[[body]]
+type = "text"
+text = "[seen {{ app.user }}|given {{ props.user }}]"
+"#;
+    let frame = r#"
+[component]
+
+[[body]]
+type = "use"
+id = "inner"
+component = "tag"
+props = { user = "{{ app.user }}" }
+"#;
+    let app = r#"
+[app]
+name = "x"
+
+[state]
+user = "Ada"
+
+[[body]]
+type = "use"
+id = "top"
+component = "tag"
+
+[[body]]
+type = "use"
+id = "box"
+component = "frame"
+"#;
+    Owner::new().with(|| {
+        let host = Host::new(
+            App::from_files([("app.toml", app), ("tag.toml", tag), ("frame.toml", frame)]).unwrap(),
+        );
+        let out = app_view(host).to_html();
+        assert!(out.contains("[seen Ada|given ]"), "{out}");
+        assert!(out.contains("[seen |given Ada]"), "{out}");
+    });
+}

@@ -438,7 +438,7 @@ format = { date = "%b %-d" }
 
 | Name | What it is | Written by |
 |---|---|---|
-| `app.*` | the app's variables, from `[state]` and `[sources]`, read in `app.toml` and the page in the outlet | steps, and sources |
+| `app.*` | the app's variables, from `[state]` and `[sources]`, read in `app.toml` and any component it draws | steps, and sources |
 | `local.*` | a component's own variables, from its `[state]` | steps inside it |
 | `sys.*` | Genesis's own (below) | steps can set `sys.theme`; the rest are read-only |
 | `event.*` | inside a handler: the event's `name` and payload | read-only |
@@ -605,9 +605,13 @@ component = "contact_card"
 props = { contact = "{{ item }}" }
 ```
 
-- **A component sees only what it's given:** its props, its locals, and `sys.*`. It can't read `app.*`.
-  That's what lets the same component work anywhere. The one exception is a page in the outlet, which
-  reads `app.*` too (see [Pages](#pages-go-and-the-outlet)).
+- **What `app.toml` draws gets `app.*`. Nothing else does.** A component drawn by `app.toml`, by a `use` node
+  in its body or in its outlet, reads the app's variables just as `app.toml` does. A component drawn inside
+  another component gets only what it's handed: its props, its locals, and `sys.*`. To give it something
+  from `app.*`, pass it down as a prop (`props = { contacts = "{{ app.contacts }}" }`). That's the whole rule,
+  and it's about where a component is drawn, not what it is: any component can be drawn either way. Drawn
+  inside another, its `{{ app.* }}` shows nothing, and a step of its own that reads `app.*` fails loudly,
+  saying why. Making one component read well both ways is up to you.
 - **Its events are named under the `use` node's `id`:** the `more` button above fires `card.more.click`,
   and every card in the list fires that same name, with `item` in the payload to tell them apart.
 - **Its own steps only change its locals and fire events.** It can't call an API, `go`, start a timer,
@@ -1096,11 +1100,11 @@ count = 0
 - `go` takes a page's name written out, not a template.
 - `sys.outlet` holds the current page, and it's kept, so the app reopens on the page it was closed on.
   A page's local state stays while it's out of the outlet, so going back finds it as it was left.
-- **A page reads the app's variables**, `app.*`, just as `app.toml` does: in text, in an `each`, as a form's
+- **A page reads the app's variables**, `app.*`, just as `app.toml` does, with no wiring: in text, in an `each`, as a form's
   `data`. It follows them as they change, so when the app reloads `app.contacts`, `home` shows the new list.
   It reads them and never writes them: to change one, it fires an event and the app sets it.
-- A component that reads `app.*` is a page, so a `use` node can't draw it. A partial inside a page gets what
-  it needs as props, as anywhere else.
+- The page is drawn by `app.toml`, so it gets `app.*`. A component the page draws doesn't: the page hands it
+  what it needs as props (see [Components](#components)).
 
 ### Timers: wait, repeat, and give up
 
@@ -1395,6 +1399,7 @@ These are designed but not yet in Genesis. Don't use them: the app won't load, o
 - Every file name is unique across the app, and each variable, source, connection and action is
   defined once.
 - Templates are lookups, never expressions.
+- What `app.toml` draws reads `app.*`; a component drawn inside another gets only its props.
 - Credentials are `{{ creds.NAME }}`, never values, and only in a connection.
 - Don't write in `.state/`.
 - Check `BASE/status` after every write, and `BASE/api/log` when something doesn't work.

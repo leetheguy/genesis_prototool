@@ -2026,28 +2026,6 @@ fn reaches(node: &Node, place: &str, problem: &mut impl FnMut(String)) {
     }
 }
 
-/// Whether a component reads `app.*` anywhere in its body, in a template or a path key. One that
-/// does is a page: the outlet hands it the app's variables, and only the outlet draws it
-/// ([spec 090](../../../specs/090_components.md), "The outlet").
-pub fn reads_app(component: &Component) -> bool {
-    fn reads(value: &Value, key: Option<&str>) -> bool {
-        match value {
-            Value::String(text) => {
-                let head = |path: &str| path.split('.').next() == Some("app");
-                template::paths(text).into_iter().any(head)
-                    || (key.is_some_and(|k| PATH_KEYS.contains(&k)) && head(text))
-            }
-            Value::Array(items) => items.iter().any(|item| reads(item, key)),
-            Value::Object(fields) => fields
-                .iter()
-                .any(|(k, v)| reads(v, (k != "children").then_some(k.as_str()))),
-            _ => false,
-        }
-    }
-    let body = serde_json::to_value(&component.body).unwrap_or_default();
-    reads(&body, None)
-}
-
 /// The keys whose value is a variable's path rather than a template.
 const PATH_KEYS: [&str; 8] = [
     "var", "each", "data", "open", "options", "set", "step", "toggle",
@@ -2380,12 +2358,6 @@ fn check_node(
                 used.component
             )),
             Some(component) => {
-                if matches!(node, Node::Use(_)) && reads_app(component) {
-                    problem(format!(
-                        "`{}` reads `app.*`, so it's a page: it goes in the outlet, by `go`, and a `use` node can't draw it; pass what it needs as props instead",
-                        used.component
-                    ));
-                }
                 for prop in &component.props {
                     if !used.props.contains_key(prop) {
                         problem(format!("`{}` needs the prop `{prop}`", used.component));

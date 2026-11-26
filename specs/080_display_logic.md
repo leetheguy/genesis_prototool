@@ -43,7 +43,8 @@ and sources never test anything; they branch by event name instead ([100](100_ev
 - **What `var` can read** is checked when the app loads: `local.*` and `props.*` only inside a
   component, `form.*` only inside a `form` (or a component, which may be drawn in one), and
   `status` only on a source. `form.*` reads what's typed into the form so far, else its `data`.
-  A component whose condition reads `app.*` is a page ([090](090_components.md)).
+  A condition in a component may read `app.*`; it gets it only where `app.toml` draws the component
+  ([090](090_components.md)).
 
 ## Checks on input
 

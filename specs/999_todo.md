@@ -87,3 +87,7 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 
 - 2026-11-25: the outlet gap is closed. A page in the outlet couldn't read `app.*` and got no props, so it
   couldn't show the app's data. Lee: "Outlet should be passed the whole app.* by default behind the scenes. No extra wiring necessary." A page reads `app.*` as `app.toml` does, read-only ([090](090_components.md), "The outlet").
+- 2026-11-25: any component works both ways. Lee: "anything being loaded by app.toml gets app.*. That's it. No
+  restrictions." A component `app.toml` draws reads `app.*`; one drawn inside another doesn't, unless it's passed
+  down as props. The load check that refused a `use` node drawing a component that reads `app.*` is gone
+  ([090](090_components.md), Log).

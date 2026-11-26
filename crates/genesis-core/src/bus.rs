@@ -104,6 +104,8 @@ struct Scope {
     /// Where its locals are kept: its name, and its row ([`draft_key`]).
     key: String,
     props: Value,
+    /// Whether it reads `app.*`: only a component `app.toml` draws does.
+    app: bool,
 }
 
 /// How a call came out.
@@ -801,7 +803,7 @@ impl Machine {
             let mut event = event.clone();
             event.scope = self.handler_owners[i]
                 .as_ref()
-                .map(|owner| scope_for(&owner.name, &owner.component, &event));
+                .map(|owner| scope_for(&owner.name, &owner.component, &event, &self.instances));
             self.execute(Run {
                 frames: vec![frame],
                 event,
@@ -944,7 +946,7 @@ impl Machine {
         };
         let caller = outer.map(|name| {
             let component = self.instances[&name].component.clone();
-            scope_for(&name, &component, &run.event)
+            scope_for(&name, &component, &run.event, &self.instances)
         });
         let back = std::mem::replace(&mut run.event.scope, caller);
         run.frames.push(Frame {
@@ -1090,7 +1092,17 @@ impl Machine {
 
     /// Runs one built-in step that neither pauses nor nests.
     fn run_step(&mut self, step: &Step, event: &Queued) -> Result<(), String> {
-        let fill = |value: &Value| template::value(value, |path| self.look(path, Some(event)));
+        let hidden = event.scope.as_ref().is_some_and(|s| !s.app);
+        let fill = |value: &Value| {
+            template::value(value, |path| self.look(path, Some(event))).map_err(|said| {
+                match said.strip_suffix(" isn't set") {
+                    Some(path) if hidden && path.starts_with("app.") => format!(
+                        "{path} can't be read here: this component is drawn inside another, so it reads no `app.*`; pass what it needs as a prop"
+                    ),
+                    _ => said,
+                }
+            })
+        };
         match step {
             Step::Log { log } => {
                 let line = template::text(log, |path| self.look(path, Some(event)));
@@ -1318,6 +1330,7 @@ impl Machine {
                 let name = keys.next()?;
                 self.local(&within.name, within.row.as_deref(), name)?
             }
+            Some("app") if within.is_some_and(|w| w.outer.is_some()) => return None,
             _ => return self.look(path, None),
         };
         keys.try_fold(&root, |at, key| match at {
@@ -1360,6 +1373,9 @@ impl Machine {
         let root = match (keys.next()?, keys.next()) {
             ("event", Some("name")) => return event.map(|e| json!(e.name)),
             ("event", Some(key)) => event?.payload.get(key)?.clone(),
+            ("app", _) if event.and_then(|e| e.scope.as_ref()).is_some_and(|s| !s.app) => {
+                return None;
+            }
             ("app", Some(key)) => self.state.app.get(key)?.clone(),
             ("local", Some(key)) => {
                 let scope = event?.scope.as_ref()?;
@@ -1531,7 +1547,12 @@ fn source_patterns(name: &str, source: &Source) -> Vec<String> {
 /// The component instance whose `use` node is named `name`, for an event that fired inside it.
 /// The renderer says where it fired, its own instance and the ones it's inside; an event pushed in
 /// from outside is taken as the one in its row, with no props.
-fn scope_for(name: &str, component: &str, event: &Queued) -> Scope {
+fn scope_for(
+    name: &str,
+    component: &str,
+    event: &Queued,
+    instances: &BTreeMap<String, Instance>,
+) -> Scope {
     let within = std::iter::successors(event.within.as_ref(), |w| w.outer.as_deref())
         .find(|w| w.name == name);
     let (row, props) = match within {
@@ -1543,6 +1564,7 @@ fn scope_for(name: &str, component: &str, event: &Queued) -> Scope {
         component: component.to_string(),
         key: draft_key(name, row.as_deref()),
         props,
+        app: instances.get(name).is_none_or(|i| i.outer.is_none()),
     }
 }
 

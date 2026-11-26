@@ -100,7 +100,7 @@ agent rewriting the files. Nodes nest through `children`. A tree too deep to rea
 
 | Name | Scope | Written by |
 |---|---|---|
-| `app.*` | the whole app: `[state]` and `[sources]`; read in `app.toml` and the page in the outlet, never in a partial | actions, and sources |
+| `app.*` | the whole app: `[state]` and `[sources]`; read in `app.toml` and any component it draws (by `use` or in its outlet), not in one drawn inside another component | actions, and sources |
 | `local.*` | one node and its children, or one component instance | actions inside it |
 | `sys.*` | Genesis's own: `theme`, `auth`, `errors`, `events`, `bus` ([050](050_state.md)) | actions (all but `theme` are read-only) |
 | `event.*` | inside a handler: the event's `name` and payload ([100](100_events.md)) | read-only |
