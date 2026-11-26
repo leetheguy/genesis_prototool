@@ -15,7 +15,7 @@ real desktop, [999](999_todo.md)).
 Everything else here is still design: every numbered spec but [080](080_display_logic.md), [120](120_one_app.md) and [130](130_crm_sample.md) is a draft, and this page describes the
 design they add up to.
 
-**Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. One app
+**Milestone three is built, but for its last test** ([999](999_todo.md)): an agent builds a CRM on its own. One app
 ([120](120_one_app.md)) is built. Of the atoms ([040](040_catalog.md)), these are built: `cell` with the style keys
 (layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
 and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; the controls (`input`, `textarea`,

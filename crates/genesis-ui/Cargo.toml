@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Genesis's renderer: draws an app's nodes from its state machine, with Leptos and daisyUI."
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]
