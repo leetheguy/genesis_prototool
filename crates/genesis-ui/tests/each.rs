@@ -188,3 +188,83 @@ fn a_list_loading_again_keeps_its_rows_until_the_new_ones_come() {
         assert!(!out.contains("loading-spinner"), "{out}");
     });
 }
+
+/// People with ids, each row a form editing its person, keyed by id, and a button that takes Bob
+/// (the middle row) out.
+const KEYED: &str = r#"
+[app]
+name = "x"
+
+[state]
+people = [{ id = "a", name = "Ada" }, { id = "b", name = "Bob" }, { id = "c", name = "Cy" }]
+
+[[body]]
+type = "button"
+id = "drop_bob"
+label = "Drop Bob"
+on_click = { set = "app.people", to = [{ id = "a", name = "Ada" }, { id = "c", name = "Cy" }] }
+
+[[body]]
+type = "cell"
+each = "app.people"
+key = "item.id"
+
+[[body.children]]
+type = "form"
+id = "edit"
+data = "item"
+
+[[body.children.children]]
+type = "input"
+id = "name_box"
+name = "name"
+"#;
+
+#[test]
+fn a_keyed_row_is_its_records_so_a_draft_stays_with_it_when_a_row_above_goes() {
+    Owner::new().with(|| {
+        let host = Host::new(App::from_toml(KEYED).unwrap());
+        // Typing in Cy's row: its row is Cy's key, not its place.
+        host.fire_at("name_box.change", json!({ "value": "Cyrus" }), Some("c"));
+        let out = draw(&host);
+        assert!(out.contains(r#"value="Cyrus""#), "{out}");
+        host.fire("drop_bob.click", json!({}));
+        let out = draw(&host);
+        assert!(!out.contains(r#"value="Bob""#), "{out}");
+        assert!(out.contains(r#"value="Ada""#), "{out}");
+        assert!(
+            out.contains(r#"value="Cyrus""#),
+            "Cy's draft followed Cy: {out}"
+        );
+        assert_eq!(
+            host.draft_at("edit", Some("c"), "name"),
+            Some(json!("Cyrus"))
+        );
+    });
+}
+
+#[test]
+fn a_row_without_a_key_or_sharing_one_is_a_loud_failure_in_its_place() {
+    let missing = KEYED.replace(r#"{ id = "b", name = "Bob" }"#, r#"{ name = "Bob" }"#);
+    let out = html(&missing);
+    assert!(out.contains("alert-error"), "{out}");
+    assert!(
+        out.contains("each row needs a key at item.id, and row 2 has none"),
+        "{out}"
+    );
+    let shared = KEYED.replace(
+        r#"{ id = "c", name = "Cy" }"#,
+        r#"{ id = "a", name = "Cy" }"#,
+    );
+    let out = html(&shared);
+    assert!(out.contains("rows 1 and 3 share the key"), "{out}");
+    assert!(out.contains("at item.id"), "{out}");
+}
+
+#[test]
+fn a_list_of_text_can_be_keyed_by_the_element_itself() {
+    let out = html(
+        "[app]\nname = \"x\"\n[state]\ntags = [\"vip\", \"new\"]\n[[body]]\ntype = \"cell\"\neach = \"app.tags\"\nkey = \"item\"\n[[body.children]]\ntype = \"text\"\ntext = \"tag {{ item }}\"\n",
+    );
+    assert!(out.contains("tag vip") && out.contains("tag new"), "{out}");
+}

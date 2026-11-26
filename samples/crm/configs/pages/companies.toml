@@ -33,6 +33,7 @@ placeholder = "Search companies"
 [[body]]
 type = "cell"
 each = "app.companies"
+key = "item.id"
 empty = "No companies match."
 gap = 2
 

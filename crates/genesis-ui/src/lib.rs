@@ -22,6 +22,7 @@ use genesis_core::style::Placed;
 use genesis_core::template;
 use leptos::prelude::*;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use style::ClassList;
@@ -626,12 +627,14 @@ impl Wired {
 
     /// Draws `children` once per element of the list at `path`, each seeing its element as
     /// `item.*`, or the face for where the list stands: loading or failed (when its variable is a
-    /// source), empty, or not a list at all. The faces look the same everywhere.
+    /// source), empty, or not a list at all. The faces look the same everywhere. With `key`, a row
+    /// is kept by its element's key; without, by its place in the list.
     pub(crate) fn each(
         &self,
         path: &str,
         empty: Option<&str>,
         error: Option<&str>,
+        key: Option<&str>,
         children: &[Node],
     ) -> impl IntoView + use<> {
         let (host, item, place) = (self.host.clone(), self.item, self.place.clone());
@@ -650,6 +653,24 @@ impl Wired {
             _ => Vec::new(),
         });
         let count = Memo::new(move |_| elements.with(Vec::len));
+        // What each row is kept by, in list order: its key's text, or its place.
+        let rows = {
+            let key = key.map(String::from);
+            Memo::new(move |_| elements.with(|elements| row_keys(elements, key.as_deref())))
+        };
+        // Where each row's element is in the list now.
+        let at = Memo::new(move |_| {
+            rows.with(|rows| {
+                rows.as_ref()
+                    .map(|rows| {
+                        rows.iter()
+                            .enumerate()
+                            .map(|(n, row)| (row.clone(), n))
+                            .collect::<HashMap<String, usize>>()
+                    })
+                    .unwrap_or_default()
+            })
+        });
         let status = {
             let (host, path) = (host.clone(), path.clone());
             Memo::new(move |_| source_status(&host, &path))
@@ -661,7 +682,10 @@ impl Wired {
             _ => looked.with(|looked| match looked {
                 None | Some(Value::Null) => Face::Empty,
                 Some(Value::Array(elements)) if elements.is_empty() => Face::Empty,
-                Some(Value::Array(_)) => Face::Rows,
+                Some(Value::Array(_)) => match rows.with(|rows| rows.as_ref().err().cloned()) {
+                    Some(why) => Face::BadKey(why),
+                    None => Face::Rows,
+                },
                 Some(other) => Face::NotList(kind(other)),
             }),
         });
@@ -674,19 +698,26 @@ impl Wired {
                 Face::NotList(kind) => {
                     failed_face(None, &format!("each needs a list, and {path} is {kind}"))
                 }
+                Face::BadKey(why) => failed_face(None, &why),
                 Face::Rows => {
                     let (host, place, row) = (host.clone(), place.clone(), row.clone());
                     let (form, scope, children) = (form.clone(), scope.clone(), children.clone());
-                    // Keyed by place, so a row is never swapped out: when the list changes, each
-                    // row's element follows it, and rows are only added or taken off the end.
-                    let draw_row = move |n: usize| {
-                        let element: Item = Memo::new(move |_| {
-                            elements.with(|e| e.get(n).cloned().unwrap_or(Value::Null))
-                        })
-                        .into();
+                    // A row is never swapped out: when the list changes, each row's element
+                    // follows it by its key (or its place), new rows are drawn where they come,
+                    // and a row whose key is gone is taken away with its elements.
+                    let draw_row = move |kept: String| {
+                        let element: Item = {
+                            let kept = kept.clone();
+                            Memo::new(move |_| {
+                                let n = at.with(|at| at.get(&kept).copied());
+                                n.and_then(|n| elements.with(|e| e.get(n).cloned()))
+                                    .unwrap_or(Value::Null)
+                            })
+                            .into()
+                        };
                         let row = Some(match &row {
-                            Some(outer) => format!("{outer}.{n}"),
-                            None => n.to_string(),
+                            Some(outer) => format!("{outer}.{kept}"),
+                            None => kept,
                         });
                         children
                             .iter()
@@ -704,7 +735,8 @@ impl Wired {
                             })
                             .collect_view()
                     };
-                    view! { <For each=move || 0..count.get() key=|n| *n children=draw_row /> }
+                    let each = move || rows.get().unwrap_or_default();
+                    view! { <For each=each key=|kept: &String| kept.clone() children=draw_row /> }
                         .into_any()
                 }
             })
@@ -854,7 +886,51 @@ enum Face {
     Empty,
     /// Not a list: what it is.
     NotList(&'static str),
+    /// A list whose rows' keys are missing or shared: why.
+    BadKey(String),
     Rows,
+}
+
+/// What each element is kept by, in order: with `key` (`item.id`), the text of its key, which every
+/// element needs and no two may share; without, its place in the list.
+fn row_keys(elements: &[Value], key: Option<&str>) -> Result<Vec<String>, String> {
+    let Some(key) = key else {
+        return Ok((0..elements.len()).map(|n| n.to_string()).collect());
+    };
+    let rest = key
+        .strip_prefix("item")
+        .and_then(|rest| rest.strip_prefix('.'));
+    let mut first = HashMap::new();
+    let mut keys = Vec::with_capacity(elements.len());
+    for (n, element) in elements.iter().enumerate() {
+        let text = match dig(element, rest) {
+            Some(Value::String(text)) => text,
+            Some(Value::Number(number)) => number.to_string(),
+            Some(Value::Bool(b)) => b.to_string(),
+            None | Some(Value::Null) => {
+                return Err(format!(
+                    "each row needs a key at {key}, and row {} has none",
+                    n + 1
+                ));
+            }
+            Some(other) => {
+                return Err(format!(
+                    "a row's key at {key} is text or a number, and row {}'s is {}",
+                    n + 1,
+                    kind(&other)
+                ));
+            }
+        };
+        if let Some(earlier) = first.insert(text.clone(), n) {
+            return Err(format!(
+                "rows {} and {} share the key {text:?} at {key}; each row's key has to be its own",
+                earlier + 1,
+                n + 1
+            ));
+        }
+        keys.push(text);
+    }
+    Ok(keys)
 }
 
 /// The face for a list that's loading.

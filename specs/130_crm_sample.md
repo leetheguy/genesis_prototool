@@ -47,6 +47,7 @@ node samples/crm/api.mjs PORT DATA_FILE TOKEN
     Add company button.
   - `company`: one company, with Edit, and its contacts, with Add contact (starting at that company), Edit and Delete.
   - `contacts`: a search box and the list, each row naming its company, with Edit and Delete, and Add contact.
+  - Every list is keyed by the record's id (`key = "item.id"`), so a row stays its record's as the list changes.
 - **Components** (`parts/`): `company_fields` and `contact_fields`, the named controls with their checks, shared
   by the new and edit forms.
 - **Wiring**, by subject: `crm.toml` (the connection, the sources, and `reload_all`), `company_handlers.toml`,
@@ -98,3 +99,4 @@ headless Chromium, as part of `scripts/check-hello.sh`:
   over when its `data` changes, and the message for two files with one name.
 - 2026-11-25: both gaps are fixed ([040](040_catalog.md), [120](120_one_app.md)), and the deployed check now edits one
   contact, closes unsaved, and checks the next one's form starts from that contact.
+- 2026-11-26: the lists are keyed by id (`key = "item.id"`, [040](040_catalog.md)). Lee: "Add key".

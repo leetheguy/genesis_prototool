@@ -22,6 +22,7 @@ impl Component for Cell {
                     path,
                     self.empty.as_deref(),
                     self.error.as_deref(),
+                    self.key.as_deref(),
                     &self.children,
                 )
                 .into_any(),

@@ -119,14 +119,22 @@ It follows the variable:
 - When the list is `null` or `[]`, the cell shows `empty = "..."` (default "Nothing here.").
 - When the variable holds something that isn't a list, the cell shows a loud error saying so.
 
-Each row is kept by its place in the list. When the list changes, a row whose values changed has them
-changed in place, so its elements (and anything typed or focused in them) stay; new rows are added at the
-end, and rows past the new end are taken away. Taking a row out of the middle moves the values after it up
-one place.
+`key = "item.id"` says what tells the rows apart: a path into each element, `item` or `item.*` (`item`
+itself for a list of text). With a key, a row is its record's. When the list changes, a row whose values
+changed has them changed in place, so its elements (and anything typed or focused in them) stay; a new
+record's row is drawn where it comes; a record that's gone takes its own row's elements with it. A row's
+local state and a form's draft in it are kept by its key, so they stay with their record when rows above it
+come or go. Every element needs a key that's text, a number, or true or false, and no two may share one;
+otherwise the cell shows a loud error in its place naming the row.
+
+Without a key, a row is kept by its place in the list: values change in place the same way, new rows are
+added at the end, and rows past the new end are taken away, but taking a row out of the middle moves the
+values after it (and their drafts) up one place. A list whose elements have an id should have a key.
 
 The `Wired` wrapper draws these faces, so they look the same everywhere. `each` is a variable's path:
 `app.*`, or `item` and `item.*` inside another `each` (the inner element shadows the outer). Anything
-else, or `empty` or `error` on a cell without `each`, is a config error naming the cell's place.
+else, or `empty`, `error` or `key` on a cell without `each`, or a `key` that isn't `item` or `item.*`, is a
+config error naming the cell's place.
 
 ### Controls
 
@@ -315,7 +323,11 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a click inside an `each` carries its element as `event.item` (in a real browser: `tests/deployed/each.mjs`)
 - a value that isn't a list shows a loud failure; a bad `each` path, or `empty` or `error` without `each`, is a config error
 - a list loading again keeps its rows until the new ones come (`genesis-ui/tests/each.rs`)
-- an `each` row keeps its element when its values change, and a new row is added after the others (in a real browser: `tests/deployed/each.mjs`)
+- an `each` row keeps its element when its values change, and a new row is added after the others; with a
+  key, taking out a middle row leaves the others' elements alone (in a real browser: `tests/deployed/each.mjs`)
+- `key` goes with `each` and is `item` or `item.*` (`genesis-core/tests/each.rs`); a keyed row's form draft stays
+  with its record when a row above it goes, and a missing or shared key is a loud failure naming the row
+  (`genesis-ui/tests/each.rs`)
 - a cell with `each` shows loading, the loud failure (with detail even when `error` is set), `empty`, and its children, as its source moves through each status
 - value display with no `format`: string, number, boolean, `null`, array, object
 - `dialog` opens with its variable, as a modal; the person closing it fires `.close`, which sets the variable false and runs `on_close`; setting the variable false closes it without `.close` (in a real browser: `tests/deployed/dialog.mjs`); an `open` that isn't an app variable is a config error
@@ -388,3 +400,6 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - 2026-11-26: `each` keeps its rows. A changed row has its values changed in place, and a list loading
   again keeps its rows until the new ones come ([010](010_architecture.md#drawing-only-what-changed)).
   Lee: "If you can just update the data without updating the page, that would be best."
+- 2026-11-26: `each` takes `key`, a path into each element (`item.id`), so a row is its record's: a middle
+  row taken out takes its own elements, and drafts and local state stay with their record. Without it,
+  rows are kept by place, as before. Lee: "Add key".

@@ -1,7 +1,8 @@
 // The each deployed check (spec 040, "Repeating: each"): in a real browser, a cell repeats its
 // children per element, and a click inside one carries that element to its handler as event.item.
 // Nothing on the page changes while nothing happens, and a change to the list keeps its rows on
-// the page: only the changed text changes, and a new element adds a row at the end.
+// the page: only the changed text changes, and a new element adds a row at the end. With a key, a
+// row is its record's: taking one out of the middle leaves the others' elements alone.
 //
 // It runs genesis-serve on a temporary app of its own. Run it with scripts/check-hello.sh.
 
@@ -29,6 +30,7 @@ name = "Each"
 [state]
 picked = "nobody"
 rows = [{ name = "Ada", id = 1 }, { name = "Bob", id = 2 }, { name = "Cy", id = 3 }]
+team = [{ name = "Al", id = "a" }, { name = "Bo", id = "b" }, { name = "Cid", id = "c" }]
 
 [[body]]
 type = "text"
@@ -64,6 +66,22 @@ type = "button"
 id = "grow"
 label = "Add Dee"
 on_click = { set = "app.rows", to = [{ name = "Ada", id = 1 }, { name = "Bea", id = 2 }, { name = "Cy", id = 3 }, { name = "Dee", id = 4 }] }
+
+[[body]]
+type = "cell"
+each = "app.team"
+key = "item.id"
+
+[[body.children]]
+type = "button"
+id = "member"
+label = "Member {{ item.name }}"
+
+[[body]]
+type = "button"
+id = "drop_bo"
+label = "Drop Bo"
+on_click = { set = "app.team", to = [{ name = "Al", id = "a" }, { name = "Cid", id = "c" }] }
 
 [on]
 "pick.click" = [{ set = "app.picked", to = "{{ event.item.name }} ({{ event.item.id }})" }]
@@ -128,8 +146,17 @@ try {
   await until("Dee's row", async () => (await marks()) === "0:Pick Ada,1:Pick Bea,2:Pick Cy,new:Pick Dee");
   await page.getByRole("button", { name: "Pick Dee" }).click();
   await page.getByText("picked: Dee (4)").waitFor();
+
+  // With a key, a row is its record's: taking out the middle one removes its own element, and the
+  // ones after it keep theirs.
+  const members = page.getByRole("button", { name: /^Member / });
+  await members.evaluateAll((all) => all.forEach((b) => (b.dataset.row = b.textContent)));
+  const kept = () => members.evaluateAll((all) => all.map((b) => `${b.dataset.row ?? "new"}=${b.textContent}`).join(","));
+  await page.getByRole("button", { name: "Drop Bo" }).click();
+  await until("Bo's row to go", async () => (await members.count()) === 2);
+  if ((await kept()) !== "Member Al=Member Al,Member Cid=Member Cid") throw new Error(`a keyed row moved records: ${await kept()}`);
   if (errors.length) throw new Error(`the page threw: ${errors.join(" / ")}`);
-  console.log("ok: each drew a row per element, a click in a row carried its item, nothing redrew while idle, and a changed list kept its rows");
+  console.log("ok: each drew a row per element, a click in a row carried its item, nothing redrew while idle, a changed list kept its rows, and a keyed row stayed its record's");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;

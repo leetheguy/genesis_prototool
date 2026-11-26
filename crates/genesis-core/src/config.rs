@@ -401,6 +401,11 @@ styled! {
         /// With `each`, a line of its own above the detail when its source fails.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub error: Option<String>,
+        /// With `each`, what tells its rows apart (`item.id`, or `item` for a list of text): a row
+        /// is kept by it, so its elements, local state, and form drafts follow its record when the
+        /// list changes. Without it, a row is kept by its place in the list.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub key: Option<String>,
     }
 }
 
@@ -2355,14 +2360,25 @@ fn check_node(
             problem("a cell lays out by `flow` or by `grid`, not both".into());
         }
         match &cell.each {
-            Some(path) if !is_list_path(path, inside) => problem(format!(
-                "`each` is a variable's path, like \"app.contacts\" or \"item.tags\", not {path:?}"
-            )),
-            Some(_) => {}
+            Some(path) => {
+                if !is_list_path(path, inside) {
+                    problem(format!(
+                        "`each` is a variable's path, like \"app.contacts\" or \"item.tags\", not {path:?}"
+                    ));
+                }
+                if let Some(key) = &cell.key
+                    && !is_key_path(key)
+                {
+                    problem(format!(
+                        "`key` is a path into each row's element, like \"item.id\" (or \"item\" for a list of text), not {key:?}"
+                    ));
+                }
+            }
             None => {
                 for (key, set) in [
                     ("empty", cell.empty.is_some()),
                     ("error", cell.error.is_some()),
+                    ("key", cell.key.is_some()),
                 ] {
                     if set {
                         problem(format!("`{key}` goes with `each`"));
@@ -2520,6 +2536,18 @@ fn is_writable_path(path: &str) -> bool {
 /// dialogs may write. Whether the component declares it is checked with the rest of its paths.
 fn is_local_path(path: &str) -> bool {
     path.strip_prefix("local.").is_some_and(is_plain)
+}
+
+/// Whether `path` names a place in an `each` row's element: `item`, or `item.` and plain names.
+fn is_key_path(path: &str) -> bool {
+    let mut parts = path.split('.');
+    parts.next() == Some("item")
+        && parts.all(|part| {
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
 }
 
 /// Whether `path` names a variable an `each` can repeat over: `item`, or a dotted path under
