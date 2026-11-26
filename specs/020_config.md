@@ -76,7 +76,7 @@ And `contact_row.toml`, anywhere in the folder, is a component ([090](090_compon
 
 | Table | What | Where |
 |---|---|---|
-| `[app]` | `name` (required), `theme` (default `"light"`), `start` (the first `sys.view`, default `"main"`), `forget` (app variables never kept, [050](050_state.md)), `log_lines` ([110](110_agents.md)), `[app.auth]` (signing in, [050](050_state.md)) | `app.toml` only |
+| `[app]` | `name` (required), `theme` (default `"light"`), `forget` (app variables never kept, [050](050_state.md)), `log_lines` ([110](110_agents.md)), `[app.auth]` (signing in, [050](050_state.md)) | `app.toml` only |
 | `[[body]]` | the screen: a list of nodes ([040](040_catalog.md)) | `app.toml`, or a component |
 | `[state]` | app variables and their starting values (in a component, its local ones) | any file |
 | `[sources.NAME]` | app variables fed by an operation or a stream ([050](050_state.md)) | any file but a component |
@@ -101,7 +101,7 @@ agent rewriting the files. Nodes nest through `children`. A tree too deep to rea
 |---|---|---|
 | `app.*` | the whole app: `[state]` and `[sources]` | actions, and sources |
 | `local.*` | one node and its children, or one component instance | actions inside it |
-| `sys.*` | Genesis's own: `view`, `theme`, `auth`, `errors`, `events`, `bus` ([050](050_state.md)) | actions (all but `view` and `theme` are read-only) |
+| `sys.*` | Genesis's own: `theme`, `auth`, `errors`, `events`, `bus` ([050](050_state.md)) | actions (all but `theme` are read-only) |
 | `event.*` | inside a handler: the event's `name` and payload ([100](100_events.md)) | read-only |
 | `props.*` | inside a component: what the caller passed in | read-only |
 | `item.*` | inside a cell with `each`: that element | read-only |
@@ -143,7 +143,7 @@ Each problem is also written to the log ([110](110_agents.md)).
 ## Tests
 
 - the app above loads into the expected config
-- defaults: no `theme` is `"light"`, no `start` is `"main"`
+- defaults: no `theme` is `"light"`
 - an app from several files in several folders loads as one, and moving a file changes nothing
 - two files with one name, in different folders, are a problem naming both paths
 - the same variable, source, connection, or action defined in two files is a problem naming both places
@@ -155,3 +155,7 @@ Each problem is also written to the log ([110](110_agents.md)).
 - a whole-string template keeps its type; a template inside text becomes text
 - a missing value in params is an error and no call is made; in text it shows empty
 - `local.*` resolves to the nearest node that declares it
+
+## Log
+
+- 2026-11-25: `[app] start` is gone, with `sys.view` and the `go` step ([100](100_events.md)). Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."

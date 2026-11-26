@@ -16,12 +16,10 @@ Components never know where a value came from: a starting value, a click, a call
 | sources | `[sources.NAME]` | app variables an operation or stream fills; any action can also write one, and its next load replaces it |
 | local variables | `state = { ... }` on a node or component | `open = false` |
 | form drafts | each `form` | the values typed and not yet submitted |
-| system variables | Genesis | `sys.view`, `sys.theme`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus` |
+| system variables | Genesis | `sys.theme`, `sys.auth`, `sys.errors`, `sys.events`, `sys.bus` |
 
 ### System variables
 
-- **`sys.view`**: which screen is showing. It starts at `[app] start` and is kept in the URL's
-  `#` part, so the back button and links work. The `go` action sets it.
 - **`sys.theme`**: the daisyUI theme. It starts at `[app] theme`, can be set like any variable (a
   theme picker is a Select bound to it), and is kept on this device.
 - **`sys.errors`**: every loud failure, newest first: `{ at, op, status, message }`. It's read-only,
@@ -63,7 +61,7 @@ left it. The rule is simple: **what the user did is kept; what an API said is fe
 | Kept, on this device | Fetched fresh on every open |
 |---|---|
 | `app.*` variables changed by `set`, `step`, `toggle`, or an `input` | every source |
-| `sys.*`: `view`, `theme`, `errors`, and `events` | every variable an `into` filled (call results) |
+| `sys.*`: `theme`, `errors`, and `events` | every variable an `into` filled (call results) |
 | local variables and form drafts (except `password` inputs) | `sys.auth`, which only `check` can answer |
 
 Credentials and session tokens are never in the browser at all ([070](070_secrets.md)).
@@ -134,11 +132,11 @@ start at their starting values. Removed variables are dropped. A source whose `c
 ## Tests
 
 - components draw from state; only actions change it
-- `[state]` starting values; `sys.view` starts at `start` and follows the URL's `#`; the back button goes back a view
+- `[state]` starting values
 - a source calls on `app.opened` and on its params' `.changed` events; `load_on` replaces `app.opened`; `load_on = []` waits for `reload`
 - a stream in `replace` mode keeps the latest message; in `append` mode joins text and pushes others
 - the mirror files appear under `state/`, whole, within a second of a change, with no credentials or passwords; `mirror = false` writes nothing
-- after closing and reopening: user-set `app.*`, `sys.view`, `sys.theme`, `sys.errors`, locals, and drafts are back; sources and `into` results are fetched fresh; `forget` variables start fresh
+- after closing and reopening: user-set `app.*`, `sys.theme`, `sys.errors`, locals, and drafts are back; sources and `into` results are fetched fresh; `forget` variables start fresh
 - a kept value of a removed variable, or of a changed type, is dropped
 - login keeps the token on `serve` only: it's in no state, storage, or response the browser gets
 - `check` on open: 2xx is `in`, `401` is `out`, anything else is a loud failure
@@ -154,3 +152,10 @@ Milestone two ([999](999_todo.md)):
 
 - [x] core: `[sources.NAME]` as handlers: a call on `app.opened` (or `load_on`) and on its params' `.changed`, filling `app.NAME`; the `reload` action
 - [x] core and the browser: persisting: what the user did kept in local storage and restored on open; sources and `into` results never kept; `[app] forget`
+
+## Log
+
+- 2026-11-25: `sys.view` is gone, with `[app] start`, the `go` step, and the plan to keep it in the URL's `#`.
+  There are no pages, so there's no view to track: an app that wants one declares its own variable
+  (`app.view`) and shows and hides on it ([080](080_display_logic.md)). A `sys.view` kept on a device from
+  before is ignored. Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."

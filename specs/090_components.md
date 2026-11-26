@@ -80,7 +80,7 @@ props = { contact = "{{ item }}" }
   `use` node, like every event inside it: `card.local.expanded.changed`.
 - Inside a component, `each`, a form's `data`, and a select's `options` may read `props.*` and `local.*`.
 - A component can use other components. Using one in a loop (A uses B uses A) is a config error.
-- Props can carry steps: a caller can pass `on_open = [{ go = "contact" }]`, and the component
+- Props can carry steps: a caller can pass `on_open = [{ set = "app.view", to = "contact" }]`, and the component
   runs it with `on_click = "{{ props.on_open }}"`. The steps still run in the app, against its state.
   - `"{{ props.NAME }}"` is one step, so it can stand among others in a list
     (`[{ toggle = "local.open" }, "{{ props.on_open }}"]`), and the list carries on after it.
@@ -95,7 +95,9 @@ props = { contact = "{{ item }}" }
   screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
 - **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
   props' steps, and `fire` events. A custom action, a `call`, or a `reload` written in a component is a config
-  error. Events are universal, though: an event a component fires keeps the name it's given, and the app's
+  error. To change what's shown, a component fires an event and the app's handler for it sets the app's
+  variables, so all of an app's navigation can sit in one file if its author wants that (a convention, not
+  part of Genesis). Events are universal, though: an event a component fires keeps the name it's given, and the app's
   handlers for it can do anything. Genesis sets no structure on event names. Any scoping a user wants is a
   naming convention they choose.
 
@@ -143,3 +145,7 @@ Milestone three ([999](999_todo.md)):
 - 2026-11-25: a component's own steps fire events and reach nothing else. Lee: "They can just call events.
   But the events can in turn reach anything." Events are universal, and Genesis doesn't tell people how to
   structure them; any structure can be a naming convention. This was an open question in [999](999_todo.md).
+- 2026-11-25: a component doesn't navigate; the app does, on its events. Lee: "If you want a component to navigate the app, you listen to
+  the event and call the action. This has the added bonus of allowing a person or agent to put all of the
+  navigation into a single file without having to chase all over the whole app to figure out where the heck the
+  navigation just fired from." There's no `go` step at all now ([100](100_events.md)). Timers and `log` are next: Lee calls them system components ([999](999_todo.md)).

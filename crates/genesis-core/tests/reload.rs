@@ -42,17 +42,14 @@ fn the_new_handlers_are_the_ones_that_run() {
 }
 
 #[test]
-fn the_view_theme_trail_and_errors_carry_over() {
+fn the_theme_trail_and_errors_carry_over() {
     let mut m = Machine::new(app(
-        "[on]\n\"go\" = [{ go = \"elsewhere\" }, { set = \"sys.theme\", to = \"dark\" }]\n",
+        "[on]\n\"go\" = [{ set = \"sys.theme\", to = \"dark\" }]\n",
     ));
     m.fire("go", json!({}));
     m.fire("x.failed", json!({ "error": "kept" }));
     m.reload(app(""));
-    assert_eq!(
-        (m.get("sys.view"), m.get("sys.theme")),
-        (Some(json!("elsewhere")), Some(json!("dark")))
-    );
+    assert_eq!(m.get("sys.theme"), Some(json!("dark")));
     assert_eq!(m.get("sys.errors.0.message"), Some(json!("kept")));
     assert!(
         m.get("sys.events")

@@ -25,6 +25,8 @@ So:
 
 ## One app
 
+- **There are no pages.** It's all show and hide: to move from one screen to another, hide one stack of
+  nodes and show another ([080](080_display_logic.md)). There's no `go` and no `sys.view` ([100](100_events.md)).
 - **The configs folder is the app.** `app.toml` at its top holds `[app]` and the screen's `[[body]]`.
   Every other `.toml` file, in any folder, is a component ([090](090_components.md)) or adds to the app
   (state, connections, sources, actions, handlers) ([020](020_config.md)).
@@ -57,3 +59,7 @@ planned in [999](999_todo.md).
 The tests for each part are in the spec that holds it: [010](010_architecture.md) for routes,
 [020](020_config.md) for loading many files and unique names, [040](040_catalog.md) for the atoms and
 style keys, and [090](090_components.md) for components.
+
+## Log
+
+- 2026-11-25: there are no pages, so `go`, `sys.view`, and `[app] start` are gone ([100](100_events.md)). Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."

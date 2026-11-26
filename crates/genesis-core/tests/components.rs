@@ -180,7 +180,7 @@ on_click = [{ set = "app.page", to = 2 }]
 fn sys_is_visible_inside_a_component() {
     let card = component(
         "props = [\"contact\"]",
-        "[[body]]\ntype = \"text\"\ntext = \"{{ sys.view }}\"\n",
+        "[[body]]\ntype = \"text\"\ntext = \"{{ sys.theme }}\"\n",
     );
     assert!(load(&[("app.toml", APP), ("contact_card.toml", &card)]).is_ok());
 }

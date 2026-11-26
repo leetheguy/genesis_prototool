@@ -116,9 +116,6 @@ pub struct Info {
     /// The daisyUI theme `sys.theme` starts at. Default `"light"`.
     #[serde(default = "defaults::theme")]
     pub theme: String,
-    /// The view `sys.view` starts at. Default `"main"`.
-    #[serde(default = "defaults::start")]
-    pub start: String,
     /// How deep a chain of events may go before it's stopped. Default `100`.
     #[serde(default = "defaults::max_chain")]
     pub max_chain: u32,
@@ -545,7 +542,7 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
         /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
@@ -609,7 +606,7 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
         /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
@@ -636,7 +633,7 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
         /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
@@ -690,7 +687,7 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
         /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
@@ -711,7 +708,7 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable it reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        /// The variable it reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
         /// Its name in the form it's in: its value goes in the form's draft, and out on `.submit`.
@@ -733,7 +730,7 @@ styled! {
         /// The node's name; its `.change` fires under it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-        /// The variable its group reads and writes, outside a form: `app.NAME`, `sys.view`, or `sys.theme`.
+        /// The variable its group reads and writes, outside a form: `app.NAME` or `sys.theme`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub var: Option<String>,
         /// Its group's name in the form it's in: its value goes in the form's draft, and out on `.submit`.
@@ -984,11 +981,6 @@ pub enum Step {
     Toggle {
         /// The variable.
         toggle: String,
-    },
-    /// Sets `sys.view`.
-    Go {
-        /// The view.
-        go: String,
     },
     /// Fires an event.
     Fire {
@@ -1968,7 +1960,7 @@ fn check_node(
         !is_writable_path(var) && !(inside && (var.starts_with("props.") || is_local_path(var)))
     }) {
         problem(format!(
-            "`var` is an app variable, like \"app.query\", or sys.view or sys.theme, not {:?}",
+            "`var` is an app variable, like \"app.query\", or sys.theme, not {:?}",
             node.var().unwrap_or_default()
         ));
     }
@@ -2071,8 +2063,8 @@ fn is_plain(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// Whether `path` names a variable a control may write: `app.NAME`, `sys.view`, or `sys.theme`,
-/// the ones a `set` takes.
+/// Whether `path` names a variable a control may write: `app.NAME` or `sys.theme`, the ones a
+/// `set` takes.
 fn is_writable_path(path: &str) -> bool {
     match path.split_once('.') {
         Some(("app", name)) => {
@@ -2081,7 +2073,7 @@ fn is_writable_path(path: &str) -> bool {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         }
-        _ => matches!(path, "sys.view" | "sys.theme"),
+        _ => path == "sys.theme",
     }
 }
 
@@ -2159,8 +2151,8 @@ fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
 
 /// The step kinds, keyed by the TOML key that names each one. `every` comes before `fire`
 /// because an `every` step has a `fire` key too.
-const STEP_KINDS: [&str; 11] = [
-    "call", "reload", "every", "set", "step", "toggle", "go", "fire", "log", "delay", "cancel",
+const STEP_KINDS: [&str; 10] = [
+    "call", "reload", "every", "set", "step", "toggle", "fire", "log", "delay", "cancel",
 ];
 
 impl<'de> Deserialize<'de> for Step {
@@ -2206,11 +2198,6 @@ impl<'de> Deserialize<'de> for Step {
                 toggle: serde_json::from_value::<steps::Toggle>(fields)
                     .map_err(wrong)?
                     .toggle,
-            },
-            "go" => Step::Go {
-                go: serde_json::from_value::<steps::Go>(fields)
-                    .map_err(wrong)?
-                    .go,
             },
             "fire" => {
                 let s: steps::Fire = serde_json::from_value(fields).map_err(wrong)?;
@@ -2289,12 +2276,6 @@ mod steps {
     #[serde(deny_unknown_fields)]
     pub struct Toggle {
         pub toggle: String,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct Go {
-        pub go: String,
     }
 
     #[derive(Deserialize)]
@@ -2396,9 +2377,6 @@ mod defaults {
     }
     pub fn theme() -> String {
         "light".into()
-    }
-    pub fn start() -> String {
-        "main".into()
     }
     pub fn max_chain() -> u32 {
         100
