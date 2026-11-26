@@ -82,11 +82,22 @@ props = { contact = "{{ item }}" }
 - A component can use other components. Using one in a loop (A uses B uses A) is a config error.
 - Props can carry steps: a caller can pass `on_open = [{ go = "contact" }]`, and the component
   runs it with `on_click = "{{ props.on_open }}"`. The steps still run in the app, against its state.
+  - `"{{ props.NAME }}"` is one step, so it can stand among others in a list
+    (`[{ toggle = "local.open" }, "{{ props.on_open }}"]`), and the list carries on after it.
+  - The steps run where they were written, with the event from inside: `event.item` is the element the
+    component is drawn for. A component that passes its own prop on (`on_open = "{{ props.on_pick }}"`)
+    runs it where it was first written.
+  - A prop run as steps takes a list of steps, or one step alone. An optional one that's left out runs nothing.
 - **Events inside a component** are named under the `use` node's `id`: a `more_btn` inside `id = "card"` fires
   `card.more_btn.click`. Ids inside a component are unique within it, and the `use` node's `id` makes them
   unique in the app. Every instance in an `each` fires the same name, and the payload's `item` tells them apart.
 - A component sees no `app.*`. It sees only what it's given, so the same component works anywhere on the
   screen, and can move into the composite library ([999](999_todo.md)) as it is. `sys.*` is visible everywhere.
+- **A component's own steps fire events; they reach nothing else.** Its steps work on its `local.*`, run its
+  props' steps, and `fire` events. A custom action, a `call`, or a `reload` written in a component is a config
+  error. Events are universal, though: an event a component fires keeps the name it's given, and the app's
+  handlers for it can do anything. Genesis sets no structure on event names. Any scoping a user wants is a
+  naming convention they choose.
 
 ## What a component isn't
 
@@ -103,9 +114,14 @@ by a developer or an agent, following the `Component` trait, and shipped in a bu
 - an undeclared `local.*`, or a `props.*` the component doesn't take, is a config error
 - `props.*` is read-only; writing it is a config error
 - a missing required prop, an unknown prop, an unknown component, and a loop of components are config errors
-- a passed step list runs against the app's state
+- a passed step list runs against the app's state, in its place among the component's own steps, and a prop
+  passed on runs where it was first written (in a real browser: `tests/deployed/components.mjs`)
+- a step `"{{ props.NAME }}"` outside a component, a step template that isn't one, and a prop run as steps
+  that isn't steps are config errors
 - a node inside a component fires its events under the `use` node's `id`
 - `app.*` inside a component is a config error, in a template or a variable's path; `sys.*` isn't
+- a custom action, a `call`, or a `reload` in a component's own steps is a config error; its `fire` keeps the
+  event's name, and the app's handlers for it run
 - a component in `app.toml`, a table a component can't hold, and a prop named twice are config errors
 - a component with named controls or a submit button used outside a form, and one holding a form used inside
   a form, are config errors
@@ -120,4 +136,10 @@ Milestone three ([999](999_todo.md)):
   with `props.*` (what's inside a component draws but isn't wired yet: its events and named controls come
   with the next task)
 - [x] local state per instance, and events named under the `use` node's `id`
-- [ ] props that carry steps
+- [x] props that carry steps
+
+## Log
+
+- 2026-11-25: a component's own steps fire events and reach nothing else. Lee: "They can just call events.
+  But the events can in turn reach anything." Events are universal, and Genesis doesn't tell people how to
+  structure them; any structure can be a naming convention. This was an open question in [999](999_todo.md).

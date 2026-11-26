@@ -56,10 +56,11 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 
 ## Open questions
 
-- **What a component's own steps may reach.** A component sees no `app.*`, but its own steps can still name
-  app-wide things: a custom action, a `call` to an operation, a `reload` of a source, a `fire` of any event.
-  Today they run. Should a component be limited to `local.*`, `sys.*`, and its props' steps, so it works in
-  any app as it is? From [090](090_components.md).
+- **`go`, `log`, and timers in a component's own steps.** A component's own steps fire events and reach
+  nothing else ([090](090_components.md), its log): a custom action, a `call`, or a `reload` there is a config
+  error. Still allowed, until decided: `go` (it sets `sys.view` for the whole app), `log`, and `delay`, `every`,
+  and `cancel` (timer ids are app-wide, so a component's `cancel` can stop the app's timer). From
+  [090](090_components.md).
 
 - **Sessions across `serve` restarts and replicas.** Sessions live in `serve`'s memory, so a restart signs
   everyone out (their state survives), and two `serve`s can't share sessions. That's fine for one server. A

@@ -304,17 +304,7 @@ impl Wired {
             Some(form) => form.row.as_deref(),
             None => self.row.as_deref(),
         };
-        let within = self.scope.as_ref().map(|scope| Within {
-            name: scope.name.clone(),
-            row: scope.row.clone(),
-            props: Value::Object(
-                scope
-                    .props
-                    .iter()
-                    .map(|(key, prop)| (key.clone(), fill(&self.host, scope, prop)))
-                    .collect(),
-            ),
-        });
+        let within = self.scope.as_ref().map(|scope| within(&self.host, scope));
         self.host
             .fire_within(&format!("{}.{event}", self.name), payload, row, within);
     }
@@ -564,6 +554,26 @@ fn dig(value: &Value, path: Option<&str>) -> Option<Value> {
             _ => value.get(key),
         })
         .cloned()
+}
+
+/// Where an event inside a component fired, for the machine: the instance, its props filled, and
+/// the instances it's inside.
+fn within(host: &Host, scope: &Arc<Scope>) -> Within {
+    Within {
+        name: scope.name.clone(),
+        row: scope.row.clone(),
+        props: Value::Object(
+            scope
+                .props
+                .iter()
+                .map(|(key, prop)| (key.clone(), fill(host, scope, prop)))
+                .collect(),
+        ),
+        outer: scope
+            .parent
+            .as_ref()
+            .map(|parent| Box::new(within(host, parent))),
+    }
 }
 
 /// A prop, filled from where its `use` node sits. A prop that's one template and names nothing
