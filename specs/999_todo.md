@@ -76,6 +76,7 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **A config editor UI**, like PurpleFlow's files page, beyond what dufs's own UI gives. From [010](010_architecture.md).
 - **An admin panel for state**: a second Genesis that shows the first one's `sys.*` and variables, for dogfooding.
 - **Dogfood screens**: the job search review screen, Lee's microtask drip on mobile, and the CRM.
+- **AI voice chat.** From Lee, 2026-11-26: "Please add to 999 AI voice chat."
 
 ## Log
 
