@@ -1,0 +1,40 @@
+# crm.toml: the CRM's API, and what the app reads from it. Searching and counting are the API's.
+[connections.crm]
+base_url = "http://127.0.0.1:4020"
+headers = { Authorization = "Bearer {{ creds.CRM_TOKEN }}" }
+
+[connections.crm.crud.companies]
+
+[connections.crm.crud.contacts]
+
+[state]
+company_query = ""          # what's typed in the companies page's search box
+contact_query = ""          # and the contacts page's
+company = { id = 0 }        # the company open on its page, or being edited: its whole row
+contact = { id = 0 }        # the contact being edited
+new_contact = {}            # where a new contact starts: its company, from a company's page
+
+[sources.companies]
+call = "crm.companies.list"
+params = { q = "{{ app.company_query }}" }
+select = "/rows"
+
+# Every company, for the contact form's company picker, whatever the search box says.
+[sources.company_names]
+call = "crm.companies.list"
+select = "/rows"
+
+[sources.contacts]
+call = "crm.contacts.list"
+params = { q = "{{ app.contact_query }}" }
+select = "/rows"
+
+# The open company's contacts. With no company open, the id is 0, and the API has none.
+[sources.company_contacts]
+call = "crm.contacts.list"
+params = { company_id = "{{ app.company.id }}" }
+select = "/rows"
+
+# Each change reloads everything that shows it: lists, counts, and the company picker.
+[actions.reload_all]
+do = [{ reload = ["app.companies", "app.company_names", "app.contacts", "app.company_contacts"] }]

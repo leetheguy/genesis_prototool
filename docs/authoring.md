@@ -542,8 +542,10 @@ do = [{ set = "app.typed", to = "" }, { set = "app.query", to = "" }]
 ```
 
 **Failures are loud.** Every `.failed` event goes into `sys.errors`, the event trail and the server's log
-before any handler runs. If no handler matches it, the screen shows a short message too. A handler can
-say it better; it can't make a failure disappear.
+before any handler runs. If no handler matches it, the screen shows a short message too, with the API's
+answer in it (`crm.companies.delete failed: HTTP 409: Acme still has 2 contacts.`), so an API that answers a
+refusal with one plain sentence reads well with no handler at all. A handler can say it better; it can't make a
+failure disappear.
 
 **Chains have a limit.** An event fired by a handler is one deeper than the event that ran it. Past
 `[app] max_chain` (100 by default) the chain stops, loudly. A timer starts a fresh chain each time it
@@ -1170,6 +1172,14 @@ count = 0
   It reads them and never writes them: to change one, it fires an event and the app sets it.
 - The page is drawn by `app.toml`, so it gets `app.*`. A component the page draws doesn't: the page hands it
   what it needs as props (see [Components](#components)).
+- **What writes back stays out of a page's `app.*`.** A control's `var` and a dialog's `open` write to their
+  variable, so in a page they're `local.*`. A search box on a page binds `local.query`, and the app's handler
+  for `PAGE.search.change` copies `{{ event.value }}` into the `app.*` variable a source's params read. A
+  dialog the app opens and closes, like a form to add or edit, goes in `app.toml`'s body, over whatever page
+  is open.
+
+The CRM sample (`samples/crm/` in the Genesis repo) is a whole app built this way: three pages, forms in
+dialogs, searching, deletes that ask first, and its own small API.
 
 ### Timers: wait, repeat, and give up
 

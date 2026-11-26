@@ -1,0 +1,82 @@
+# companies.toml: every company, searchable, each with its contact count. Its buttons fire events; the
+# app's handlers in company_handlers.toml decide what they do.
+[component]
+
+[state]
+query = ""
+
+[[body]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 3
+
+[[body.children]]
+type = "text"
+text = "Companies"
+level = 1
+grow = true
+
+[[body.children]]
+type = "button"
+id = "add"
+label = "Add company"
+variant = "primary"
+
+[[body]]
+type = "input"
+id = "search"
+var = "local.query"
+kind = "search"
+placeholder = "Search companies"
+
+[[body]]
+type = "cell"
+each = "app.companies"
+empty = "No companies match."
+gap = 2
+
+[[body.children]]
+type = "cell"
+flow = "row"
+align = "center"
+gap = 2
+pad = 3
+bg = "base-100"
+border = true
+radius = "box"
+
+[[body.children.children]]
+type = "cell"
+grow = true
+
+[[body.children.children.children]]
+type = "text"
+text = "{{ item.name }}"
+weight = "semibold"
+
+[[body.children.children.children]]
+type = "text"
+text = "{{ item.contacts }} contacts"
+color = "muted"
+size = "sm"
+
+[[body.children.children]]
+type = "button"
+id = "open"
+label = "Open"
+size = "sm"
+
+[[body.children.children]]
+type = "button"
+id = "edit"
+label = "Edit"
+size = "sm"
+variant = "ghost"
+
+[[body.children.children]]
+type = "button"
+id = "delete"
+label = "Delete"
+size = "sm"
+variant = "ghost"

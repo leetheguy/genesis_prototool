@@ -1,0 +1,29 @@
+# company_handlers.toml: what the companies pages and the company forms do.
+[on]
+"companies.search.change" = [{ set = "app.company_query", to = "{{ event.value }}" }]
+"companies.add.click" = [{ set = "app.adding_company", to = true }]
+"companies.open.click" = [{ set = "app.company", to = "{{ event.item }}" }, { go = "company" }]
+"companies.edit.click" = [{ set = "app.company", to = "{{ event.item }}" }, { set = "app.editing_company", to = true }]
+"companies.delete.click" = [
+  { confirm = "Delete {{ event.item.name }}?", yes = "Delete", no = "Keep" },
+  { call = "crm.companies.delete", params = { id = "{{ event.item.id }}" } },
+  "reload_all",
+  { toast = "Deleted {{ event.item.name }}.", variant = "success" },
+]
+
+"company.back.click" = [{ go = "companies" }]
+"company.edit.click" = [{ set = "app.editing_company", to = true }]
+
+"new_company.submit" = [
+  { call = "crm.companies.create", params = { name = "{{ event.form.name }}", website = "{{ event.form.website }}" } },
+  { set = "app.adding_company", to = false },
+  "reload_all",
+  { toast = "Added {{ event.form.name }}.", variant = "success" },
+]
+# The answer is the saved row, so the company's page shows the change at once.
+"company_changes.submit" = [
+  { call = "crm.companies.update", params = { id = "{{ app.company.id }}", name = "{{ event.form.name }}", website = "{{ event.form.website }}" }, into = { "app.company" = "" } },
+  { set = "app.editing_company", to = false },
+  "reload_all",
+  { toast = "Saved {{ event.form.name }}.", variant = "success" },
+]

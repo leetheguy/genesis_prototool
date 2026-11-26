@@ -20,11 +20,13 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **Components** ([090](090_components.md)): TOML files of atoms with props and local state, used by name.
 - **For agents** ([110](110_agents.md)): the guide at `GET /agents`; one log of every failure, read at
   `GET /api/log`; and `POST /api/push/{name}`, which fires `push.{name}` in every open client.
-- **The CRM**, as a sample with its own API: two tables, companies and contacts (each contact at one company),
-  each with full CRUD. Lists you can search (the API filters), a company's page with its contacts, forms to add
-  and edit with checks, deletes that ask first, toasts when things save, and loud failures. Built only from
-  atoms and its own components. The API is a small mock in the repo, keeping its data in a JSON file so it
-  survives restarts.
+- **A fresh agent builds the CRM.** The CRM itself is built as a sample, by hand ([130](130_crm_sample.md)),
+  with its API and a deployed check. Left: a fresh agent, given only the guide and the token, builds one like it
+  on its own, and the same check drives it.
+- **A form's draft doesn't start over when its `data` changes.** Editing one row, closing the dialog, then
+  editing another shows what was typed for the first. Found building the CRM ([130](130_crm_sample.md)).
+- **The message for two files with one name** names the file twice (`the file name companies.toml is also
+  companies.toml`); it should give both paths ([120](120_one_app.md)).
 
 ## Planned
 
@@ -92,3 +94,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - 2026-11-25: the load checks for wiring ([020](020_config.md), "Checks") are built, so they're off milestone
   three's list. A `go` to a page that isn't there isn't one of them: it fails when it runs, as Lee decided
   ([100](100_events.md), Log).
+- 2026-11-25: the CRM is built as a sample ([130](130_crm_sample.md)): `samples/crm/`, with its API and a deployed
+  check in a real browser. What's left of the CRM item is a fresh agent building it. Building it found two gaps,
+  now listed above: a form's draft that doesn't start over, and the message for two files with one name.

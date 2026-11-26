@@ -12,7 +12,7 @@ with `cell` (with its layout, box, and type keys), `text` (a heading with `level
 credentials only `serve` holds; sessions kept on the device; the mirror; Docker Compose with dufs behind
 `/fs/`; and the desktop shell, whose window builds and loads a `serve` page (a person has yet to open it on a
 real desktop, [999](999_todo.md)).
-Everything else here is still design: every numbered spec but [120](120_one_app.md) is a draft, and this page describes the
+Everything else here is still design: every numbered spec but [080](080_display_logic.md), [120](120_one_app.md) and [130](130_crm_sample.md) is a draft, and this page describes the
 design they add up to.
 
 **Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. One app
@@ -33,7 +33,9 @@ every open screen. Display logic ([080](080_display_logic.md)) is built: conditi
 or `[app] locale`'s. The load checks for wiring ([020](020_config.md)) are built: a step naming an action, timer,
 operation, or source that isn't there, a step writing what it can't, and a template that isn't a plain lookup or
 reads nothing where it's written are refused at load, each with its file, line, and column. A `go` to a page
-that isn't there still fails only when it runs.
+that isn't there still fails only when it runs. The CRM is built as a sample ([130](130_crm_sample.md)):
+`samples/crm/`, with its own API, driven in a real browser by a deployed check. What's left of the milestone
+is a fresh agent building it on its own.
 
 ## What this is
 
@@ -143,7 +145,7 @@ Built so far, then planned ([010](010_architecture.md)):
 | `apps/bench` | `genesis-bench`: runs the app's bus with no screen |
 | `apps/web` | the browser entry (wasm), built by trunk with Tailwind and daisyUI |
 | `apps/serve` | `genesis-serve`: the renderer, the config stream, calls, and the mirror |
-| `samples/` | sample apps (`hello`, `contacts`), each a whole configs folder; the real configs folder is the user's |
+| `samples/` | sample apps (`hello`, `contacts`, and `crm` with its own API), each a whole configs folder; the real configs folder is the user's |
 | `tests/deployed/` | checks against a real `serve` and a real browser (`scripts/check-hello.sh`) |
 | `state/` | the mirror: each client's state and event trail (read-only to agents at `/fs/.state/`) |
 | `logs/` | `genesis.log`: every load problem, failed call, and client failure, one line each, read at `/api/log` ([110](110_agents.md)) |
@@ -188,3 +190,4 @@ In use now, then planned. Check current versions before adding any.
 - [100 — Events, actions, and handlers](100_events.md): *draft.* The bus: event names, `[on]`, actions, the queue, depth, timers, the workbench.
 - [110 — Working with agents](110_agents.md): *draft.* The guide at `/agents`, one log of every failure, and pushing events in.
 - [120 — One app, built on the fly](120_one_app.md): *implemented.* The pivot: the configs folder is one app with unique file names, and the catalog is atoms.
+- [130 — The CRM sample](130_crm_sample.md): *implemented.* The CRM built once by hand, with its own API and a deployed check: milestone three's yardstick.
