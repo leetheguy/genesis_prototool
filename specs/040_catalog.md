@@ -60,6 +60,12 @@ variable `false` the one way anything changes state, a `set`, and then runs `on_
 variable `false` from an action, say a button inside it, closes it without firing `.close`. What goes
 inside, and whether it has buttons to close it, is the app's to say.
 
+A `markdown` node draws its `text` (templates filled in first) as CommonMark with tables,
+strikethrough, and task lists, in one `div` that takes the box, type, and placement keys. It's drawn
+safely, as the `svg` is: raw HTML shows as text, and a link or image whose address isn't `http`,
+`https`, `mailto`, `tel`, or relative is dropped, keeping its words. Tailwind resets every element, so
+the built CSS styles what Markdown makes (headings, lists, quotes, code, tables) in the theme's colors.
+
 ### Media and embeds
 
 - **`svg`** draws its markup inline, so it can take the theme's colors (`currentColor` follows `color`) and the
@@ -295,7 +301,7 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - `link` opens an outside URL in a new tab, and any other in the same one
 - an `image` without `alt` is a config error
 - `button`'s `variant` and `size` give daisyUI's classes, by screen size too
-- `markdown` draws Markdown and escapes raw HTML
+- `markdown` draws Markdown and shows raw HTML as text; a link or image to anything but `http`, `https`, `mailto`, `tel`, or a relative address keeps only its words; it's styled and redraws with its templates (in a real browser: `tests/deployed/markdown.mjs`)
 - `svg` draws Genesis's own copy of its markup inline; anything that could run or reach outside it (an element outside the list, an `on*` attribute, a `javascript:` URL, an outside `href` or `url()`) is a config error at its line; with `label` it's a named image, without one it's hidden from screen readers; markup that isn't one `svg` is a config error
 - `divider` is an `hr`, in the theme's border color or its own
 - `audio` and `video` take `src` with templates and default to controls on, autoplay off; with an `id` they fire `.play`, `.pause`, and `.ended` (in a real browser: `tests/deployed/media.mjs`), and without one they fire nothing
@@ -341,4 +347,4 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `form`, controls with `name`, and the `submit` button (`.invalid` comes with checks, [080](080_display_logic.md))
 - [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and a check that a file was picked, come with display logic, [080](080_display_logic.md))
 - [x] `dialog`
-- [ ] `markdown`
+- [x] `markdown`

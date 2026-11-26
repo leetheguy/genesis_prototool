@@ -1317,7 +1317,8 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
         | Node::Divider(_)
         | Node::Audio(_)
         | Node::Video(_)
-        | Node::Iframe(_) => {}
+        | Node::Iframe(_)
+        | Node::Markdown(_) => {}
     }
     let form = if matches!(node, Node::Form(_)) {
         Some(name.as_str())

@@ -6,7 +6,7 @@
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
 use genesis_core::config::{
-    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Svg, Text, Video,
+    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Markdown, Svg, Text, Video,
 };
 use genesis_core::style::{BySize, Color, Height, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
@@ -293,5 +293,23 @@ impl Component for Dialog {
             </dialog>
         }
         .into_any()
+    }
+}
+
+impl Component for Markdown {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        let text = wired.text(&self.text);
+        // Safe to hand the browser as HTML: genesis-core's reader shows raw HTML as text and keeps
+        // only safe links. The `markdown` class styles what Markdown makes (in apps/web's CSS).
+        let html = move || genesis_core::markdown::html(&text());
+        let class = wired.class(
+            ClassList::default()
+                .raw("markdown")
+                .boxed(self.boxed())
+                .typed(self.typed()),
+        );
+        view! { <div class=class inner_html=html></div> }.into_any()
     }
 }
