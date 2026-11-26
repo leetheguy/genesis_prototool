@@ -18,7 +18,7 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   `iframe`, `link`, `button`, `input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`, `form`, `dialog`,
   and `markdown`. A cell with `each` repeats.
 - **Components** ([090](090_components.md)): TOML files of atoms with props and local state, used by name.
-- **Display logic** ([080](080_display_logic.md)): formats, and `locale`. (Conditions and checks on controls are built.)
+- **Display logic** ([080](080_display_logic.md)): conditions for `show` and `disabled`, checks on controls, and formats.
 - **`confirm` and `toast`** ([100](100_events.md)).
 - **For agents** ([110](110_agents.md)): the guide at `GET /agents`; one log of every failure, read at
   `GET /api/log`; and `POST /api/push/{name}`, which fires `push.{name}` in every open client.

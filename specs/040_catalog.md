@@ -368,3 +368,4 @@ Milestone three ([999](999_todo.md)), each with its tests:
   component." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."
 - 2026-11-25: `show` on every node and `disabled` on buttons and controls are built ([080](080_display_logic.md)).
 - 2026-11-25: checks on every control, and `.invalid` with each failing field's message ([080](080_display_logic.md)). Forms are drawn `novalidate`.
+- 2026-11-25: `text` takes `format` ([080](080_display_logic.md)).

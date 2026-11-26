@@ -161,6 +161,14 @@ pub struct Info {
     /// App variables a session never keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forget: Vec<String>,
+    /// The language formats write in, like `"en-GB"` ([spec 080](../../../specs/080_display_logic.md),
+    /// "Formats"). Without it, the browser's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "locale_tag"
+    )]
+    pub locale: Option<String>,
 }
 
 /// One entry of `[on]`: an event pattern and the steps to run when an event matches it.
@@ -403,6 +411,9 @@ styled! {
         pub id: Option<String>,
         /// The words; may hold templates.
         pub text: String,
+        /// How the values its templates fill in look ([spec 080](../../../specs/080_display_logic.md)).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub format: Option<crate::format::Format>,
         /// 1, 2, or 3: a heading (`h1`–`h3`) for screen readers, with a heading's size and weight.
         /// Without it, a paragraph.
         #[serde(
@@ -504,6 +515,15 @@ pub fn outlet_components(app: &App) -> BTreeSet<String> {
     }
     names.retain(|name| app.components.get(name).is_some_and(|c| c.props.is_empty()));
     names
+}
+
+/// Reads `[app] locale`, refusing anything that isn't a language tag.
+fn locale_tag<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    let locale = String::deserialize(deserializer)?;
+    match crate::format::check_locale(&locale) {
+        None => Ok(Some(locale)),
+        Some(why) => Err(de::Error::custom(why)),
+    }
 }
 
 /// Reads `level`, refusing anything but 1, 2, or 3.

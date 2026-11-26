@@ -152,7 +152,7 @@ though its own `on_click` still works. Every node also takes **`show`**, and but
 | Type | What it is | It takes |
 |---|---|---|
 | `cell` | a box that lays out its children | `children`, `each`, `empty`, `error`, and the layout, box, type and placement keys |
-| `text` | a line of text, or a heading with `level` 1 to 3 | `text`, `level` |
+| `text` | a line of text, or a heading with `level` 1 to 3 | `text`, `level`, `format` |
 | `markdown` | longer prose, drawn safely (no raw HTML) | `text` |
 | `image` | a picture | `src`, `alt` (required, `""` for decoration) |
 | `svg` | an inline drawing, checked when it loads | `svg` (the markup), `label` |
@@ -392,6 +392,47 @@ disabled = { not = { var = "form.email", matches = "^[^@ ]+@[^@ ]+$" } }   # unt
 - **To show "Loading…" or a failure** somewhere other than the list itself, test the source's status:
   `show = { var = "app.contacts", status = "failed" }`. A cell with `each` already does this in its own place.
 - **A hidden node takes no room,** and a hidden form keeps what was typed into it.
+
+### How values look: `format`
+
+A `text` node's `format` changes how the values its templates fill in look, never what they are. The
+variable keeps its raw value, so a handler still sends `1234.5`, not `"$1,234.50"`.
+
+| Format | `1234.5` or `"2026-11-21T09:30:00Z"` shows as |
+|---|---|
+| `{ number = 2 }` | `1,234.50`: grouped, with that many decimals |
+| `{ currency = "USD" }` | `$1,234.50`, with the currency's own decimals |
+| `{ percent = 1 }` | the number × 100: `0.123` is `12.3%` |
+| `{ date = "%b %-d, %Y" }` | `Nov 21, 2026`, by a strftime pattern |
+| `{ ago = true }` | `3 hours ago`, or `in 2 days` |
+| `{ bytes = true }` | `1.2 KB` |
+| `{ case = "title" }` | text in `"upper"`, `"lower"`, or `"title"` case |
+| `{ truncate = 80 }` | text cut to 80 characters, `…` included |
+| `{ map = { won = "Won", lost = "Lost" } }` | the label for each value; others as they are |
+
+```toml
+[[body.children]]
+type = "text"
+text = "{{ item.amount }}"
+format = { currency = "USD" }
+text_align = "right"
+
+[[body.children]]
+type = "text"
+text = "Closed {{ item.closed_at }}"
+format = { date = "%b %-d" }
+```
+
+- **One format per text.** It applies to every value in the text, so put a date and an amount in
+  their own `text` nodes, side by side in a cell.
+- **Dates are ISO 8601 text.** One with a zone (`Z`, `+01:00`) shows in the person's time zone; one
+  without (`2026-11-21`) shows as written, so a birthday never slips a day. A date pattern takes `%Y`,
+  `%y`, `%m`, `%B`, `%b`, `%d`, `%e`, `%A`, `%a`, `%H`, `%I`, `%p`, `%M`, `%S` and `%%`; `%-d` and
+  the like drop the leading zero.
+- **The language is the person's browser's,** unless `[app] locale = "en-GB"` names one. A German
+  browser shows `1.234,50 €`.
+- **A value a format can't take** (text given to `currency`) shows as it is, and the browser console
+  says why.
 
 ## State and templates
 
@@ -1331,7 +1372,6 @@ If you have the Genesis repo, `genesis-bench FOLDER` runs an app with no screen:
 
 These are designed but not yet in Genesis. Don't use them: the app won't load, or they'll do nothing.
 
-- `format` for numbers and dates, and `[app] locale`.
 - The `confirm` and `toast` steps. Use a dialog for both for now.
 - Signing in (`[app.auth]`, `sign_in`, `sign_out`, `{{ session.token }}`) and `wipe_state`.
 - Streaming answers (`stream` on an operation, and a source's `mode`).

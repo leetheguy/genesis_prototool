@@ -1,6 +1,6 @@
 # 080 — Display logic
 
-Status: draft
+Status: implemented
 Created: 2026-11-21
 
 Genesis has no logic about data. It does have display logic: whether something shows, whether
@@ -87,7 +87,10 @@ and its refusal is a loud failure ([030](030_connections.md)).
 
 ## Formats
 
-`format` changes how a value looks, never what it is. The variable keeps the raw value.
+`format` changes how a value looks, never what it is. The variable keeps the raw value. A `text`
+node's `format` applies to every value its templates fill in, so `"{{ app.paid }} of {{ app.owed }}"`
+with `{ currency = "USD" }` shows both as money; values that need different formats go in their own
+`text` nodes.
 
 | Format | Shows `1234.5` or `"2026-11-21T09:30:00Z"` as |
 |---|---|
@@ -103,6 +106,19 @@ and its refusal is a loud failure ([030](030_connections.md)).
 
 Formats follow the browser's locale unless `[app] locale = "en-GB"` sets one. A value a format can't
 handle (text given to `currency`) is shown as it is, and the problem goes to the browser console.
+
+- **Numbers** round halves away from zero. `currency` shows the currency's own decimals (none for yen).
+  `bytes` counts by thousands (`KB`, `MB`, …) with at most one decimal.
+- **Dates** are ISO 8601 text: `2026-11-21`, `2026-11-21T09:30`, or with a zone,
+  `2026-11-21T09:30:00Z` or `+01:00`. One with a zone is shown in the browser's time zone; one without
+  (a day, or a wall-clock time) is shown as written, so a birthday never slips a day. A number isn't a date.
+- **Date patterns** take `%Y`, `%y`, `%m`, `%B`, `%b`, `%d`, `%e`, `%A`, `%a`, `%H`, `%I`, `%p`, `%M`,
+  `%S`, and `%%`; `%-d`, `%-m`, `%-H`, `%-I`, `%-M`, and `%-S` drop the leading zero. Any other is a config error.
+- **`ago`** says the largest unit that fits (seconds, minutes, hours, days, months of 30 days, years),
+  rounded toward now, and works ahead too: `in 2 days`. It's worked out when the text is drawn.
+- **`truncate`** counts the `…` in its length. **`map`** looks a value up by its text (`1`, `true`, `"won"`).
+- **The browser's language** comes from its own `Intl`: digits, grouping, currency symbols, month and day
+  names, and relative times. Outside a browser (tests, and the bench) formats write US English in UTC.
 
 ## Tests
 
@@ -121,7 +137,8 @@ handle (text given to `currency`) is shown as it is, and the problem goes to the
   checked against its own item
 - a check without `message`, or with `var`, `status`, or a combinator, is a config error
 - each format turns its example into the value shown; the raw value in state is unchanged
-- `locale` changes number and date output
+- `locale` changes number and date output (in a real browser: `tests/deployed/format.mjs`)
+- a value a format can't take is shown as it is; a badly written format or `locale` is a config error
 
 ## Tasks
 
@@ -130,7 +147,7 @@ Milestone three ([999](999_todo.md)):
 - [x] conditions, and `show` on every node through `Wired`
 - [x] `disabled` on buttons and controls
 - [x] checks on controls, with their messages
-- [ ] formats, and `locale`
+- [x] formats, and `locale`
 
 ## Log
 
@@ -145,3 +162,8 @@ Milestone three ([999](999_todo.md)):
   Messages wait until the person changes the control or a submit fails, so a fresh form isn't
   covered in red. Forms are drawn `novalidate` so Genesis's checks are the only ones, and `.invalid`
   always fires.
+- 2026-11-25: formats and `locale` are built. The logic is in genesis-core and the language comes from
+  the browser's `Intl` (in genesis-ui), so the bundle carries no locale data and the output matches what
+  people see elsewhere in their browser; tests use a US English stand-in in UTC. Dates are parsed by hand
+  (no date crate). A date with no zone is shown as written, so a plain day never shifts across time
+  zones. `format` on `text` applies to each value its templates fill in, as a template takes no filters.
