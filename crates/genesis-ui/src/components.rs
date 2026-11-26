@@ -95,7 +95,13 @@ impl Component for Button {
         );
         // Inside a form, a button submits only when it says so.
         let kind = if self.submit { "submit" } else { "button" };
-        view! { <button type=kind class=class on:click=move |_| wired.fire("click", nothing())>{label}</button> }.into_any()
+        let off = wired.holds(self.disabled.as_ref());
+        view! {
+            <button type=kind class=class disabled=off on:click=move |_| wired.fire("click", nothing())>
+                {label}
+            </button>
+        }
+        .into_any()
     }
 }
 

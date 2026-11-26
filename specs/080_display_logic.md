@@ -34,6 +34,16 @@ show = { all = [{ var = "app.role", in = ["admin", "owner"] }, { not = { var = "
 Conditions go in `show` (any node) and `disabled` (buttons and controls), and nowhere else. Handlers
 and sources never test anything; they branch by event name instead ([100](100_events.md)).
 
+- **`show`**: the node and its children are drawn only while it holds, and take no place while hidden.
+  On a node with `each`, it's tested once, for the whole list; to hide some rows, put `show` on the
+  row's own children, where `item.*` is that row's element.
+- **`disabled`**: the button or control is drawn disabled while it holds, so it can't be clicked,
+  typed in, or picked from. A disabled button fires nothing.
+- **What `var` can read** is checked when the app loads: `local.*` and `props.*` only inside a
+  component, `form.*` only inside a `form` (or a component, which may be drawn in one), and
+  `status` only on a source. `form.*` reads what's typed into the form so far, else its `data`.
+  A component whose condition reads `app.*` is a page ([090](090_components.md)).
+
 ## Checks on input
 
 Controls take checks. They run as the user types, and a `form` won't submit while any check on a
@@ -84,6 +94,9 @@ handle (text given to `currency`) is shown as it is, and the problem goes to the
 - each test in the table holds and fails where it should, including type mismatches being false
 - `all`, `any`, and `not` combine, and nest
 - `show` hides a node and its children; `disabled` disables
+- `show` and `disabled` follow state, a row's `item`, and what's typed into a form, without a reload
+- a condition's `var` that its place can't read (`local.*` outside a component, `form.*` outside a
+  form, `status` on a variable that isn't a source) is a config error
 - a condition anywhere but `show`, `disabled`, or a control's checks is a config error
 - a failing check shows its message and blocks submit; fixing the value clears it
 - `required`, `min_len`, and `max_len` act as their shorthand
@@ -94,11 +107,15 @@ handle (text given to `currency`) is shown as it is, and the problem goes to the
 
 Milestone three ([999](999_todo.md)):
 
-- [ ] conditions, and `show` on every node through `Wired`
-- [ ] `disabled` on buttons and controls
+- [x] conditions, and `show` on every node through `Wired`
+- [x] `disabled` on buttons and controls
 - [ ] checks on controls, with their messages
 - [ ] formats, and `locale`
 
 ## Log
 
 - 2026-11-25: the first example shows on `app.view`, a variable the app declares, since `sys.view` is gone ([050](050_state.md)). Showing and hiding is all the navigation there is.
+- 2026-11-25: conditions, `show`, and `disabled` are built. `show` sits with the placement keys every
+  node takes. `matches` uses the `regex-lite` crate, chosen over `regex` because it adds far less to
+  the browser bundle; it has no Unicode classes like `\p{L}`, which a display check doesn't need.
+  Numbers compare by value, so `is = 1` holds for `1.0`.
