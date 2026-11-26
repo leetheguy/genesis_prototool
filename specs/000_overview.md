@@ -29,7 +29,7 @@ is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. So i
 problems, each failed call, and each failure a client reports through the mirror go into `genesis.log` in the logs
 folder, and agents read it at `GET /api/log`. So is the webhook: `POST /api/push/{name}` fires `push.{name}` in
 every open screen. Of display logic ([080](080_display_logic.md)), conditions are built, in `show` on every node and
-`disabled` on buttons and controls; checks on controls and formats are still to come.
+`disabled` on buttons and controls, and so are checks on controls; formats are still to come.
 
 ## What this is
 

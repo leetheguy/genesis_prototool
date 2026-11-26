@@ -53,7 +53,7 @@ label = "Cancel"
 #[test]
 fn a_form_is_a_form_element_holding_its_children_with_its_placement() {
     let out = html(CONTACT, |_| {});
-    assert!(out.contains(r#"<form class="w-1/2""#), "{out}");
+    assert!(out.contains(r#"<form novalidate class="w-1/2""#), "{out}");
     assert!(
         out.find("<form").unwrap() < out.find("Name").unwrap(),
         "{out}"

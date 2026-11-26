@@ -23,6 +23,7 @@
 //! assert_eq!(machine.get("sys.events").unwrap()[0]["log"], "hello");
 //! ```
 
+use crate::condition::Check;
 use crate::config::{
     self, App, Audio, Component, Handler, InputKind, Node, Source, Step, Use, Video, as_steps,
     body_place, child_place, prop_steps,
@@ -216,6 +217,9 @@ struct State {
     /// Each component instance's `local.*` that have been written, by its name (and row, like a
     /// draft); the rest are at the component's starting values.
     locals: BTreeMap<String, Map<String, Value>>,
+    /// The forms (by [`draft_key`]) whose last submit failed a check: their controls show every
+    /// failing message, typed in or not. Not kept: a reopened form starts quiet.
+    tried: BTreeSet<String>,
 }
 
 /// An event waiting its turn.
@@ -257,6 +261,7 @@ impl Machine {
             events: VecDeque::new(),
             errors: VecDeque::new(),
             drafts: BTreeMap::new(),
+            tried: BTreeSet::new(),
             locals: BTreeMap::new(),
         };
         Machine {
@@ -336,6 +341,12 @@ impl Machine {
                 self.app.components.get(component)?.state.get(name)
             })
             .cloned()
+    }
+
+    /// Whether `form` (drawn in `row` of an `each`, if it is) was last submitted with a check
+    /// failing, so its controls show what's wrong even where nothing's been typed.
+    pub fn tried(&self, form: &str, row: Option<&str>) -> bool {
+        self.state.tried.contains(&draft_key(form, row))
     }
 
     /// The same as [`Machine::draft`], for a form drawn in `row` of an `each`.
@@ -1227,7 +1238,9 @@ impl Machine {
 
     /// A named control's `.change` puts its value in its form's draft. A form's `.submit` takes
     /// its draft: the payload's `form` gets every named control's value (typed, else from the
-    /// form's `data`, else `null`), and the draft starts over.
+    /// form's `data`, else `null`), and the draft starts over. If a check on one of its controls
+    /// fails, it fires `.invalid` instead, with `invalid` saying what's wrong with each field, and
+    /// the draft stays.
     fn fill_form(&mut self, event: &mut Queued) {
         if let Some((form, field)) = self.forms.fields.get(&event.name).cloned() {
             let value = event.payload.get("value").cloned().unwrap_or(Value::Null);
@@ -1244,11 +1257,8 @@ impl Machine {
         let Some(wired) = self.forms.forms.get(name) else {
             return;
         };
-        let draft = self
-            .state
-            .drafts
-            .remove(&draft_key(name, event.row.as_deref()))
-            .unwrap_or_default();
+        let key = draft_key(name, event.row.as_deref());
+        let draft = self.state.drafts.remove(&key).unwrap_or_default();
         let data = wired
             .data
             .as_deref()
@@ -1269,10 +1279,29 @@ impl Machine {
         if let Some(Value::Object(given)) = event.payload.get("form") {
             form.extend(given.clone());
         }
+        let invalid: Map<String, Value> = wired
+            .checks
+            .iter()
+            .filter_map(|(field, checks)| {
+                let value = form.get(field);
+                let failed = checks.iter().find(|check| !check.passes(value))?;
+                Some((field.clone(), Value::String(failed.message.clone())))
+            })
+            .collect();
         if !event.payload.is_object() {
             event.payload = json!({});
         }
         event.payload["form"] = Value::Object(form);
+        if invalid.is_empty() {
+            self.state.tried.remove(&key);
+        } else {
+            event.name = format!("{name}.invalid");
+            event.payload["invalid"] = Value::Object(invalid);
+            if !draft.is_empty() {
+                self.state.drafts.insert(key.clone(), draft);
+            }
+            self.state.tried.insert(key);
+        }
     }
 
     /// A form's `data`, read for one event: `item` and `item.*` from the element it fired for,
@@ -1311,6 +1340,7 @@ impl Machine {
         } else if let Some(wired) = event
             .name
             .strip_suffix(".submit")
+            .or_else(|| event.name.strip_suffix(".invalid"))
             .and_then(|name| self.forms.forms.get(name))
             && let Some(Value::Object(form)) = payload.get_mut("form")
         {
@@ -1454,6 +1484,8 @@ struct FormWiring {
     fields: Vec<String>,
     /// The names of its `password` inputs, whose values are never kept, mirrored, or on the trail.
     hidden: BTreeSet<String>,
+    /// Each field's checks, in tree order; a submit fires `.invalid` while any fails.
+    checks: Vec<(String, Vec<Check>)>,
 }
 
 /// What [`wire_node`] adds to as it walks the tree.
@@ -1561,6 +1593,7 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, owner: Option<&Owner>
         }
         Node::Form(f) => {
             wire.events.push(format!("{name}.submit"));
+            wire.events.push(format!("{name}.invalid"));
             if let Some(steps) = &f.on_submit {
                 wire.handle(
                     Handler {
@@ -1614,6 +1647,13 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, owner: Option<&Owner>
                 }
                 if matches!(node, Node::Input(i) if i.kind == InputKind::Password) {
                     wired.hidden.insert(field.to_string());
+                }
+                let checks = node.checks();
+                if !checks.is_empty() {
+                    match wired.checks.iter_mut().find(|(f, _)| f == field) {
+                        Some((_, all)) => all.extend(checks),
+                        None => wired.checks.push((field.to_string(), checks)),
+                    }
                 }
                 wire.forms.fields.insert(
                     format!("{name}.change"),

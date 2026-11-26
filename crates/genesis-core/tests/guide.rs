@@ -250,3 +250,14 @@ fn tabs_show_one_view_and_join_waits_for_an_email() {
     m.fire("join.submit", json!({}));
     assert!(shown(&m, people));
 }
+
+#[test]
+fn a_new_contact_with_a_broken_email_never_reaches_the_api() {
+    let mut m = Machine::new(example("New contact"));
+    let effects = m.fire(
+        "new_contact.submit",
+        json!({ "form": { "name": "Ada", "email": "ada" } }),
+    );
+    assert!(calls(&effects).is_empty());
+    assert!(m.tried("new_contact", None));
+}

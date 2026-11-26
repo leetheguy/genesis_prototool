@@ -159,6 +159,12 @@ impl Host {
         self.draft_at(form, None, field)
     }
 
+    /// Whether `form` (in `row` of an `each`) was last submitted with a check failing.
+    pub fn tried(&self, form: &str, row: Option<&str>) -> bool {
+        self.changes.track();
+        self.machine().tried(form, row)
+    }
+
     /// The same as [`Host::draft`], for a form drawn in `row` of an `each`.
     pub fn draft_at(&self, form: &str, row: Option<&str>, field: &str) -> Option<Value> {
         self.changes.track();
@@ -287,6 +293,25 @@ pub(crate) struct FormAt {
     data: Option<String>,
 }
 
+/// What's wrong with a control's value, while it's worth saying ([`Wired::complaint`]).
+#[derive(Clone)]
+pub struct Complaint {
+    touched: RwSignal<bool>,
+    message: Arc<dyn Fn() -> Option<String> + Send + Sync>,
+}
+
+impl Complaint {
+    /// The person changed the control, so a failing check now says so.
+    pub fn touch(&self) {
+        self.touched.set(true);
+    }
+
+    /// The message to show under the control, if any.
+    pub fn message(&self) -> Option<String> {
+        (self.message)()
+    }
+}
+
 impl Wired {
     /// Fires `NAME.event` with `payload`; inside an `each`, the payload carries the element as
     /// `item`. Inside a component it's the element of the nearest `each`, the component's own or
@@ -367,6 +392,51 @@ impl Wired {
                 None => look(&host, item.as_ref(), scope.as_ref(), path),
             })
         }
+    }
+
+    /// What's wrong with a control's value, while it's worth saying: its first failing check's
+    /// message, once the person has changed it or its form's last submit failed a check. `None`
+    /// for a control with no checks. Call [`Complaint::touch`] when the person changes it.
+    pub fn complaint(
+        &self,
+        checks: Vec<genesis_core::condition::Check>,
+        var: Option<&str>,
+        name: Option<&str>,
+    ) -> Option<Complaint> {
+        if checks.is_empty() {
+            return None;
+        }
+        let value = self.bound(var, name);
+        let touched = RwSignal::new(false);
+        // A named control speaks once something's typed into its form's draft for it, or its form
+        // was submitted with a check failing; after a good submit the draft goes and it's quiet again.
+        let named = match (name, &self.form) {
+            (Some(name), Some(form)) => Some((self.host.clone(), form.clone(), name.to_string())),
+            _ => None,
+        };
+        let speaks = move || match &named {
+            Some((host, form, name)) => {
+                host.tried(&form.name, form.row.as_deref())
+                    || host
+                        .draft_at(&form.name, form.row.as_deref(), name)
+                        .is_some()
+            }
+            None => touched.get(),
+        };
+        let message = move || {
+            if !speaks() {
+                return None;
+            }
+            let value = value();
+            checks
+                .iter()
+                .find(|check| !check.passes(value.as_ref()))
+                .map(|check| check.message.clone())
+        };
+        Some(Complaint {
+            touched,
+            message: Arc::new(message),
+        })
     }
 
     /// A control's current value: its `var`'s, or, with `name` inside a form, what's typed into

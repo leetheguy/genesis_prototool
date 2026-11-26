@@ -55,13 +55,17 @@ pub enum Test {
     Lte(f64),
     /// `matches = "regex"`: text the regular expression finds a match in.
     Matches(Pattern),
+    /// `min_len = N`: text with at least `N` characters, or a list with at least `N` items.
+    MinLen(usize),
+    /// `max_len = N`: text with at most `N` characters, or a list with at most `N` items.
+    MaxLen(usize),
     /// `status = "loading"`: a source with that status ([spec 050](../../../specs/050_state.md)).
     Status(String),
 }
 
 /// The names of the tests, in the order the spec gives them.
-pub const TESTS: [&str; 9] = [
-    "is", "in", "empty", "gt", "gte", "lt", "lte", "matches", "status",
+pub const TESTS: [&str; 11] = [
+    "is", "in", "empty", "gt", "gte", "lt", "lte", "matches", "min_len", "max_len", "status",
 ];
 
 /// The statuses a source can have.
@@ -121,6 +125,17 @@ impl Test {
             "gte" => Test::Gte(number(&value)?),
             "lt" => Test::Lt(number(&value)?),
             "lte" => Test::Lte(number(&value)?),
+            "min_len" | "max_len" => {
+                let n = value
+                    .as_u64()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .ok_or_else(|| format!("`{key}` takes a whole number, not {value}"))?;
+                if key == "min_len" {
+                    Test::MinLen(n)
+                } else {
+                    Test::MaxLen(n)
+                }
+            }
             "matches" => match value {
                 Value::String(text) => Test::Matches(Pattern::new(&text)?),
                 other => return Err(format!("`matches` takes a regular expression, not {other}")),
@@ -155,6 +170,8 @@ impl Test {
             Test::Lt(n) => ("lt", number(*n)),
             Test::Lte(n) => ("lte", number(*n)),
             Test::Matches(p) => ("matches", Value::String(p.text.clone())),
+            Test::MinLen(n) => ("min_len", Value::from(*n)),
+            Test::MaxLen(n) => ("max_len", Value::from(*n)),
             Test::Status(s) => ("status", Value::String(s.clone())),
         }
     }
@@ -174,6 +191,8 @@ impl Test {
             Test::Matches(p) => value
                 .and_then(Value::as_str)
                 .is_some_and(|text| p.regex.is_match(text)),
+            Test::MinLen(n) => length(value).is_some_and(|len| len >= *n),
+            Test::MaxLen(n) => length(value).is_some_and(|len| len <= *n),
             Test::Status(_) => false,
         }
     }
@@ -187,8 +206,17 @@ fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
+/// The length of text, in characters, or of a list, in items; `None` for anything else.
+fn length(value: Option<&Value>) -> Option<usize> {
+    match value? {
+        Value::String(text) => Some(text.chars().count()),
+        Value::Array(items) => Some(items.len()),
+        _ => None,
+    }
+}
+
 /// Missing, `null`, `""`, `[]`, or `{}`.
-fn is_empty(value: Option<&Value>) -> bool {
+pub fn is_empty(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => true,
         Some(Value::String(s)) => s.is_empty(),
@@ -321,5 +349,149 @@ impl From<Condition> for Value {
             }
         }
         Value::Object(fields)
+    }
+}
+
+/// A check on a control's own value ([spec 080](../../../specs/080_display_logic.md), "Checks on
+/// input"): one or more tests, which all have to pass, and the message shown when they don't.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Value", into = "Value")]
+pub struct Check {
+    /// Its tests, in the order written.
+    pub tests: Vec<Test>,
+    /// What the control shows while it fails.
+    pub message: String,
+}
+
+impl Check {
+    /// `required = true`: not empty, or for a checkbox or toggle, ticked.
+    pub fn required(message: Option<String>, ticked: bool) -> Check {
+        Check {
+            tests: vec![if ticked {
+                Test::Is(Value::Bool(true))
+            } else {
+                Test::Empty(false)
+            }],
+            message: message.unwrap_or_else(|| "Required.".into()),
+        }
+    }
+
+    /// Whether `value` passes. An empty value passes every check but one that tests `empty` or
+    /// `is`, so an optional field left blank isn't wrong; `required` is what asks for a value.
+    pub fn passes(&self, value: Option<&Value>) -> bool {
+        let asks = |t: &Test| matches!(t, Test::Empty(_) | Test::Is(_) | Test::In(_));
+        if is_empty(value) && !self.tests.iter().any(asks) {
+            return true;
+        }
+        self.tests.iter().all(|test| test.passes(value))
+    }
+}
+
+impl TryFrom<Value> for Check {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, String> {
+        let Value::Object(mut fields) = value else {
+            return Err(format!(
+                "a check is a table, like {{ matches = \"@\", message = \"Needs an @.\" }}, not {value}"
+            ));
+        };
+        let message = match fields.remove("message") {
+            Some(Value::String(message)) => message,
+            Some(other) => return Err(format!("a check's `message` is text, not {other}")),
+            None => return Err("a check says what's wrong with `message`".into()),
+        };
+        if let Some(key) = ["var", "all", "any", "not"]
+            .iter()
+            .find(|k| fields.contains_key(**k))
+        {
+            return Err(format!(
+                "a check tests its own control's value, so it takes no `{key}`; give it tests like `min_len` and a `message`"
+            ));
+        }
+        if fields.is_empty() {
+            return Err(format!(
+                "a check makes at least one test: {}",
+                TESTS.map(|t| format!("`{t}`")).join(", ")
+            ));
+        }
+        let tests = fields
+            .into_iter()
+            .map(|(key, value)| match key.as_str() {
+                "status" => {
+                    Err("`status` tests a source, so it can't be a check on a control".into())
+                }
+                _ => Test::parse(&key, value),
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(Check { tests, message })
+    }
+}
+
+impl From<Check> for Value {
+    fn from(check: Check) -> Value {
+        let mut fields: Map<String, Value> = check
+            .tests
+            .iter()
+            .map(|t| {
+                let (key, value) = t.written();
+                (key.to_string(), value)
+            })
+            .collect();
+        fields.insert("message".into(), Value::String(check.message));
+        Value::Object(fields)
+    }
+}
+
+/// `required`: `true`, or the message to show in place of "Required.".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Value", into = "Value")]
+pub enum Required {
+    /// `required = true` (or `false`, which asks nothing).
+    Yes(bool),
+    /// `required = "Pick a plan."`.
+    Says(String),
+}
+
+impl Required {
+    /// `None` when it asks nothing; otherwise its own message, if it has one.
+    pub fn message(&self) -> Option<Option<String>> {
+        match self {
+            Required::Yes(false) => None,
+            Required::Yes(true) => Some(None),
+            Required::Says(message) => Some(Some(message.clone())),
+        }
+    }
+}
+
+/// A control's checks, `required` first. `ticked` is for a checkbox or toggle, where `required`
+/// means ticked.
+pub fn control_checks(required: Option<&Required>, checks: &[Check], ticked: bool) -> Vec<Check> {
+    let required = required
+        .and_then(Required::message)
+        .map(|message| Check::required(message, ticked));
+    required.into_iter().chain(checks.iter().cloned()).collect()
+}
+
+impl TryFrom<Value> for Required {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, String> {
+        match value {
+            Value::Bool(yes) => Ok(Required::Yes(yes)),
+            Value::String(message) => Ok(Required::Says(message)),
+            other => Err(format!(
+                "`required` is true, or the message to show, like \"Pick a plan.\", not {other}"
+            )),
+        }
+    }
+}
+
+impl From<Required> for Value {
+    fn from(required: Required) -> Value {
+        match required {
+            Required::Yes(yes) => Value::Bool(yes),
+            Required::Says(message) => Value::String(message),
+        }
     }
 }

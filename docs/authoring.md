@@ -254,6 +254,35 @@ A `select` can also take its options from a variable: `options = "app.companies"
 `option_label` and `option_value` pointers (`"/label"` and `"/value"` unless you say otherwise). A value
 keeps its type: a number from a `number` input, `true` or `false` from a checkbox.
 
+**Checks** say what a control's value has to be. Every control takes `required` (`true`, or the message
+to show) and `checks`: a list of tests on its own value, each with the `message` shown while it fails.
+The tests are the ones a [condition](#show-hide-and-disable) uses, without `var`, plus `min_len` and
+`max_len` (characters in text, items in a list). Tests in one check all have to pass.
+
+```toml
+[[body.children]]
+type = "input"
+name = "seats"
+kind = "number"
+label = "Seats"
+required = true
+checks = [{ gte = 1, lte = 500, message = "1 to 500 seats." }]
+
+[[body.children]]
+type = "checkbox"
+name = "terms"
+label = "I agree to the terms"
+required = "Please agree to the terms."     # on a checkbox or toggle, required means ticked
+```
+
+- **A form with a failing check doesn't submit.** It fires `.invalid` instead, whose payload has `form`
+  and `invalid`, each failing field's message by name. The draft stays, so nothing typed is lost.
+- **A control speaks once the person changes it,** or once a submit fails. A fresh form is quiet, and a
+  good submit makes it quiet again.
+- **An empty value passes every check but `required`,** so an optional field can be left blank.
+- **The browser's own checks are off,** so a `kind = "email"` box takes anything until you add a check.
+  These checks help the person typing; the API still decides what it accepts.
+
 ### Dialogs
 
 A dialog is open while its `open` variable is anything but `false` or `null`. Set the variable to open
@@ -403,7 +432,7 @@ Things happen as events, and **every event has a name**:
 
 | Fired by | Name | Payload |
 |---|---|---|
-| a node, by its `id` | `save.click`, `search.change`, `new_contact.submit`, `confirm_delete.close` | `value` for a control, `form` for a form, and `item` inside an `each` |
+| a node, by its `id` | `save.click`, `search.change`, `new_contact.submit`, `new_contact.invalid`, `confirm_delete.close` | `value` for a control, `form` for a form (and `invalid` on `.invalid`), and `item` inside an `each` |
 | an audio or video player | `.play`, `.pause`, `.ended` | |
 | a variable changing | `app.page.changed`, `sys.outlet.changed` | `value`, `was` |
 | a call | `crm.contacts.list.ok` or `.failed`, and the status, `.200` or `.404` | `status`, `body` |
@@ -770,12 +799,15 @@ pad = 6
 type = "input"
 name = "name"
 label = "Name"
+required = true
 
 [[body.children.children]]
 type = "input"
 name = "email"
 kind = "email"
 label = "Email"
+required = true
+checks = [{ matches = "^[^@ ]+@[^@ ]+$", message = "That doesn't look like an email." }]
 
 [[body.children.children]]
 type = "button"
@@ -815,8 +847,9 @@ style = "post"
 "crm.contacts.create.409" = [{ set = "app.problem", to = "Someone already has that email." }]
 ```
 
-The list after the call runs only when the call works: a failed call stops its list. So the success
-message needs no condition. A failure fires `crm.contacts.create.failed` and then the status,
+The form's checks keep a blank name or a broken email from ever reaching the API: until they pass,
+the form fires `new_contact.invalid`, not `.submit`. The list after the call runs only when the call
+works: a failed call stops its list. So the success message needs no condition. A failure fires `crm.contacts.create.failed` and then the status,
 `crm.contacts.create.409`, and each has its own handler.
 
 ### Branch by event name
@@ -1298,7 +1331,7 @@ If you have the Genesis repo, `genesis-bench FOLDER` runs an app with no screen:
 
 These are designed but not yet in Genesis. Don't use them: the app won't load, or they'll do nothing.
 
-- Input checks such as `required` and `checks`, and `format` for numbers and dates.
+- `format` for numbers and dates, and `[app] locale`.
 - The `confirm` and `toast` steps. Use a dialog for both for now.
 - Signing in (`[app.auth]`, `sign_in`, `sign_out`, `{{ session.token }}`) and `wipe_state`.
 - Streaming answers (`stream` on an operation, and a source's `mode`).
