@@ -107,8 +107,8 @@ props = { contact = "{{ item }}" }
 draws one component at a time, its `default` first, and `{ go = "NAME" }` swaps in another
 ([100](100_events.md), "Going"). Any component without required props can go there; every other use of a
 component is a partial, drawn by a `use` node. In the outlet, a component is drawn as if by a `use` node
-named after it, with no props: its nodes fire as `contacts.save_btn.click`, and its locals stay while the
-app runs, as `contacts.local.*`.
+named after it, with no props: its nodes fire as `contacts.save_btn.click`, and its locals stay while it's
+out of the outlet, as `contacts.local.*`, kept on the device like any instance's.
 
 ## What a component isn't
 
@@ -168,3 +168,5 @@ Milestone three ([999](999_todo.md)):
   `go`: it fires an event, and the app's handler goes. Lee: "We don't need a list of pages. We need a
   top-level page and a partial." "Let's just make it a special component that's only available in that
   top-level page." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."
+- 2026-11-25: a component keeps its locals while it's out of the outlet. Lee: "Yes to components maintaining
+  their own state while out of the outlet as well."

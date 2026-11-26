@@ -279,7 +279,7 @@ impl Machine {
 
     /// What a session keeps on the device ([spec 050](../../../specs/050_state.md), "Persisting"):
     /// what the user did, never what an API said. That's `app.*` (except sources, variables a reply
-    /// filled last, and `[app] forget`), and `sys.theme`, `sys.errors`, and `sys.events`.
+    /// filled last, and `[app] forget`), and `sys.theme`, `sys.outlet`, `sys.errors`, and `sys.events`.
     pub fn kept(&self) -> Value {
         let app: Map<String, Value> = self
             .state
@@ -290,7 +290,7 @@ impl Machine {
             .collect();
         json!({
             "app": app,
-            "sys": { "theme": self.state.theme, "errors": self.state.errors, "events": self.state.events },
+            "sys": { "theme": self.state.theme, "outlet": self.state.outlet, "errors": self.state.errors, "events": self.state.events },
             "drafts": self.shown_drafts(),
             "locals": self.state.locals,
         })
@@ -380,6 +380,19 @@ impl Machine {
         let sys = kept.get("sys");
         if let Some(theme) = sys.and_then(|s| s["theme"].as_str()) {
             self.state.theme = theme.to_string();
+        }
+        // The app reopens on the component it was closed on, while `go` can still put it there.
+        if let (Some(outlet), Some(kept)) = (
+            &mut self.state.outlet,
+            sys.and_then(|s| s["outlet"].as_str()),
+        ) {
+            if config::outlet_components(&self.app).contains(kept) {
+                *outlet = kept.to_string();
+            } else {
+                notes.push(format!(
+                    "the outlet can't hold {kept} now; opening on {outlet}"
+                ));
+            }
         }
         let trail = self.app.app.event_trail;
         let list = |key: &str| -> Option<VecDeque<Value>> {

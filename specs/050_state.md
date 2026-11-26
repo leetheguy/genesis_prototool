@@ -23,9 +23,9 @@ Components never know where a value came from: a starting value, a click, a call
 - **`sys.theme`**: the daisyUI theme. It starts at `[app] theme`, can be set like any variable (a
   theme picker is a Select bound to it), and is kept on this device.
 - **`sys.outlet`**: the name of the component in the `outlet`, or `null` in an app without one. It starts
-  at the outlet's `default`, changes only by `go` ([100](100_events.md), "Going"), and isn't kept: every
-  open starts at the `default`. Over a config reload it stays while `go` can still put its component
-  there; otherwise it's the `default` again.
+  at the outlet's `default`, changes only by `go` ([100](100_events.md), "Going"), and is kept on this device, so the app
+  reopens as it was left. Opening, or over a config reload, it stays while `go` can still put its
+  component there; otherwise it's the `default` again.
 - **`sys.errors`**: every loud failure, newest first: `{ at, op, status, message }`. It's read-only,
   and a cell with `each` can show it.
 - **`sys.events`** and **`sys.bus`**: the event trail and who listens to what ([100](100_events.md)).
@@ -65,7 +65,7 @@ left it. The rule is simple: **what the user did is kept; what an API said is fe
 | Kept, on this device | Fetched fresh on every open |
 |---|---|
 | `app.*` variables changed by `set`, `step`, `toggle`, or an `input` | every source |
-| `sys.*`: `theme`, `errors`, and `events` | every variable an `into` filled (call results) |
+| `sys.*`: `theme`, `outlet`, `errors`, and `events` | every variable an `into` filled (call results) |
 | local variables and form drafts (except `password` inputs) | `sys.auth`, which only `check` can answer |
 
 Credentials and session tokens are never in the browser at all ([070](070_secrets.md)).
@@ -149,7 +149,7 @@ start at their starting values. Removed variables are dropped. A source whose `c
 - with `[app.auth]`, `serve` refuses every call but `login` and `check` until signed in
 - a `password` input's value never appears in state, storage, or logs
 - after a config reload: kept, new, and removed variables; a changed source calls again
-- `sys.outlet` starts at the outlet's `default`, isn't kept, and stays over a config reload while its component can still go there
+- `sys.outlet` starts at the outlet's `default`, is kept and comes back on open, and stays over a config reload, each while its component can still go there
 
 ## Tasks
 
@@ -168,3 +168,6 @@ Milestone two ([999](999_todo.md)):
 - 2026-11-25: `sys.outlet` names the component in the `outlet`, which `go` fills ([100](100_events.md), "Going").
   It isn't kept on the device, the smaller choice, and that's open in [999](999_todo.md). Lee: "Yes to app.toml
   and outlet." "Yes to a default component named on the outlet."
+- 2026-11-25: `sys.outlet` is kept on the device, like `sys.theme`. Lee: "Current outlet should be saved in the app state. I definitely want this app to be able to reopen to its exact configuration because it's all one app." "So what it is when you close it is extremely
+  important because you can't necessarily navigate back to where you were, especially if you have the AI
+  controlling the app itself."

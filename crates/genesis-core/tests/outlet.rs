@@ -293,14 +293,32 @@ fn the_default_must_be_a_component_that_needs_no_props() {
 }
 
 #[test]
-fn sys_outlet_isnt_kept_and_a_reload_opens_on_the_default() {
+fn sys_outlet_is_kept_and_the_app_reopens_on_it_while_go_can_still_put_it_there() {
     let mut m = machine();
     m.fire("to_contacts.click", json!({}));
     let kept = m.kept();
-    assert_eq!(kept["sys"].get("outlet"), None);
+    assert_eq!(kept["sys"]["outlet"], json!("contacts"));
     let mut back = Machine::new(load(&files(APP)).unwrap());
-    back.restore(&kept);
+    let notes = back.restore(&kept);
+    assert!(notes.is_empty(), "{notes:?}");
+    assert_eq!(back.get("sys.outlet"), Some(json!("contacts")));
+
+    // Once no `go` names it, it can't be in the outlet: the app opens on the default, with a note.
+    let without = APP.replace("on_click = { go = \"contacts\" }", "");
+    let mut back = Machine::new(load(&files(&without)).unwrap());
+    let notes = back.restore(&kept);
+    assert_eq!(
+        notes,
+        ["the outlet can't hold contacts now; opening on home"]
+    );
     assert_eq!(back.get("sys.outlet"), Some(json!("home")));
+
+    // An app without an outlet ignores a kept one.
+    let none = "[app]\nname = \"x\"\n";
+    let mut back = Machine::new(load(&files(none)).unwrap());
+    let notes = back.restore(&kept);
+    assert!(!notes.iter().any(|n| n.contains("outlet")), "{notes:?}");
+    assert_eq!(back.get("sys.outlet"), Some(Value::Null));
 }
 
 #[test]
