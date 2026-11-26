@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex};
 use style::ClassList;
 
 mod components;
+mod controls;
 pub mod style;
 
 /// Makes a call and answers it, as [`Host::set_caller`] takes it.
@@ -230,9 +231,15 @@ impl Wired {
 
     /// Display text with its templates filled from the current state (and `item.*` inside an
     /// `each`); redraws as state changes.
-    pub fn text(&self, text: &str) -> impl Fn() -> String + Send + Sync + 'static {
+    pub fn text(&self, text: &str) -> impl Fn() -> String + Clone + Send + Sync + 'static {
         let (host, item, text) = (self.host.clone(), self.item.clone(), text.to_string());
         move || template::text(&text, |path| look(&host, item.as_ref(), path))
+    }
+
+    /// The current value at `path` (and `item.*` inside an `each`); redraws as state changes.
+    pub fn read(&self, path: &str) -> impl Fn() -> Option<Value> + Clone + Send + Sync + 'static {
+        let (host, item, path) = (self.host.clone(), self.item.clone(), path.to_string());
+        move || look(&host, item.as_ref(), &path)
     }
 
     /// The `class` for the node's element: `own` (its component's classes), then its placement.
@@ -343,7 +350,7 @@ fn source_face(host: &Host, path: &str, error: Option<&str>) -> Option<AnyView> 
 }
 
 /// The loud face: an error alert with the cell's own line, if it has one, above the detail.
-fn failed_face(line: Option<&str>, detail: &str) -> AnyView {
+pub(crate) fn failed_face(line: Option<&str>, detail: &str) -> AnyView {
     let line = line.map(|line| view! { <p class="font-bold">{line.to_string()}</p> });
     let detail = detail.to_string();
     view! { <div role="alert" class="alert alert-error"><div>{line}<p>{detail}</p></div></div> }
@@ -387,6 +394,12 @@ fn draw(node: &Node, place: String, host: &Host, item: Option<Value>) -> AnyView
         Node::Audio(n) => n.view(wired),
         Node::Video(n) => n.view(wired),
         Node::Iframe(n) => n.view(wired),
+        Node::Input(n) => n.view(wired),
+        Node::Textarea(n) => n.view(wired),
+        Node::Select(n) => n.view(wired),
+        Node::Checkbox(n) => n.view(wired),
+        Node::Toggle(n) => n.view(wired),
+        Node::Radio(n) => n.view(wired),
     }
 }
 
