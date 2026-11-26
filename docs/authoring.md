@@ -277,7 +277,7 @@ variant = "error"
 
 | Name | What it is | Written by |
 |---|---|---|
-| `app.*` | the app's variables, from `[state]` and `[sources]` | steps, and sources |
+| `app.*` | the app's variables, from `[state]` and `[sources]`, read in `app.toml` and the page in the outlet | steps, and sources |
 | `local.*` | a component's own variables, from its `[state]` | steps inside it |
 | `sys.*` | Genesis's own (below) | steps can set `sys.theme`; the rest are read-only |
 | `event.*` | inside a handler: the event's `name` and payload | read-only |
@@ -445,11 +445,12 @@ props = { contact = "{{ item }}" }
 ```
 
 - **A component sees only what it's given:** its props, its locals, and `sys.*`. It can't read `app.*`.
-  That's what lets the same component work anywhere.
+  That's what lets the same component work anywhere. The one exception is a page in the outlet, which
+  reads `app.*` too (see [Pages](#pages-go-and-the-outlet)).
 - **Its events are named under the `use` node's `id`:** the `more` button above fires `card.more.click`,
   and every card in the list fires that same name, with `item` in the payload to tell them apart.
-- **Its own steps only change its locals and fire events.** It can't call an API, `go`, start a timer, or
-  `log`. It says what happened; the app decides what to do about it. See
+- **Its own steps only change its locals and fire events.** It can't call an API, `go`, start a timer,
+  `log`, or write `app.*`. It says what happened; the app decides what to do about it. See
   [Components fire events, the app decides](#components-fire-events-the-app-decides).
 - Ten cards have ten `expanded`s, each kept on the device.
 
@@ -849,13 +850,22 @@ default = "home"
 ```
 
 ```toml
-# home.toml: the first page.
+# home.toml: the first page, with everyone in the CRM.
 [component]
 
 [[body]]
 type = "text"
-text = "Welcome back."
+text = "Welcome back. You have {{ app.count }} contacts."
 level = 1
+
+[[body]]
+type = "cell"
+each = "app.contacts"
+empty = "No contacts yet."
+
+[[body.children]]
+type = "text"
+text = "{{ item.name }}"
 
 [[body]]
 type = "button"
@@ -897,9 +907,21 @@ headers = { Authorization = "Bearer {{ creds.PF_TOKEN }}" }
 [connections.crm.crud.contacts]
 style = "post"
 
+[sources.contacts]
+call = "crm.contacts.list"
+select = "/rows"
+
+[state]
+count = 0
+
 [on]
+"crm.contacts.list.ok" = [{ set = "app.count", to = "{{ event.body.total }}" }]
 "nav.new_contact" = [{ go = "new_contact" }]
-"new_contact.form.submit" = [{ call = "crm.contacts.create", params = { name = "{{ event.form.name }}" } }, { go = "home" }]
+"new_contact.form.submit" = [
+  { call = "crm.contacts.create", params = { name = "{{ event.form.name }}" } },
+  { reload = ["app.contacts"] },
+  { go = "home" },
+]
 "sys.outlet.changed" = [{ log = "page: {{ event.was }} to {{ event.value }}" }]
 ```
 
@@ -909,8 +931,11 @@ style = "post"
 - `go` takes a page's name written out, not a template.
 - `sys.outlet` holds the current page, and it's kept, so the app reopens on the page it was closed on.
   A page's local state stays while it's out of the outlet, so going back finds it as it was left.
-- For now, a page can't read `app.*` and gets no props, so it can't show the app's data. Show app data
-  in `app.toml`'s own body, beside the outlet, until that changes.
+- **A page reads the app's variables**, `app.*`, just as `app.toml` does: in text, in an `each`, as a form's
+  `data`. It follows them as they change, so when the app reloads `app.contacts`, `home` shows the new list.
+  It reads them and never writes them: to change one, it fires an event and the app sets it.
+- A component that reads `app.*` is a page, so a `use` node can't draw it. A partial inside a page gets what
+  it needs as props, as anywhere else.
 
 ### Timers: wait, repeat, and give up
 
@@ -1191,7 +1216,6 @@ These are designed but not yet in Genesis. Don't use them: the app won't load, o
 - `on_change` on a control: handle `ID.change` in `[on]` instead.
 - The events `server.connected`, `server.disconnected`, `config.failed`, `auth.in`, `auth.out` and
   `state.wiped`.
-- A page in the outlet reading `app.*`.
 
 ## Try it
 

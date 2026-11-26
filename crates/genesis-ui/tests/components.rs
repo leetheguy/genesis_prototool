@@ -234,3 +234,45 @@ fn the_outlet_draws_its_default_and_then_the_component_go_names() {
         assert!(!out.contains("Welcome home"), "{out}");
     });
 }
+
+#[test]
+fn a_page_in_the_outlet_reads_the_apps_variables_and_follows_them() {
+    let page = r#"
+[component]
+
+[[body]]
+type = "text"
+text = "Hello {{ app.user }}"
+
+[[body]]
+type = "cell"
+each = "app.contacts"
+
+[[body.children]]
+type = "text"
+text = "{{ item.name }}"
+"#;
+    let app = r#"
+[app]
+name = "x"
+
+[state]
+user = "Ada"
+contacts = [{ name = "Lin" }]
+
+[[body]]
+type = "outlet"
+default = "people"
+
+[on]
+"rename" = [{ set = "app.user", to = "Grace" }]
+"#;
+    Owner::new().with(|| {
+        let host = Host::new(App::from_files([("app.toml", app), ("people.toml", page)]).unwrap());
+        let out = app_view(host.clone()).to_html();
+        assert!(out.contains("Hello Ada") && out.contains("Lin"), "{out}");
+        host.fire("rename", serde_json::json!({}));
+        let out = app_view(host).to_html();
+        assert!(out.contains("Hello Grace"), "{out}");
+    });
+}

@@ -58,7 +58,8 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   connection timeouts; `toast` isn't built, and a connection's `timeout` runs on the server, per connection
   ([030](030_connections.md)). Open: each built-in's name and length, and whether `timers.toml` may set a
   built-in's `ms` or use its name. From [100](100_events.md), "Timers".
-- **The outlet's other details, built the smaller way.** The component in the outlet gets no props, and an
+- **The outlet's other details, built the smaller way.** The component in the outlet gets no props (it reads
+  `app.*` instead, as Lee decided: see the Log), and an
   outlet inside a `form` or an `each` is a config error. Decided by Lee: `go` names a page by its plain file name, which
   is unique across the app ([120](120_one_app.md)); `sys.outlet` is kept on the device;
   a component keeps its locals while it's out of the outlet ([050](050_state.md)); and a name `go` can't use
@@ -81,3 +82,8 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **A config editor UI**, like PurpleFlow's files page, beyond what dufs's own UI gives. From [010](010_architecture.md).
 - **An admin panel for state**: a second Genesis that shows the first one's `sys.*` and variables, for dogfooding.
 - **Dogfood screens**: the job search review screen, Lee's microtask drip on mobile, and the CRM.
+
+## Log
+
+- 2026-11-25: the outlet gap is closed. A page in the outlet couldn't read `app.*` and got no props, so it
+  couldn't show the app's data. Lee: "Outlet should be passed the whole app.* by default behind the scenes. No extra wiring necessary." A page reads `app.*` as `app.toml` does, read-only ([090](090_components.md), "The outlet").

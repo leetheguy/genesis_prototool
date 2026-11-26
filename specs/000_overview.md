@@ -24,7 +24,7 @@ button; `file`, whose picked files go out with a call as multipart, through `ser
 `outlet`, which `go` fills. That's every atom on 040's task list. Components
 ([090](090_components.md)) are built: component files, the `use` node, `props.*` (steps too), each instance's
 `local.*`, and events inside a component. A component's own steps fire events (no `call`, `reload`, or custom action),
-and the app's handlers for them do the rest. Of what agents need from `serve` ([110](110_agents.md)), `GET /agents`
+and the app's handlers for them do the rest. A partial sees only its props; the page in the outlet also reads `app.*`. Of what agents need from `serve` ([110](110_agents.md)), `GET /agents`
 is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. So is the log: each load's
 problems, each failed call, and each failure a client reports through the mirror go into `genesis.log` in the logs
 folder, and agents read it at `GET /api/log`. So is the webhook: `POST /api/push/{name}` fires `push.{name}` in
@@ -83,7 +83,8 @@ It's a power tool: safeguards are options with defaults, not limits. It fails lo
 9. **Fail loud.** A failed call is shown where it happened and kept in `sys.errors`. There are no retries
    and no special response shapes; the API signals problems with its status. See [030](030_connections.md).
 10. **Atoms and components.** Components are reusable TOML files of atoms, with props and local state, used
-    by name, and they hot-reload ([090](090_components.md)). Atoms are Rust, all built the same way: the `Component` trait plus one shared `Wired` wrapper that
+    by name, and they hot-reload ([090](090_components.md)). A partial sees only what it's given; the page in
+    the outlet reads the app's variables too, as `app.toml` does. Atoms are Rust, all built the same way: the `Component` trait plus one shared `Wired` wrapper that
     knows all the wiring. A new one is a small, regular piece of code that ships in a build ([040](040_catalog.md)).
 11. **Changing a file changes every open screen, live, in every build.** A bad change keeps the last
     good version running and says where it went wrong: on screen, in `/status`, and in the log. See

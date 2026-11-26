@@ -113,7 +113,8 @@ default = "home"
 
 - `go` takes a component's name, written out, not a template: the app's wiring for each component it
   can go to is made at load. Going to the component already there changes nothing and fires nothing.
-- The component is drawn with no props, so one that needs props can't go in the outlet. Its nodes fire
+- The component is drawn with no props, so one that needs props can't go in the outlet. It reads the app's
+  variables, `app.*`, without them being passed ([090](090_components.md), "The outlet"). Its nodes fire
   under the component's own name: `contacts.save_btn.click`, `contacts.local.query.changed`.
 - `sys.outlet` holds the name of the component in the outlet, and changes only by `go`, which fires
   `sys.outlet.changed` with `value` and `was`. It's kept on the device, so the app reopens on the
