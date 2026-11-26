@@ -66,8 +66,9 @@ buttons, dividers, svg, audio, video, iframes, the controls (inputs, textareas, 
 toggles, and radios), forms, file pickers, whose files go out with a call as multipart, dialogs, Markdown, and
 the outlet, where `go` swaps in a component).
 Components are built too: TOML files of atoms, used by name with their props, each instance with its own
-local state. A component's own steps fire events, and the app's handlers for them can do anything. Next come display logic and what
-agents need to build a screen on their own. The design is in
+local state. A component's own steps fire events, and the app's handlers for them can do anything. So is what agents
+need from `serve`: a guide at `/agents`, one log of every failure, and pushing events in. Next come display
+logic and the guide itself, `docs/authoring.md`. The design is in
 [`specs/`](specs/000_overview.md); start with `000_overview.md`.
 
 Genesis runs as a server (`serve`, plus dufs for the config files) and shows its one app, the configs
@@ -103,3 +104,5 @@ Working on Genesis: read [`AGENTS.md`](AGENTS.md) and [`OP-PARAMS.md`](OP-PARAMS
 Writing Genesis apps: `docs/authoring.md` (coming soon); until then, `samples/hello/app.toml` and
 [`specs/100_events.md`](specs/100_events.md). Put a copy of it at the top of the configs folder as `AGENTS.md`,
 and `serve` hands it out, open, at `/agents`, with each `BASE` replaced by the address the agent came to.
+With `GENESIS_AGENT_TOKEN`, an agent reads every failure at `/api/log` and fires an event in every open
+screen with `POST /api/push/{name}` ([spec 110](specs/110_agents.md)).

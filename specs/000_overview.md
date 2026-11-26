@@ -27,7 +27,8 @@ button; `file`, whose picked files go out with a call as multipart, through `ser
 and the app's handlers for them do the rest. Of what agents need from `serve` ([110](110_agents.md)), `GET /agents`
 is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. So is the log: each load's
 problems, each failed call, and each failure a client reports through the mirror go into `genesis.log` in the logs
-folder, and agents read it at `GET /api/log`. Still to come are display logic and the webhook.
+folder, and agents read it at `GET /api/log`. So is the webhook: `POST /api/push/{name}` fires `push.{name}` in
+every open screen. Still to come is display logic.
 
 ## What this is
 
