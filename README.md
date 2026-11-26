@@ -101,4 +101,5 @@ echo '{"fire": "hello_btn.click"}' | cargo run -q -p genesis-bench -- samples/he
 
 Working on Genesis: read [`AGENTS.md`](AGENTS.md) and [`OP-PARAMS.md`](OP-PARAMS.md).
 Writing Genesis apps: `docs/authoring.md` (coming soon); until then, `samples/hello/app.toml` and
-[`specs/100_events.md`](specs/100_events.md).
+[`specs/100_events.md`](specs/100_events.md). Put a copy of it at the top of the configs folder as `AGENTS.md`,
+and `serve` hands it out, open, at `/agents`, with each `BASE` replaced by the address the agent came to.

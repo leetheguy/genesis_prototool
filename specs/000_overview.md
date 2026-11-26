@@ -24,8 +24,9 @@ button; `file`, whose picked files go out with a call as multipart, through `ser
 `outlet`, which `go` fills. That's every atom on 040's task list. Components
 ([090](090_components.md)) are built: component files, the `use` node, `props.*` (steps too), each instance's
 `local.*`, and events inside a component. A component's own steps fire events (no `call`, `reload`, or custom action),
-and the app's handlers for them do the rest. Still to come are display logic and what
-agents need from `serve`: a guide, one log, and a webhook ([110](110_agents.md)).
+and the app's handlers for them do the rest. Of what agents need from `serve` ([110](110_agents.md)), `GET /agents`
+is built: it serves the configs folder's `AGENTS.md` with `BASE` filled in. Still to come are display logic, the
+log, and the webhook.
 
 ## What this is
 

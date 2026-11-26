@@ -372,3 +372,87 @@ async fn hidden_files_and_folders_arent_part_of_the_app() {
         json!({ "status": "loaded" })
     );
 }
+
+/// `GET /agents` with the headers given, as (status, content type, body).
+async fn agents(folders: &Folders, headers: &[(&str, &str)]) -> (StatusCode, String, String) {
+    let mut request = Request::get("/agents");
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let response = router(Settings {
+        listen: "127.0.0.1:8080".into(),
+        ..folders.settings()
+    })
+    .oneshot(request.body(Body::empty()).unwrap())
+    .await
+    .unwrap();
+    let status = response.status();
+    let kind = response
+        .headers()
+        .get("content-type")
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_default();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, kind, String::from_utf8_lossy(&body).into_owned())
+}
+
+#[tokio::test]
+async fn agents_answers_the_guide_with_base_filled_in_and_needs_no_token() {
+    let folders = Folders::new("agents-guide");
+    std::fs::write(
+        folders.path("configs/AGENTS.md"),
+        "Read BASE/status, then BASE/fs/.\nBASE_URL, DATABASE and BASEline stay. (BASE)\n",
+    )
+    .unwrap();
+    let (status, kind, body) = agents(&folders, &[("host", "my-domain.com")]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(kind, "text/markdown; charset=utf-8");
+    assert_eq!(
+        body,
+        "Read http://my-domain.com/status, then http://my-domain.com/fs/.\n\
+         BASE_URL, DATABASE and BASEline stay. (http://my-domain.com)\n"
+    );
+}
+
+#[tokio::test]
+async fn agents_without_agents_md_is_a_404_saying_to_add_one() {
+    let folders = Folders::new("agents-missing");
+    let (status, _, body) = agents(&folders, &[("host", "my-domain.com")]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("add AGENTS.md"), "{body}");
+}
+
+#[tokio::test]
+async fn base_takes_the_scheme_and_host_a_proxy_passes_on_and_only_a_host_name() {
+    let folders = Folders::new("agents-base");
+    std::fs::write(folders.path("configs/AGENTS.md"), "BASE").unwrap();
+    let cases: &[(&[(&str, &str)], &str)] = &[
+        (
+            &[
+                ("host", "serve:8080"),
+                ("x-forwarded-proto", "https"),
+                ("x-forwarded-host", "my-domain.com"),
+            ],
+            "https://my-domain.com",
+        ),
+        (
+            &[
+                ("host", "my-domain.com:8443"),
+                ("x-forwarded-proto", "https, http"),
+            ],
+            "https://my-domain.com:8443",
+        ),
+        (
+            &[("host", "localhost:3000"), ("x-forwarded-proto", "gopher")],
+            "http://localhost:3000",
+        ),
+        (&[("host", "evil.com/<script>")], "http://127.0.0.1:8080"),
+        (&[("host", "a b")], "http://127.0.0.1:8080"),
+        (&[("host", "my-domain.com:99999")], "http://127.0.0.1:8080"),
+        (&[], "http://127.0.0.1:8080"),
+    ];
+    for (headers, want) in cases {
+        let (_, _, body) = agents(&folders, headers).await;
+        assert_eq!(&body, want, "{headers:?}");
+    }
+}
