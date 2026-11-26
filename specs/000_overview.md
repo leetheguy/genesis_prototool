@@ -18,9 +18,9 @@ design they add up to.
 **Milestone three is under way** ([999](999_todo.md)): an agent builds a CRM on its own. One app
 ([120](120_one_app.md)) is built. Of the atoms ([040](040_catalog.md)), these are built: `cell` with the style keys
 (layout, box, type, placement, all by screen size) and `each`; `text`; `image`; `link`; `button` with variants
-and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; and the controls with `var` (`input`, `textarea`,
-`select`, `checkbox`, `toggle`, and `radio` groups). 040's task list says what's next: `form` and controls
-with `name`, `file`, `dialog`, and `markdown`. Still to come after them are components, display logic, and what
+and sizes; `divider`; `svg`; `audio`; `video`; `iframe`; the controls (`input`, `textarea`,
+`select`, `checkbox`, `toggle`, and `radio` groups), with `var` or with `name` in a `form`, and the `submit`
+button. 040's task list says what's next: `file`, `dialog`, and `markdown`. Still to come after them are components, display logic, and what
 agents need from `serve`: a guide, one log, and a webhook ([110](110_agents.md)).
 
 ## What this is

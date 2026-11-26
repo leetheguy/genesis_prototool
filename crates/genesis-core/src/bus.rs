@@ -23,7 +23,9 @@
 //! assert_eq!(machine.get("sys.events").unwrap()[0]["log"], "hello");
 //! ```
 
-use crate::config::{App, Audio, Handler, Node, Source, Step, Video, body_place, child_place};
+use crate::config::{
+    App, Audio, Handler, InputKind, Node, Source, Step, Video, body_place, child_place,
+};
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -133,6 +135,8 @@ pub struct Machine {
     handler_sources: Vec<Option<String>>,
     /// Every event name the config can fire, for `sys.bus`.
     fires: Vec<String>,
+    /// Every form, and the named controls that fill them.
+    forms: Forms,
     state: State,
     queue: VecDeque<Queued>,
     /// What the host must do, gathered while the queue runs.
@@ -165,6 +169,9 @@ struct State {
     errors: VecDeque<Value>,
     /// `sys.sources`: each source's status: `idle`, `loading`, `ok`, or `failed`.
     sources: BTreeMap<String, &'static str>,
+    /// Each form's draft, by its name (and row, inside an `each`: [`draft_key`]): the values
+    /// typed and not yet submitted, by field.
+    drafts: BTreeMap<String, Map<String, Value>>,
 }
 
 /// An event waiting its turn.
@@ -174,6 +181,8 @@ struct Queued {
     payload: Value,
     /// The names of the events that led to this one, oldest first. Its length is the depth.
     chain: Vec<String>,
+    /// Inside an `each`, the row the node that fired it is drawn in ([`Machine::fire_at`]).
+    row: Option<String>,
 }
 
 impl Machine {
@@ -183,6 +192,7 @@ impl Machine {
             handlers,
             sources: handler_sources,
             fires,
+            forms,
         } = wiring(&app);
         let sources = app
             .sources
@@ -196,12 +206,14 @@ impl Machine {
             theme: app.app.theme.clone(),
             events: VecDeque::new(),
             errors: VecDeque::new(),
+            drafts: BTreeMap::new(),
         };
         Machine {
             app,
             handlers,
             handler_sources,
             fires,
+            forms,
             state,
             queue: VecDeque::new(),
             effects: Vec::new(),
@@ -228,7 +240,42 @@ impl Machine {
         json!({
             "app": app,
             "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors, "events": self.state.events },
+            "drafts": self.shown_drafts(),
         })
+    }
+
+    /// Every form's draft, without what a `password` input holds: what a session keeps and the
+    /// mirror shows.
+    fn shown_drafts(&self) -> BTreeMap<&str, Map<String, Value>> {
+        self.state
+            .drafts
+            .iter()
+            .map(|(form, draft)| {
+                let hidden = self.forms.forms.get(form_of(form)).map(|f| &f.hidden);
+                let shown = draft
+                    .iter()
+                    .filter(|(field, _)| !hidden.is_some_and(|h| h.contains(*field)))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                (form.as_str(), shown)
+            })
+            .filter(|(_, draft): &(&str, Map<String, Value>)| !draft.is_empty())
+            .collect()
+    }
+
+    /// The value typed into `form`'s control named `field`, and not yet submitted. `None` when
+    /// nothing has been: the control shows its form's `data` instead.
+    pub fn draft(&self, form: &str, field: &str) -> Option<Value> {
+        self.draft_at(form, None, field)
+    }
+
+    /// The same as [`Machine::draft`], for a form drawn in `row` of an `each`.
+    pub fn draft_at(&self, form: &str, row: Option<&str>, field: &str) -> Option<Value> {
+        self.state
+            .drafts
+            .get(&draft_key(form, row))?
+            .get(field)
+            .cloned()
     }
 
     /// Brings back what [`Machine::kept`] gave, before the app opens. A variable the config no
@@ -282,6 +329,30 @@ impl Machine {
         if let Some(events) = list("events") {
             self.state.events = events;
         }
+        let drafts = kept.get("drafts").and_then(Value::as_object);
+        for (form, draft) in drafts.into_iter().flatten() {
+            let Some(wired) = self.forms.forms.get(form_of(form)) else {
+                notes.push(format!(
+                    "the form {} is gone from the config; dropped its draft",
+                    form_of(form)
+                ));
+                continue;
+            };
+            for (field, value) in draft.as_object().into_iter().flatten() {
+                if !wired.fields.contains(field) {
+                    notes.push(format!(
+                        "{} has no control named {field} now; dropped what was typed in it",
+                        form_of(form)
+                    ));
+                } else if !wired.hidden.contains(field) {
+                    self.state
+                        .drafts
+                        .entry(form.clone())
+                        .or_default()
+                        .insert(field.clone(), value.clone());
+                }
+            }
+        }
         notes
     }
 
@@ -306,7 +377,17 @@ impl Machine {
             handlers,
             sources,
             fires,
+            forms,
         } = wiring(&app);
+        // A draft stays while its form and field do.
+        self.state.drafts.retain(|key, draft| {
+            let Some(wired) = forms.forms.get(form_of(key)) else {
+                return false;
+            };
+            draft.retain(|field, _| wired.fields.contains(field));
+            true
+        });
+        self.forms = forms;
         let old = std::mem::take(&mut self.state.app);
         self.state.app = starting(&app)
             .into_iter()
@@ -366,10 +447,18 @@ impl Machine {
     /// Fires the event `name` with its `payload`, and handles it and every event that follows,
     /// until the queue is empty. Returns what the host must do as a result.
     pub fn fire(&mut self, name: &str, payload: Value) -> Vec<Effect> {
+        self.fire_at(name, payload, None)
+    }
+
+    /// The same as [`Machine::fire`], for a node drawn inside an `each`: `row` is where it's
+    /// drawn, as the renderer writes it (`"2"`, or `"0.2"` inside two). A form drawn in a row
+    /// keeps a draft of its own for that row, so each row's form is filled and submitted apart.
+    pub fn fire_at(&mut self, name: &str, payload: Value, row: Option<&str>) -> Vec<Effect> {
         self.queue.push_back(Queued {
             name: name.to_string(),
             payload,
             chain: Vec::new(),
+            row: row.map(String::from),
         });
         self.drain();
         std::mem::take(&mut self.effects)
@@ -399,6 +488,7 @@ impl Machine {
                         name: fire.clone(),
                         payload: payload.clone(),
                         chain: Vec::new(),
+                        row: None,
                     });
                     let kind = TimerKind::Every {
                         fire,
@@ -448,11 +538,13 @@ impl Machine {
         self.tapped.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
-    /// The state as one value: `{ "app": {...}, "sys": { "view", "theme", "errors" } }`.
+    /// The state as one value: `{ "app": {...}, "sys": { "view", "theme", "errors" }, "drafts": {...} }`,
+    /// with no `password` input's value in it.
     pub fn snapshot(&self) -> Value {
         json!({
             "app": self.state.app,
             "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors },
+            "drafts": self.shown_drafts(),
         })
     }
 
@@ -462,7 +554,8 @@ impl Machine {
         self.look(path, None)
     }
 
-    fn handle(&mut self, event: Queued) {
+    fn handle(&mut self, mut event: Queued) {
+        self.fill_form(&mut event);
         let matched: Vec<usize> = (0..self.handlers.len())
             .filter(|&i| pattern::matches(&self.handlers[i].pattern, &event.name))
             .collect();
@@ -476,7 +569,7 @@ impl Machine {
             "depth": event.chain.len(),
             "from": event.chain.last(),
             "handlers": patterns,
-            "payload": event.payload,
+            "payload": self.trail_payload(&event),
         }));
         // A failure is logged before any handler runs, and is shown if nobody handles it.
         if event.name.ends_with(".failed") {
@@ -863,6 +956,7 @@ impl Machine {
             name: name.to_string(),
             payload,
             chain,
+            row: None,
         });
     }
 
@@ -888,6 +982,95 @@ impl Machine {
         }
         self.state.events.push_front(entry);
         self.state.events.truncate(self.app.app.event_trail);
+    }
+
+    /// A named control's `.change` puts its value in its form's draft. A form's `.submit` takes
+    /// its draft: the payload's `form` gets every named control's value (typed, else from the
+    /// form's `data`, else `null`), and the draft starts over.
+    fn fill_form(&mut self, event: &mut Queued) {
+        if let Some((form, field)) = self.forms.fields.get(&event.name).cloned() {
+            let value = event.payload.get("value").cloned().unwrap_or(Value::Null);
+            self.state
+                .drafts
+                .entry(draft_key(&form, event.row.as_deref()))
+                .or_default()
+                .insert(field, value);
+            return;
+        }
+        let Some(name) = event.name.strip_suffix(".submit") else {
+            return;
+        };
+        let Some(wired) = self.forms.forms.get(name) else {
+            return;
+        };
+        let draft = self
+            .state
+            .drafts
+            .remove(&draft_key(name, event.row.as_deref()))
+            .unwrap_or_default();
+        let data = wired
+            .data
+            .as_deref()
+            .and_then(|path| self.data(path, &event.payload));
+        let mut form: Map<String, Value> = wired
+            .fields
+            .iter()
+            .map(|field| {
+                let value = draft
+                    .get(field)
+                    .or_else(|| data.as_ref()?.get(field))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                (field.clone(), value)
+            })
+            .collect();
+        // An event pushed in with a `form` of its own keeps what it says.
+        if let Some(Value::Object(given)) = event.payload.get("form") {
+            form.extend(given.clone());
+        }
+        if !event.payload.is_object() {
+            event.payload = json!({});
+        }
+        event.payload["form"] = Value::Object(form);
+    }
+
+    /// A form's `data`, read for one event: `item` and `item.*` from the element it fired for,
+    /// anything else from state.
+    fn data(&self, path: &str, payload: &Value) -> Option<Value> {
+        let mut keys = path.split('.');
+        if keys.next() != Some("item") {
+            return self.look(path, None);
+        }
+        keys.try_fold(payload.get("item")?, |at, key| match at {
+            Value::Array(items) => items.get(key.parse::<usize>().ok()?),
+            _ => at.get(key),
+        })
+        .cloned()
+    }
+
+    /// An event's payload as the trail shows it: with what a `password` input holds hidden.
+    fn trail_payload(&self, event: &Queued) -> Value {
+        let mut payload = event.payload.clone();
+        let hidden = json!("(hidden)");
+        if let Some((form, field)) = self.forms.fields.get(&event.name) {
+            if self.forms.forms[form].hidden.contains(field)
+                && let Some(value) = payload.get_mut("value")
+            {
+                *value = hidden;
+            }
+        } else if let Some(wired) = event
+            .name
+            .strip_suffix(".submit")
+            .and_then(|name| self.forms.forms.get(name))
+            && let Some(Value::Object(form)) = payload.get_mut("form")
+        {
+            for field in &wired.hidden {
+                if let Some(value) = form.get_mut(field) {
+                    *value = hidden.clone();
+                }
+            }
+        }
+        payload
     }
 
     /// Looks a dotted path up: in the event being handled (`event.*`), the app's variables
@@ -933,8 +1116,14 @@ impl Machine {
 fn wiring(app: &App) -> Wiring {
     let mut handlers = Vec::new();
     let mut node_events = Vec::new();
+    let mut forms = Forms::default();
     for (i, node) in app.body.iter().enumerate() {
-        wire_node(node, &body_place(i), &mut handlers, &mut node_events);
+        let mut wire = Wire {
+            handlers: &mut handlers,
+            events: &mut node_events,
+            forms: &mut forms,
+        };
+        wire_node(node, &body_place(i), None, &mut wire);
     }
     handlers.extend(app.on.iter().cloned());
     let mut sources = vec![None; handlers.len()];
@@ -959,14 +1148,43 @@ fn wiring(app: &App) -> Wiring {
         handlers,
         sources,
         fires,
+        forms,
     }
 }
 
-/// An app's handlers, which source (if any) each belongs to, and every event it can fire.
+/// An app's handlers, which source (if any) each belongs to, every event it can fire, and its forms.
 struct Wiring {
     handlers: Vec<Handler>,
     sources: Vec<Option<String>>,
     fires: Vec<String>,
+    forms: Forms,
+}
+
+/// An app's forms, and the named controls that fill them.
+#[derive(Default)]
+struct Forms {
+    /// Each form, by its name.
+    forms: BTreeMap<String, FormWiring>,
+    /// Each named control's `.change` event: the form and the field it fills.
+    fields: BTreeMap<String, (String, String)>,
+}
+
+/// One form: what it starts from, and its fields.
+#[derive(Default)]
+struct FormWiring {
+    /// Its `data`: the variable its controls start from.
+    data: Option<String>,
+    /// Its controls' names, once each, in tree order: what goes out on `.submit`.
+    fields: Vec<String>,
+    /// The names of its `password` inputs, whose values are never kept, mirrored, or on the trail.
+    hidden: BTreeSet<String>,
+}
+
+/// What [`wire_node`] adds to as it walks the tree.
+struct Wire<'a> {
+    handlers: &'a mut Vec<Handler>,
+    events: &'a mut Vec<String>,
+    forms: &'a mut Forms,
 }
 
 /// The events a source calls on: `app.opened` (or its `load_on`), the `.changed` of every
@@ -988,6 +1206,20 @@ fn source_patterns(name: &str, source: &Source) -> Vec<String> {
     patterns
 }
 
+/// Where a form's draft is kept: under its name, or, for a form drawn in a row of an `each`,
+/// its name and its row (`edit#2`).
+fn draft_key(form: &str, row: Option<&str>) -> String {
+    match row {
+        Some(row) => format!("{form}#{row}"),
+        None => form.to_string(),
+    }
+}
+
+/// The form a draft's key names.
+fn form_of(key: &str) -> &str {
+    key.split_once('#').map_or(key, |(form, _)| form)
+}
+
 /// An app's variables at their starting values: `[state]`, and each source, empty.
 fn starting(app: &App) -> Map<String, Value> {
     let mut vars = app.state.clone();
@@ -995,29 +1227,42 @@ fn starting(app: &App) -> Map<String, Value> {
     vars
 }
 
-/// Turns a node's `on_*` shortcuts into handlers, and notes the events it fires, for it and its
-/// children. A node without an `id` is named by its place in the tree (`body.0.children.1`).
-fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut Vec<String>) {
+/// Turns a node's `on_*` shortcuts into handlers, and notes the events it fires and the forms it
+/// holds, for it and its children. A node without an `id` is named by its place in the tree
+/// (`body.0.children.1`). `form` is the name of the form it's inside, if any.
+fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
+    let name = node.name(place);
     match node {
         Node::Button(button) => {
-            let name = node.name(place);
             if button.id.is_some() || button.on_click.is_some() {
-                events.push(format!("{name}.click"));
+                wire.events.push(format!("{name}.click"));
             }
             if let Some(steps) = &button.on_click {
-                handlers.push(Handler {
+                wire.handlers.push(Handler {
                     pattern: format!("{name}.click"),
                     steps: steps.clone(),
                 });
             }
         }
-        Node::Cell(cell) => {
-            for (i, child) in cell.children.iter().enumerate() {
-                wire_node(child, &child_place(place, i), handlers, events);
+        Node::Form(f) => {
+            wire.events.push(format!("{name}.submit"));
+            if let Some(steps) = &f.on_submit {
+                wire.handlers.push(Handler {
+                    pattern: format!("{name}.submit"),
+                    steps: steps.clone(),
+                });
             }
+            wire.forms.forms.insert(
+                name.clone(),
+                FormWiring {
+                    data: f.data.clone(),
+                    ..FormWiring::default()
+                },
+            );
         }
         Node::Audio(Audio { id: Some(id), .. }) | Node::Video(Video { id: Some(id), .. }) => {
-            events.extend(["play", "pause", "ended"].map(|e| format!("{id}.{e}")));
+            wire.events
+                .extend(["play", "pause", "ended"].map(|e| format!("{id}.{e}")));
         }
         Node::Input(_)
         | Node::Textarea(_)
@@ -1025,18 +1270,33 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
         | Node::Checkbox(_)
         | Node::Toggle(_)
         | Node::Radio(_) => {
-            // A control writes its variable the one way anything does: a `set`, run by its `.change`.
-            let name = node.name(place);
-            events.push(format!("{name}.change"));
-            handlers.push(Handler {
-                pattern: format!("{name}.change"),
-                steps: vec![Step::Set {
-                    set: node.var().unwrap_or_default().to_string(),
-                    to: json!("{{ event.value }}"),
-                }],
-            });
+            wire.events.push(format!("{name}.change"));
+            if let (Some(field), Some(form)) = (node.field(), form) {
+                // A named control fills its form's draft; nothing changes state until `.submit`.
+                let wired = wire.forms.forms.entry(form.to_string()).or_default();
+                if !wired.fields.iter().any(|f| f == field) {
+                    wired.fields.push(field.to_string());
+                }
+                if matches!(node, Node::Input(i) if i.kind == InputKind::Password) {
+                    wired.hidden.insert(field.to_string());
+                }
+                wire.forms.fields.insert(
+                    format!("{name}.change"),
+                    (form.to_string(), field.to_string()),
+                );
+            } else if let Some(var) = node.var() {
+                // A control writes its variable the one way anything does: a `set`, run by its `.change`.
+                wire.handlers.push(Handler {
+                    pattern: format!("{name}.change"),
+                    steps: vec![Step::Set {
+                        set: var.to_string(),
+                        to: json!("{{ event.value }}"),
+                    }],
+                });
+            }
         }
-        Node::Text(_)
+        Node::Cell(_)
+        | Node::Text(_)
         | Node::Image(_)
         | Node::Link(_)
         | Node::Svg(_)
@@ -1044,6 +1304,14 @@ fn wire_node(node: &Node, place: &str, handlers: &mut Vec<Handler>, events: &mut
         | Node::Audio(_)
         | Node::Video(_)
         | Node::Iframe(_) => {}
+    }
+    let form = if matches!(node, Node::Form(_)) {
+        Some(name.as_str())
+    } else {
+        form
+    };
+    for (i, child) in node.children().iter().enumerate() {
+        wire_node(child, &child_place(place, i), form, wire);
     }
 }
 
