@@ -24,7 +24,7 @@
 //! ```
 
 use crate::config::{
-    App, Audio, Handler, InputKind, Node, Source, Step, Video, body_place, child_place,
+    App, Audio, Component, Handler, InputKind, Node, Source, Step, Video, body_place, child_place,
 };
 use crate::{pattern, template};
 use serde_json::{Map, Value, json};
@@ -56,6 +56,38 @@ pub struct Call {
     /// Its headers, with `app.*` and `sys.*` templates filled in and `{{ creds.NAME }}` left for
     /// the host to fill.
     pub headers: BTreeMap<String, String>,
+}
+
+/// Where an event fired from inside a component: which instance, and its props as filled where
+/// the `use` node is ([spec 090](../../../specs/090_components.md)). The renderer passes it with
+/// [`Machine::fire_within`], so the component's own steps read `props.*` and its `local.*`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Within {
+    /// The `use` node's name (`card`, or `list.card` inside another component).
+    pub name: String,
+    /// The row of an `each` the `use` node is drawn in, if any.
+    pub row: Option<String>,
+    /// Its props, filled.
+    pub props: Value,
+}
+
+/// The component a handler belongs to: the `use` node's name, and the component's.
+#[derive(Debug, Clone, PartialEq)]
+struct Owner {
+    name: String,
+    component: String,
+}
+
+/// The component instance a run's steps belong to: whose `local.*` they read and write, and the
+/// props they read.
+#[derive(Debug, Clone, PartialEq)]
+struct Scope {
+    /// The `use` node's name.
+    name: String,
+    component: String,
+    /// Where its locals are kept: its name, and its row ([`draft_key`]).
+    key: String,
+    props: Value,
 }
 
 /// How a call came out.
@@ -117,7 +149,7 @@ struct Timer {
 
 enum TimerKind {
     /// A run paused by `delay`.
-    Resume(Run),
+    Resume(Box<Run>),
     /// An `every`: fires `fire` with `payload`, then sets itself again `interval` later.
     Every {
         fire: String,
@@ -133,6 +165,10 @@ pub struct Machine {
     handlers: Vec<Handler>,
     /// Which source each handler belongs to, if any, in step with `handlers`.
     handler_sources: Vec<Option<String>>,
+    /// Which component each handler belongs to, if any, in step with `handlers`.
+    handler_owners: Vec<Option<Owner>>,
+    /// Every component instance's `use` node name, and its component's: whose locals may be kept.
+    instances: BTreeMap<String, String>,
     /// Every event name the config can fire, for `sys.bus`.
     fires: Vec<String>,
     /// Every form, and the named controls that fill them.
@@ -172,6 +208,9 @@ struct State {
     /// Each form's draft, by its name (and row, inside an `each`: [`draft_key`]): the values
     /// typed and not yet submitted, by field.
     drafts: BTreeMap<String, Map<String, Value>>,
+    /// Each component instance's `local.*` that have been written, by its name (and row, like a
+    /// draft); the rest are at the component's starting values.
+    locals: BTreeMap<String, Map<String, Value>>,
 }
 
 /// An event waiting its turn.
@@ -183,6 +222,10 @@ struct Queued {
     chain: Vec<String>,
     /// Inside an `each`, the row the node that fired it is drawn in ([`Machine::fire_at`]).
     row: Option<String>,
+    /// Inside a component, where it fired from ([`Machine::fire_within`]).
+    within: Option<Within>,
+    /// While a component's handler runs it, that instance.
+    scope: Option<Scope>,
 }
 
 impl Machine {
@@ -191,6 +234,8 @@ impl Machine {
         let Wiring {
             handlers,
             sources: handler_sources,
+            owners: handler_owners,
+            instances,
             fires,
             forms,
         } = wiring(&app);
@@ -207,11 +252,14 @@ impl Machine {
             events: VecDeque::new(),
             errors: VecDeque::new(),
             drafts: BTreeMap::new(),
+            locals: BTreeMap::new(),
         };
         Machine {
             app,
             handlers,
             handler_sources,
+            handler_owners,
+            instances,
             fires,
             forms,
             state,
@@ -241,6 +289,7 @@ impl Machine {
             "app": app,
             "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors, "events": self.state.events },
             "drafts": self.shown_drafts(),
+            "locals": self.state.locals,
         })
     }
 
@@ -267,6 +316,21 @@ impl Machine {
     /// nothing has been: the control shows its form's `data` instead.
     pub fn draft(&self, form: &str, field: &str) -> Option<Value> {
         self.draft_at(form, None, field)
+    }
+
+    /// The value of `local.NAME` for the component instance whose `use` node is named `instance`,
+    /// drawn in `row` of an `each` if it is: what its steps wrote, else its component's starting
+    /// value. `None` when the component doesn't declare it.
+    pub fn local(&self, instance: &str, row: Option<&str>, name: &str) -> Option<Value> {
+        self.state
+            .locals
+            .get(&draft_key(instance, row))
+            .and_then(|locals| locals.get(name))
+            .or_else(|| {
+                let component = self.instances.get(instance)?;
+                self.app.components.get(component)?.state.get(name)
+            })
+            .cloned()
     }
 
     /// The same as [`Machine::draft`], for a form drawn in `row` of an `each`.
@@ -353,6 +417,36 @@ impl Machine {
                 }
             }
         }
+        let locals = kept.get("locals").and_then(Value::as_object);
+        for (key, values) in locals.into_iter().flatten() {
+            let declared = self
+                .instances
+                .get(form_of(key))
+                .and_then(|c| self.app.components.get(c))
+                .map(|c| &c.state);
+            let Some(declared) = declared else {
+                notes.push(format!(
+                    "the component {} is gone from the config; dropped its local state",
+                    form_of(key)
+                ));
+                continue;
+            };
+            for (name, value) in values.as_object().into_iter().flatten() {
+                match declared.get(name) {
+                    Some(start) if start.is_null() || kind(start) == kind(value) => {
+                        self.state
+                            .locals
+                            .entry(key.clone())
+                            .or_default()
+                            .insert(name.clone(), value.clone());
+                    }
+                    _ => notes.push(format!(
+                        "{} has no local.{name} of that kind now; starting it fresh",
+                        form_of(key)
+                    )),
+                }
+            }
+        }
         notes
     }
 
@@ -376,9 +470,29 @@ impl Machine {
         let Wiring {
             handlers,
             sources,
+            owners,
+            instances,
             fires,
             forms,
         } = wiring(&app);
+        // A component instance's locals stay while it does, each while it's still declared with
+        // the same kind of value.
+        self.state.locals.retain(|key, locals| {
+            let Some(state) = instances
+                .get(form_of(key))
+                .and_then(|c| app.components.get(c))
+                .map(|c| &c.state)
+            else {
+                return false;
+            };
+            locals.retain(|name, value| {
+                state
+                    .get(name)
+                    .is_some_and(|start| start.is_null() || kind(start) == kind(value))
+            });
+            true
+        });
+        (self.handler_owners, self.instances) = (owners, instances);
         // A draft stays while its form and field do.
         self.state.drafts.retain(|key, draft| {
             let Some(wired) = forms.forms.get(form_of(key)) else {
@@ -454,11 +568,25 @@ impl Machine {
     /// drawn, as the renderer writes it (`"2"`, or `"0.2"` inside two). A form drawn in a row
     /// keeps a draft of its own for that row, so each row's form is filled and submitted apart.
     pub fn fire_at(&mut self, name: &str, payload: Value, row: Option<&str>) -> Vec<Effect> {
+        self.fire_within(name, payload, row, None)
+    }
+
+    /// The same as [`Machine::fire_at`], for a node drawn inside a component: `within` says which
+    /// instance, and its props, so the component's own steps read its `local.*` and `props.*`.
+    pub fn fire_within(
+        &mut self,
+        name: &str,
+        payload: Value,
+        row: Option<&str>,
+        within: Option<Within>,
+    ) -> Vec<Effect> {
         self.queue.push_back(Queued {
             name: name.to_string(),
             payload,
             chain: Vec::new(),
             row: row.map(String::from),
+            within,
+            scope: None,
         });
         self.drain();
         std::mem::take(&mut self.effects)
@@ -477,7 +605,7 @@ impl Machine {
                     // After a pause the rest of the list starts a new chain, so a loop with a
                     // delay in it never hits max_chain.
                     run.event.chain.clear();
-                    self.execute(run);
+                    self.execute(*run);
                 }
                 TimerKind::Every {
                     fire,
@@ -489,6 +617,8 @@ impl Machine {
                         payload: payload.clone(),
                         chain: Vec::new(),
                         row: None,
+                        within: None,
+                        scope: None,
                     });
                     let kind = TimerKind::Every {
                         fire,
@@ -545,6 +675,7 @@ impl Machine {
             "app": self.state.app,
             "sys": { "view": self.state.view, "theme": self.state.theme, "errors": self.state.errors },
             "drafts": self.shown_drafts(),
+            "locals": self.state.locals,
         })
     }
 
@@ -589,9 +720,26 @@ impl Machine {
                 action: None,
             };
             let source = self.handler_sources[i].clone();
+            let mut event = event.clone();
+            event.scope = self.handler_owners[i].as_ref().map(|owner| {
+                // The renderer says which instance fired; an event pushed in from outside is
+                // taken as the one in its row.
+                let (row, props) = match &event.within {
+                    Some(within) if within.name == owner.name => {
+                        (within.row.clone(), within.props.clone())
+                    }
+                    _ => (event.row.clone(), Value::Null),
+                };
+                Scope {
+                    name: owner.name.clone(),
+                    component: owner.component.clone(),
+                    key: draft_key(&owner.name, row.as_deref()),
+                    props,
+                }
+            });
             self.execute(Run {
                 frames: vec![frame],
-                event: event.clone(),
+                event,
                 source,
             });
         }
@@ -617,7 +765,11 @@ impl Machine {
             let result = match &step {
                 Step::Run(name) => self.enter(&mut run, name),
                 Step::Delay { delay, id } => {
-                    self.set_timer(self.now + delay, id.clone(), TimerKind::Resume(run));
+                    self.set_timer(
+                        self.now + delay,
+                        id.clone(),
+                        TimerKind::Resume(Box::new(run)),
+                    );
                     return;
                 }
                 Step::Every {
@@ -873,7 +1025,7 @@ impl Machine {
                 self.write(set, value, event)?;
             }
             Step::Step { step, by, min, max } => {
-                let now = self.writable(step)?;
+                let now = self.writable(step, event)?;
                 let n = now
                     .as_f64()
                     .ok_or_else(|| format!("{step} isn't a number"))?;
@@ -884,7 +1036,7 @@ impl Machine {
             }
             Step::Toggle { toggle } => {
                 let on = self
-                    .writable(toggle)?
+                    .writable(toggle, event)?
                     .as_bool()
                     .ok_or_else(|| format!("{toggle} isn't true or false"))?;
                 self.write(toggle, json!(!on), event)?;
@@ -896,9 +1048,22 @@ impl Machine {
     }
 
     /// The current value of a variable actions may write: a declared `app.*`, `sys.view`, or
-    /// `sys.theme`. Anything else is an error saying why.
-    fn writable(&self, var: &str) -> Result<Value, String> {
+    /// `sys.theme`, or inside a component, a declared `local.*`. Anything else is an error saying why.
+    fn writable(&self, var: &str, cause: &Queued) -> Result<Value, String> {
         match var.split_once('.') {
+            Some(("local", key)) => {
+                let scope = cause
+                    .scope
+                    .as_ref()
+                    .ok_or_else(|| format!("{var} is only inside a component"))?;
+                self.state
+                    .locals
+                    .get(&scope.key)
+                    .and_then(|locals| locals.get(key))
+                    .or_else(|| self.app.components.get(&scope.component)?.state.get(key))
+                    .cloned()
+                    .ok_or_else(|| format!("{var} isn't declared in {}'s [state]", scope.component))
+            }
             Some(("app", key)) => self
                 .state
                 .app
@@ -913,7 +1078,7 @@ impl Machine {
 
     /// Writes a variable and, when the value changed, fires `{var}.changed` with `value` and `was`.
     fn write(&mut self, var: &str, value: Value, cause: &Queued) -> Result<(), String> {
-        let was = self.writable(var)?;
+        let was = self.writable(var, cause)?;
         // Written by an action, it's the user's again; settle() marks what a reply fills.
         if let Some(key) = var.strip_prefix("app.") {
             self.filled.remove(key);
@@ -921,18 +1086,27 @@ impl Machine {
         if was == value {
             return Ok(());
         }
+        let mut changed = format!("{var}.changed");
         match var.split_once('.') {
             Some(("app", key)) => {
                 self.state.app.insert(key.to_string(), value.clone());
             }
+            Some(("local", key)) => {
+                // writable() found the scope. Its change fires under the `use` node's name, as
+                // every event inside a component does.
+                if let Some(scope) = &cause.scope {
+                    self.state
+                        .locals
+                        .entry(scope.key.clone())
+                        .or_default()
+                        .insert(key.to_string(), value.clone());
+                    changed = format!("{}.{changed}", scope.name);
+                }
+            }
             Some((_, "view")) => self.state.view = text_of(&value),
             _ => self.state.theme = text_of(&value),
         }
-        self.enqueue(
-            &format!("{var}.changed"),
-            json!({ "value": value, "was": was }),
-            cause,
-        );
+        self.enqueue(&changed, json!({ "value": value, "was": was }), cause);
         Ok(())
     }
 
@@ -957,6 +1131,8 @@ impl Machine {
             payload,
             chain,
             row: None,
+            within: None,
+            scope: None,
         });
     }
 
@@ -1011,7 +1187,7 @@ impl Machine {
         let data = wired
             .data
             .as_deref()
-            .and_then(|path| self.data(path, &event.payload));
+            .and_then(|path| self.data(path, event));
         let mut form: Map<String, Value> = wired
             .fields
             .iter()
@@ -1035,13 +1211,22 @@ impl Machine {
     }
 
     /// A form's `data`, read for one event: `item` and `item.*` from the element it fired for,
-    /// anything else from state.
-    fn data(&self, path: &str, payload: &Value) -> Option<Value> {
+    /// inside a component `props.*` and `local.*` from the instance it fired in, anything else
+    /// from state.
+    fn data(&self, path: &str, event: &Queued) -> Option<Value> {
         let mut keys = path.split('.');
-        if keys.next() != Some("item") {
-            return self.look(path, None);
-        }
-        keys.try_fold(payload.get("item")?, |at, key| match at {
+        let within = event.within.as_ref();
+        let root = match keys.next() {
+            Some("item") => event.payload.get("item")?.clone(),
+            Some("props") => within?.props.clone(),
+            Some("local") => {
+                let within = within?;
+                let name = keys.next()?;
+                self.local(&within.name, within.row.as_deref(), name)?
+            }
+            _ => return self.look(path, None),
+        };
+        keys.try_fold(&root, |at, key| match at {
             Value::Array(items) => items.get(key.parse::<usize>().ok()?),
             _ => at.get(key),
         })
@@ -1081,6 +1266,17 @@ impl Machine {
             ("event", Some("name")) => return event.map(|e| json!(e.name)),
             ("event", Some(key)) => event?.payload.get(key)?.clone(),
             ("app", Some(key)) => self.state.app.get(key)?.clone(),
+            ("local", Some(key)) => {
+                let scope = event?.scope.as_ref()?;
+                self.state
+                    .locals
+                    .get(&scope.key)
+                    .and_then(|locals| locals.get(key))
+                    .or_else(|| self.app.components.get(&scope.component)?.state.get(key))?
+                    .clone()
+            }
+            ("props", None) => event?.scope.as_ref()?.props.clone(),
+            ("props", Some(key)) => event?.scope.as_ref()?.props.get(key)?.clone(),
             ("sys", Some("view")) => json!(self.state.view),
             ("sys", Some("theme")) => json!(self.state.theme),
             ("sys", Some("events")) => json!(self.state.events),
@@ -1115,17 +1311,23 @@ impl Machine {
 /// event name it can fire.
 fn wiring(app: &App) -> Wiring {
     let mut handlers = Vec::new();
+    let mut owners = Vec::new();
+    let mut instances = BTreeMap::new();
     let mut node_events = Vec::new();
     let mut forms = Forms::default();
     for (i, node) in app.body.iter().enumerate() {
         let mut wire = Wire {
             handlers: &mut handlers,
+            owners: &mut owners,
+            instances: &mut instances,
+            components: &app.components,
             events: &mut node_events,
             forms: &mut forms,
         };
-        wire_node(node, &body_place(i), None, &mut wire);
+        wire_node(node, &body_place(i), None, None, &mut wire);
     }
     handlers.extend(app.on.iter().cloned());
+    owners.resize(handlers.len(), None);
     let mut sources = vec![None; handlers.len()];
     for (name, source) in &app.sources {
         for pattern in source_patterns(name, source) {
@@ -1141,12 +1343,15 @@ fn wiring(app: &App) -> Wiring {
                 steps: vec![load],
             });
             sources.push(Some(name.clone()));
+            owners.push(None);
         }
     }
     let fires = fires(app, &handlers, node_events);
     Wiring {
         handlers,
         sources,
+        owners,
+        instances,
         fires,
         forms,
     }
@@ -1156,6 +1361,10 @@ fn wiring(app: &App) -> Wiring {
 struct Wiring {
     handlers: Vec<Handler>,
     sources: Vec<Option<String>>,
+    /// Which component each handler belongs to, if any.
+    owners: Vec<Option<Owner>>,
+    /// Every `use` node's name, and its component's.
+    instances: BTreeMap<String, String>,
     fires: Vec<String>,
     forms: Forms,
 }
@@ -1183,8 +1392,20 @@ struct FormWiring {
 /// What [`wire_node`] adds to as it walks the tree.
 struct Wire<'a> {
     handlers: &'a mut Vec<Handler>,
+    /// Which component each handler belongs to, in step with `handlers`.
+    owners: &'a mut Vec<Option<Owner>>,
+    instances: &'a mut BTreeMap<String, String>,
+    components: &'a BTreeMap<String, Component>,
     events: &'a mut Vec<String>,
     forms: &'a mut Forms,
+}
+
+impl Wire<'_> {
+    /// Adds a handler, belonging to the component `owner` if it's inside one.
+    fn handle(&mut self, handler: Handler, owner: Option<&Owner>) {
+        self.handlers.push(handler);
+        self.owners.push(owner.cloned());
+    }
 }
 
 /// The events a source calls on: `app.opened` (or its `load_on`), the `.changed` of every
@@ -1229,28 +1450,38 @@ fn starting(app: &App) -> Map<String, Value> {
 
 /// Turns a node's `on_*` shortcuts into handlers, and notes the events it fires and the forms it
 /// holds, for it and its children. A node without an `id` is named by its place in the tree
-/// (`body.0.children.1`). `form` is the name of the form it's inside, if any.
-fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
-    let name = node.name(place);
+/// (`body.0.children.1`). `form` is the name of the form it's inside, if any, and `owner` the
+/// component: inside one, a node is named under its `use` node (`card.more_btn`).
+fn wire_node(node: &Node, place: &str, form: Option<&str>, owner: Option<&Owner>, wire: &mut Wire) {
+    let name = match owner {
+        Some(owner) => format!("{}.{}", owner.name, node.name(place)),
+        None => node.name(place),
+    };
     match node {
         Node::Button(button) => {
             if button.id.is_some() || button.on_click.is_some() {
                 wire.events.push(format!("{name}.click"));
             }
             if let Some(steps) = &button.on_click {
-                wire.handlers.push(Handler {
-                    pattern: format!("{name}.click"),
-                    steps: steps.clone(),
-                });
+                wire.handle(
+                    Handler {
+                        pattern: format!("{name}.click"),
+                        steps: steps.clone(),
+                    },
+                    owner,
+                );
             }
         }
         Node::Form(f) => {
             wire.events.push(format!("{name}.submit"));
             if let Some(steps) = &f.on_submit {
-                wire.handlers.push(Handler {
-                    pattern: format!("{name}.submit"),
-                    steps: steps.clone(),
-                });
+                wire.handle(
+                    Handler {
+                        pattern: format!("{name}.submit"),
+                        steps: steps.clone(),
+                    },
+                    owner,
+                );
             }
             wire.forms.forms.insert(
                 name.clone(),
@@ -1268,14 +1499,17 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
                 to: json!(false),
             }];
             steps.extend(dialog.on_close.iter().flatten().cloned());
-            wire.handlers.push(Handler {
-                pattern: format!("{name}.close"),
-                steps,
-            });
+            wire.handle(
+                Handler {
+                    pattern: format!("{name}.close"),
+                    steps,
+                },
+                owner,
+            );
         }
-        Node::Audio(Audio { id: Some(id), .. }) | Node::Video(Video { id: Some(id), .. }) => {
+        Node::Audio(Audio { id: Some(_), .. }) | Node::Video(Video { id: Some(_), .. }) => {
             wire.events
-                .extend(["play", "pause", "ended"].map(|e| format!("{id}.{e}")));
+                .extend(["play", "pause", "ended"].map(|e| format!("{name}.{e}")));
         }
         Node::Input(_)
         | Node::Textarea(_)
@@ -1300,13 +1534,16 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
                 );
             } else if let Some(var) = node.var() {
                 // A control writes its variable the one way anything does: a `set`, run by its `.change`.
-                wire.handlers.push(Handler {
-                    pattern: format!("{name}.change"),
-                    steps: vec![Step::Set {
-                        set: var.to_string(),
-                        to: json!("{{ event.value }}"),
-                    }],
-                });
+                wire.handle(
+                    Handler {
+                        pattern: format!("{name}.change"),
+                        steps: vec![Step::Set {
+                            set: var.to_string(),
+                            to: json!("{{ event.value }}"),
+                        }],
+                    },
+                    owner,
+                );
             }
         }
         Node::Cell(_)
@@ -1319,9 +1556,21 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
         | Node::Video(_)
         | Node::Iframe(_)
         | Node::Markdown(_) => {}
-        // What's inside a component is wired with its local state, under the `use` node's name
-        // (spec 090's second task); for now a component only draws.
-        Node::Use(_) => {}
+        Node::Use(used) => {
+            // A loop of components is refused on load; one handed over another way stops here.
+            if let Some(component) = wire.components.get(&used.component)
+                && name.matches('.').count() < MAX_NESTING
+            {
+                wire.instances.insert(name.clone(), used.component.clone());
+                let inner = Owner {
+                    name: name.clone(),
+                    component: used.component.clone(),
+                };
+                for (i, child) in component.body.iter().enumerate() {
+                    wire_node(child, &body_place(i), form, Some(&inner), wire);
+                }
+            }
+        }
     }
     let form = if matches!(node, Node::Form(_)) {
         Some(name.as_str())
@@ -1329,9 +1578,13 @@ fn wire_node(node: &Node, place: &str, form: Option<&str>, wire: &mut Wire) {
         form
     };
     for (i, child) in node.children().iter().enumerate() {
-        wire_node(child, &child_place(place, i), form, wire);
+        wire_node(child, &child_place(place, i), form, owner, wire);
     }
 }
+
+/// How many dots deep a name inside nested components may go before wiring stops: far past any
+/// real screen, short of a stack overflow from a loop that wasn't checked on load.
+const MAX_NESTING: usize = 64;
 
 /// Every event name the config can fire, without repeats, for `sys.bus`.
 fn fires(app: &App, handlers: &[Handler], node_events: Vec<String>) -> Vec<String> {

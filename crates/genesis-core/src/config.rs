@@ -1643,7 +1643,7 @@ fn check_component(component: &Component, checks: &Checks, problems: &mut Vec<Co
     }
     let body = serde_json::to_value(&component.body).unwrap_or_default();
     for (i, node) in body.as_array().into_iter().flatten().enumerate() {
-        scan(node, &body_place(i), None, &mut problem);
+        scan(node, &body_place(i), None, component, &mut problem);
     }
     for (i, node) in component.body.iter().enumerate() {
         check_node(node, &body_place(i), false, checks, problems);
@@ -1657,15 +1657,39 @@ const PATH_KEYS: [&str; 8] = [
 /// Of those, the ones that write the variable.
 const WRITE_KEYS: [&str; 5] = ["var", "open", "set", "step", "toggle"];
 
-/// Looks through a component's node, as JSON, for a read of `app.*` (a template, or a path key)
-/// and a write of `props.*`. `place` names the node it's in; `key` is the key `value` is under.
-fn scan(value: &Value, place: &str, key: Option<&str>, problem: &mut impl FnMut(String)) {
+/// Looks through a component's node, as JSON, for a read of `app.*` (a template, or a path key),
+/// a write of `props.*`, and a `local.*` or `props.*` the component doesn't declare. `place` names
+/// the node it's in; `key` is the key `value` is under.
+fn scan(
+    value: &Value,
+    place: &str,
+    key: Option<&str>,
+    component: &Component,
+    problem: &mut impl FnMut(String),
+) {
     match value {
         Value::String(text) => {
             let head = |path: &str| path.split('.').next().unwrap_or_default().to_string();
-            let mut paths: Vec<String> = template::paths(text).into_iter().map(head).collect();
+            let mut whole: Vec<&str> = template::paths(text);
             if key.is_some_and(|k| PATH_KEYS.contains(&k)) {
-                paths.push(head(text));
+                whole.push(text);
+            }
+            let paths: Vec<String> = whole.iter().map(|p| head(p)).collect();
+            for path in &whole {
+                let mut parts = path.split('.');
+                match (parts.next(), parts.next()) {
+                    (Some("local"), name)
+                        if !name.is_some_and(|n| component.state.contains_key(n)) =>
+                    {
+                        problem(format!(
+                            "{place}: {path} isn't declared in this component's [state]"
+                        ));
+                    }
+                    (Some("props"), Some(name)) if !component.takes(name) => {
+                        problem(format!("{place}: this component has no prop `{name}`"));
+                    }
+                    _ => {}
+                }
             }
             if paths.iter().any(|h| h == "app") {
                 problem(format!(
@@ -1680,17 +1704,17 @@ fn scan(value: &Value, place: &str, key: Option<&str>, problem: &mut impl FnMut(
         }
         Value::Array(items) => {
             for item in items {
-                scan(item, place, key, problem);
+                scan(item, place, key, component, problem);
             }
         }
         Value::Object(fields) => {
             for (k, v) in fields {
                 if k == "children" {
                     for (i, child) in v.as_array().into_iter().flatten().enumerate() {
-                        scan(child, &child_place(place, i), None, problem);
+                        scan(child, &child_place(place, i), None, component, problem);
                     }
                 } else {
-                    scan(v, place, Some(k), problem);
+                    scan(v, place, Some(k), component, problem);
                 }
             }
         }
@@ -1796,7 +1820,7 @@ fn check_node(
     }
     if let Node::Dialog(dialog) = node
         && !is_writable_path(&dialog.open)
-        && !(inside && dialog.open.starts_with("props."))
+        && !(inside && (dialog.open.starts_with("props.") || is_local_path(&dialog.open)))
     {
         problem(format!(
             "a dialog's `open` is an app variable, like \"app.editing\", not {:?}",
@@ -1813,10 +1837,9 @@ fn check_node(
             ));
         }
     }
-    if node
-        .var()
-        .is_some_and(|var| !is_writable_path(var) && !(inside && var.starts_with("props.")))
-    {
+    if node.var().is_some_and(|var| {
+        !is_writable_path(var) && !(inside && (var.starts_with("props.") || is_local_path(var)))
+    }) {
         problem(format!(
             "`var` is an app variable, like \"app.query\", or sys.view or sys.theme, not {:?}",
             node.var().unwrap_or_default()
@@ -1922,8 +1945,14 @@ fn is_writable_path(path: &str) -> bool {
     }
 }
 
+/// Whether `path` is `local.NAME`: one of a component's own variables, which its controls and
+/// dialogs may write. Whether the component declares it is checked with the rest of its paths.
+fn is_local_path(path: &str) -> bool {
+    path.strip_prefix("local.").is_some_and(is_plain)
+}
+
 /// Whether `path` names a variable an `each` can repeat over: `item`, or a dotted path under
-/// `app.` or `item.` of plain names, and `inside` a component, under `props.` too.
+/// `app.` or `item.` of plain names, and `inside` a component, under `props.` or `local.` too.
 fn is_list_path(path: &str, inside: bool) -> bool {
     let mut parts = path.split('.');
     let plain = |part: &str| {
@@ -1934,7 +1963,7 @@ fn is_list_path(path: &str, inside: bool) -> bool {
     };
     match parts.next() {
         Some("item") => parts.all(plain),
-        Some(root) if root == "app" || (inside && root == "props") => {
+        Some(root) if root == "app" || (inside && matches!(root, "props" | "local")) => {
             let rest: Vec<&str> = parts.collect();
             !rest.is_empty() && rest.into_iter().all(plain)
         }
