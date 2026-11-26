@@ -212,6 +212,8 @@ pub struct Machine {
     queue: VecDeque<Queued>,
     /// What the host must do, gathered while the queue runs.
     effects: Vec<Effect>,
+    /// Goes up whenever something the screen shows may have changed ([`Machine::revision`]).
+    revision: u64,
     /// App variables a reply's `into` filled last, which a session doesn't keep.
     filled: BTreeSet<String>,
     /// Runs waiting on calls, by call id.
@@ -310,6 +312,7 @@ impl Machine {
             state,
             queue: VecDeque::new(),
             effects: Vec::new(),
+            revision: 0,
             filled: BTreeSet::new(),
             waiting: BTreeMap::new(),
             next_call: 1,
@@ -401,6 +404,7 @@ impl Machine {
     /// each of those, and kept state that isn't kept state at all, comes back as a note for the
     /// host to log. Nothing fires.
     pub fn restore(&mut self, kept: &Value) -> Vec<String> {
+        self.revision += 1;
         let Some(kept) = kept.as_object() else {
             return vec!["the kept state isn't kept state; starting fresh".into()];
         };
@@ -531,6 +535,7 @@ impl Machine {
     /// their starting values, and removed ones are dropped. The view, theme, trail, errors, and
     /// timers carry over. Then it fires `config.loaded`, and returns what the host must do.
     pub fn reload(&mut self, app: App) -> Vec<Effect> {
+        self.revision += 1;
         let Wiring {
             handlers,
             sources,
@@ -651,6 +656,15 @@ impl Machine {
     /// Takes the toast `id` off the screen before its time is up. One already gone is fine.
     pub fn dismiss(&mut self, id: u64) {
         self.toasts.retain(|t| t.id != id);
+        self.revision += 1;
+    }
+
+    /// A number that goes up whenever something the screen shows may have changed: an event was
+    /// handled, a reply or an answer came, a toast came or went, or a session or config was swapped
+    /// in. While it stays the same, nothing on screen needs drawing again, so a host can skip the
+    /// redraw: moving the clock on with no timer due and no toast running out leaves it as it is.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// Fires `app.opened`, and handles everything that follows from it.
@@ -721,12 +735,17 @@ impl Machine {
             self.drain();
         }
         self.now = until;
+        let shown = self.toasts.len();
         self.toasts.retain(|t| t.until > until);
+        if self.toasts.len() != shown {
+            self.revision += 1;
+        }
         std::mem::take(&mut self.effects)
     }
 
     /// Handles queued events until there are none.
     fn drain(&mut self) {
+        self.revision += 1;
         while let Some(event) = self.queue.pop_front() {
             self.handle(event);
         }

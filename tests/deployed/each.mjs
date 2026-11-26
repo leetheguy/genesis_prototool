@@ -1,5 +1,7 @@
 // The each deployed check (spec 040, "Repeating: each"): in a real browser, a cell repeats its
 // children per element, and a click inside one carries that element to its handler as event.item.
+// Nothing on the page changes while nothing happens, and a change to the list keeps its rows on
+// the page: only the changed text changes, and a new element adds a row at the end.
 //
 // It runs genesis-serve on a temporary app of its own. Run it with scripts/check-hello.sh.
 
@@ -51,6 +53,18 @@ type = "button"
 id = "pick"
 label = "Pick {{ item.name }}"
 
+[[body]]
+type = "button"
+id = "rename"
+label = "Rename Bob"
+on_click = { set = "app.rows", to = [{ name = "Ada", id = 1 }, { name = "Bea", id = 2 }, { name = "Cy", id = 3 }] }
+
+[[body]]
+type = "button"
+id = "grow"
+label = "Add Dee"
+on_click = { set = "app.rows", to = [{ name = "Ada", id = 1 }, { name = "Bea", id = 2 }, { name = "Cy", id = 3 }, { name = "Dee", id = 4 }] }
+
 [on]
 "pick.click" = [{ set = "app.picked", to = "{{ event.item.name }} ({{ event.item.id }})" }]
 `,
@@ -81,15 +95,41 @@ try {
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(`${base}/`);
   await page.getByText("picked: nobody").waitFor();
-  const buttons = await page.getByRole("button").allTextContents();
+  const picks = page.getByRole("button", { name: /^Pick / });
+  const buttons = await picks.allTextContents();
   if (buttons.join(",") !== "Pick Ada,Pick Bob,Pick Cy") throw new Error(`the rows' buttons are ${buttons}`);
+
+  // While nothing happens, nothing on the page changes: the clock ticking redraws nothing.
+  const changes = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let seen = 0;
+        const watch = new MutationObserver((records) => (seen += records.length));
+        watch.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+        setTimeout(() => (watch.disconnect(), resolve(seen)), 1000);
+      }),
+  );
+  if (changes) throw new Error(`the page changed ${changes} times while nothing happened`);
+
+  // Each row's button is marked, so it's plain whether a change kept it or drew a new one.
+  await picks.evaluateAll((all) => all.forEach((b, i) => (b.dataset.row = String(i))));
+  const marks = () => picks.evaluateAll((all) => all.map((b) => `${b.dataset.row ?? "new"}:${b.textContent}`).join(","));
 
   await page.getByRole("button", { name: "Pick Bob" }).click();
   await page.getByText("picked: Bob (2)").waitFor();
   await page.getByRole("button", { name: "Pick Cy" }).click();
   await page.getByText("picked: Cy (3)").waitFor();
+  if ((await marks()) !== "0:Pick Ada,1:Pick Bob,2:Pick Cy") throw new Error(`a change elsewhere redrew the rows: ${await marks()}`);
+
+  // A changed element changes its row's text in place; a new one adds a row at the end.
+  await page.getByRole("button", { name: "Rename Bob" }).click();
+  await until("Bob's row to read Bea", async () => (await marks()) === "0:Pick Ada,1:Pick Bea,2:Pick Cy");
+  await page.getByRole("button", { name: "Add Dee" }).click();
+  await until("Dee's row", async () => (await marks()) === "0:Pick Ada,1:Pick Bea,2:Pick Cy,new:Pick Dee");
+  await page.getByRole("button", { name: "Pick Dee" }).click();
+  await page.getByText("picked: Dee (4)").waitFor();
   if (errors.length) throw new Error(`the page threw: ${errors.join(" / ")}`);
-  console.log("ok: each drew a row per element, and a click in a row carried its item to the handler");
+  console.log("ok: each drew a row per element, a click in a row carried its item, nothing redrew while idle, and a changed list kept its rows");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;

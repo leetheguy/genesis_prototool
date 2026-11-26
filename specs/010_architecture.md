@@ -99,6 +99,18 @@ config ─► serve loads ─► client ─► machine ─► state ─► compo
 
 Nothing flows back into the config. The config is immutable once loaded; a change on disk is a new config.
 
+### Drawing only what changed
+
+The screen is drawn once, and after that only what changed is touched. The machine keeps a revision
+that goes up only when something on screen may have changed: an event ran, a toast was dismissed or ran
+out, a source reloaded, state was restored. The clock moving on (every 50ms in the browser) leaves it
+alone. The renderer tells the components to look again only when the revision moved, and each one
+compares what it reads with what it showed: a text whose words are the same, a list whose rows are the
+same, a `show` that still holds, all leave the page alone. Where something did change, the smallest
+part is patched: an `each` row's text is changed in place, not drawn again; a new row is added at the
+end; a select's options are drawn again only when the list or the value changes. The `ago` format is
+the one thing on a clock: it reads the clock once a second.
+
 ## Styling
 
 daisyUI 5 on Tailwind CSS 4, compiled ahead of time from the classes genesis-ui uses, and every class
@@ -122,6 +134,10 @@ review screens, dashboards, choices, and live feeds. It isn't for 60fps local in
 - `/` draws the app from the configs folder's `app.toml`
 - `docker compose up` brings up both services healthy (deployed check)
 - the mirror appears at `/fs/.state/`, and dufs can't write to it
+- the clock moving on with nothing to do leaves the revision, and nothing redraws; a timer firing, a toast
+  running out, a dismiss, and a reload move it (`genesis-core/tests/revision.rs`, `genesis-ui/tests/redraw.rs`)
+- an idle screen changes nothing in the page for a second, and an `each` row keeps its element when its
+  values change (in a real browser: `tests/deployed/each.mjs`)
 
 ## Tasks
 
@@ -138,3 +154,11 @@ Milestone two ([999](999_todo.md)):
 - [x] Docker Compose: `serve` (configs read-only, state read-write) and `files` (dufs: configs read-write, state read-only at `.state`), with `/fs/` proxied behind `GENESIS_AGENT_TOKEN` (deployed check)
 - [x] the Tauri 2 desktop shell: a window on a `serve` URL and app (built, and checked here on a virtual display)
 - [ ] a person opens the desktop window on a real desktop
+
+## Log
+
+- 2026-11-26: the screen draws only what changed. Every 50ms clock tick had told every component to look
+  again, and lists and the outlet drew their rows and pages again each time, so a button could be
+  swapped out from under a click. Lee: "Ideally, it shouldn't need to redraw at all, or only redraw when
+  data changes, and even then only redraw as little as possible. If you can just update the data without
+  updating the page, that would be best, or even any components."

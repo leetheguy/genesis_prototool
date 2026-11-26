@@ -22,7 +22,7 @@ use genesis_core::style::Placed;
 use genesis_core::template;
 use leptos::prelude::*;
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use style::ClassList;
 
@@ -33,6 +33,10 @@ pub mod files;
 mod intl;
 pub mod style;
 
+/// The element of an `each` a row is drawn for: it follows the list, so the row is kept and only
+/// what reads a changed value is drawn again.
+type Item = Signal<Value>;
+
 /// Makes a call and answers it, as [`Host::set_caller`] takes it.
 type Caller = Arc<dyn Fn(Call) + Send + Sync>;
 
@@ -42,8 +46,15 @@ type Caller = Arc<dyn Fn(Call) + Send + Sync>;
 #[derive(Clone)]
 pub struct Host {
     machine: Arc<Mutex<Machine>>,
-    /// Notified after every event, so whatever read state redraws.
+    /// Notified when the machine's state may have changed ([`Machine::revision`]), so whatever
+    /// read state works itself out again. Nothing redraws on a clock tick that changed nothing.
     changes: RwSignal<()>,
+    /// The machine's revision the screen last caught up with.
+    seen: Arc<AtomicU64>,
+    /// How many times the screen was told to catch up ([`Host::redraws`]).
+    redraws: Arc<AtomicU64>,
+    /// Notified about once a second ([`Host::tick`]), for text that says how long ago a time was.
+    clock: RwSignal<()>,
     /// Notified when a new config is swapped in, so the screen redraws from it.
     config: RwSignal<()>,
     /// The latest bad config's problems, shown over the last good screen.
@@ -64,6 +75,9 @@ impl Host {
         Host {
             machine: Arc::new(Mutex::new(machine)),
             changes: RwSignal::new(()),
+            seen: Arc::new(AtomicU64::new(0)),
+            redraws: Arc::new(AtomicU64::new(0)),
+            clock: RwSignal::new(()),
             config: RwSignal::new(()),
             problems: RwSignal::new(None),
             calls: Arc::new(Mutex::new(Vec::new())),
@@ -107,7 +121,7 @@ impl Host {
     /// Returns notes on anything it couldn't bring back, for the host to log.
     pub fn restore(&self, kept: &Value) -> Vec<String> {
         let notes = self.machine().restore(kept);
-        self.changes.notify();
+        self.caught_up();
         notes
     }
 
@@ -218,7 +232,29 @@ impl Host {
     /// Takes the toast `id` off the screen ([`Machine::dismiss`]).
     pub fn dismiss(&self, id: u64) {
         self.machine().dismiss(id);
-        self.changes.notify();
+        self.caught_up();
+    }
+
+    /// Tells text that says how long ago a time was (`ago`) to work itself out again. The browser
+    /// calls it about once a second; nothing else redraws for it.
+    pub fn tick(&self) {
+        self.clock.notify();
+    }
+
+    /// How many times the screen has been told to catch up with the machine: once for each
+    /// change, never for a clock tick that changed nothing.
+    pub fn redraws(&self) -> u64 {
+        self.redraws.load(Ordering::Relaxed)
+    }
+
+    /// Tells whatever read state to work itself out again, when the machine's state may have
+    /// changed since the last time.
+    fn caught_up(&self) {
+        let revision = self.machine().revision();
+        if self.seen.swap(revision, Ordering::Relaxed) != revision {
+            self.redraws.fetch_add(1, Ordering::Relaxed);
+            self.changes.notify();
+        }
     }
 
     fn after(&self, effects: Vec<Effect>) {
@@ -244,7 +280,7 @@ impl Host {
                 }
             }
         }
-        self.changes.notify();
+        self.caught_up();
     }
 }
 
@@ -267,8 +303,9 @@ pub struct Wired {
     place: String,
     /// Where it sits in its parent: its placement keys, the same for every type.
     placed: Placed,
-    /// Inside an `each`, the element it's drawn for: `item.*`.
-    item: Option<Value>,
+    /// Inside an `each`, the element it's drawn for: `item.*`. A signal, so a row stays on screen
+    /// while its element changes, and only what reads the change is drawn again.
+    item: Option<Item>,
     /// Inside an `each`, which row it's drawn in: `"2"`, or `"0.2"` inside two.
     row: Option<String>,
     /// Inside a `form`, that form.
@@ -287,7 +324,7 @@ pub(crate) struct Scope {
     /// Its props, as written: templates.
     props: serde_json::Map<String, Value>,
     /// What the props are filled from: the element the `use` node is drawn for, if any...
-    item: Option<Value>,
+    item: Option<Item>,
     /// ...and the component it's inside, if any.
     parent: Option<Arc<Scope>>,
 }
@@ -331,7 +368,7 @@ impl Wired {
             .as_ref()
             .or_else(|| scopes.find_map(|s| s.item.as_ref()));
         if let (Some(item), Value::Object(fields)) = (item, &mut payload) {
-            fields.insert("item".into(), item.clone());
+            fields.insert("item".into(), item.get_untracked());
         }
         // A control in a form fires from its form's row, which is the draft it fills.
         let row = match &self.form {
@@ -346,7 +383,7 @@ impl Wired {
     /// Display text with its templates filled from the current state (and `item.*` inside an
     /// `each`); redraws as state changes.
     pub fn text(&self, text: &str) -> impl Fn() -> String + Clone + Send + Sync + 'static {
-        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let (host, item, scope) = (self.host.clone(), self.item, self.scope.clone());
         let text = text.to_string();
         move || {
             template::text(&text, |path| {
@@ -362,13 +399,17 @@ impl Wired {
         text: &str,
         format: Option<&genesis_core::format::Format>,
     ) -> impl Fn() -> String + Clone + Send + Sync + 'static + use<> {
-        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let (host, item, scope) = (self.host.clone(), self.item, self.scope.clone());
         let (text, format) = (text.to_string(), format.cloned());
         move || {
             let look = |path: &str| look(&host, item.as_ref(), scope.as_ref(), path);
             let Some(format) = &format else {
                 return template::text(&text, look);
             };
+            // How long ago a time was changes as time goes by, with no change in state.
+            if *format == genesis_core::format::Format::Ago {
+                host.clock.track();
+            }
             let locale = locale(&host);
             template::text_with(&text, look, |value| {
                 format.apply(value, locale.as_ref()).unwrap_or_else(|why| {
@@ -384,7 +425,7 @@ impl Wired {
         &self,
         path: &str,
     ) -> impl Fn() -> Option<Value> + Clone + Send + Sync + 'static + use<> {
-        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let (host, item, scope) = (self.host.clone(), self.item, self.scope.clone());
         let path = path.to_string();
         move || look(&host, item.as_ref(), scope.as_ref(), &path)
     }
@@ -395,7 +436,7 @@ impl Wired {
         &self,
         condition: Option<&Condition>,
     ) -> impl Fn() -> bool + Clone + Send + Sync + 'static + use<> {
-        let (host, item, scope) = (self.host.clone(), self.item.clone(), self.scope.clone());
+        let (host, item, scope) = (self.host.clone(), self.item, self.scope.clone());
         let (form, condition) = (self.form.clone(), condition.cloned());
         move || {
             let Some(condition) = &condition else {
@@ -534,7 +575,7 @@ impl Wired {
             node,
             child_place(&self.place, i),
             &self.host,
-            self.item.clone(),
+            self.item,
             self.row.clone(),
             self.form.clone(),
             self.scope.clone(),
@@ -552,7 +593,7 @@ impl Wired {
             name: self.name.clone(),
             row: self.row.clone(),
             props: props.clone(),
-            item: self.item.clone(),
+            item: self.item,
             parent: self.scope.clone(),
         });
         component
@@ -593,22 +634,56 @@ impl Wired {
         error: Option<&str>,
         children: &[Node],
     ) -> impl IntoView + use<> {
-        let (host, item, place) = (self.host.clone(), self.item.clone(), self.place.clone());
+        let (host, item, place) = (self.host.clone(), self.item, self.place.clone());
         let (form, row, scope) = (self.form.clone(), self.row.clone(), self.scope.clone());
         let (path, children) = (path.to_string(), children.to_vec());
         let empty = empty.unwrap_or("Nothing here.").to_string();
         let error = error.map(String::from);
+        // Worked out again on each change, but each memo passes a change on only when its value
+        // changes, so the rows are drawn once and kept: a changed element changes only what reads it.
+        let looked = {
+            let (host, scope, path) = (host.clone(), scope.clone(), path.clone());
+            Memo::new(move |_| look(&host, item.as_ref(), scope.as_ref(), &path))
+        };
+        let elements = Memo::new(move |_| match looked.get() {
+            Some(Value::Array(elements)) => elements,
+            _ => Vec::new(),
+        });
+        let count = Memo::new(move |_| elements.with(Vec::len));
+        let status = {
+            let (host, path) = (host.clone(), path.clone());
+            Memo::new(move |_| source_status(&host, &path))
+        };
+        let face = Memo::new(move |_| match status.get() {
+            Some(Status::Failed(detail)) => Face::Failed(detail),
+            // A list that's loading again keeps the rows it has until the new ones come.
+            Some(Status::Loading) if count.get() == 0 => Face::Loading,
+            _ => looked.with(|looked| match looked {
+                None | Some(Value::Null) => Face::Empty,
+                Some(Value::Array(elements)) if elements.is_empty() => Face::Empty,
+                Some(Value::Array(_)) => Face::Rows,
+                Some(other) => Face::NotList(kind(other)),
+            }),
+        });
         move || {
-            if let Some(face) = source_face(&host, &path, error.as_deref()) {
-                return face;
-            }
-            match look(&host, item.as_ref(), scope.as_ref(), &path) {
-                None | Some(Value::Null) => empty_face(&empty),
-                Some(Value::Array(elements)) if elements.is_empty() => empty_face(&empty),
-                Some(Value::Array(elements)) => elements
-                    .into_iter()
-                    .enumerate()
-                    .flat_map(|(n, element)| {
+            let face = face.get();
+            untrack(|| match face {
+                Face::Loading => loading_face(),
+                Face::Failed(detail) => failed_face(error.as_deref(), &detail),
+                Face::Empty => empty_face(&empty),
+                Face::NotList(kind) => {
+                    failed_face(None, &format!("each needs a list, and {path} is {kind}"))
+                }
+                Face::Rows => {
+                    let (host, place, row) = (host.clone(), place.clone(), row.clone());
+                    let (form, scope, children) = (form.clone(), scope.clone(), children.clone());
+                    // Keyed by place, so a row is never swapped out: when the list changes, each
+                    // row's element follows it, and rows are only added or taken off the end.
+                    let draw_row = move |n: usize| {
+                        let element: Item = Memo::new(move |_| {
+                            elements.with(|e| e.get(n).cloned().unwrap_or(Value::Null))
+                        })
+                        .into();
                         let row = Some(match &row {
                             Some(outer) => format!("{outer}.{n}"),
                             None => n.to_string(),
@@ -621,21 +696,18 @@ impl Wired {
                                     child,
                                     child_place(&place, i),
                                     &host,
-                                    Some(element.clone()),
+                                    Some(element),
                                     row.clone(),
                                     form.clone(),
                                     scope.clone(),
                                 )
                             })
-                            .collect::<Vec<_>>()
-                    })
-                    .collect_view()
-                    .into_any(),
-                Some(other) => failed_face(
-                    None,
-                    &format!("each needs a list, and {path} is {}", kind(&other)),
-                ),
-            }
+                            .collect_view()
+                    };
+                    view! { <For each=move || 0..count.get() key=|n| *n children=draw_row /> }
+                        .into_any()
+                }
+            })
         }
     }
 }
@@ -644,18 +716,13 @@ impl Wired {
 /// the component it's inside, anything else in state. `app.*` is there only for what `app.toml`
 /// draws: its own body, and a component it draws (by a `use` node in its body, or in its outlet).
 /// A component drawn inside another reads none of it; it gets what it needs as props.
-fn look(
-    host: &Host,
-    item: Option<&Value>,
-    scope: Option<&Arc<Scope>>,
-    path: &str,
-) -> Option<Value> {
+fn look(host: &Host, item: Option<&Item>, scope: Option<&Arc<Scope>>, path: &str) -> Option<Value> {
     let (head, rest) = match path.split_once('.') {
         Some((head, rest)) => (head, Some(rest)),
         None => (path, None),
     };
     let base = match (head, item, scope) {
-        ("item", Some(item), _) => item.clone(),
+        ("item", Some(item), _) => item.get(),
         ("app", _, Some(scope)) if scope.parent.is_some() => return None,
         ("local", _, Some(scope)) => {
             let (key, rest) = match rest?.split_once('.') {
@@ -742,33 +809,58 @@ fn fill(host: &Host, scope: &Arc<Scope>, prop: &Value) -> Value {
     }
 }
 
-/// The loading or failed face for a list that's a source (`app.NAME`) while it's loading or
-/// has failed; `None` otherwise.
-fn source_face(host: &Host, path: &str, error: Option<&str>) -> Option<AnyView> {
+/// Where a list that's a source (`app.NAME`) stands, while it's loading or has failed; `None`
+/// otherwise.
+fn source_status(host: &Host, path: &str) -> Option<Status> {
     let name = path.strip_prefix("app.").filter(|n| !n.contains('.'))?;
     let call = host.machine().app().sources.get(name)?.call.clone();
     match host.get(&format!("sys.sources.{name}"))?.as_str()? {
-        "loading" => Some(
-            view! { <span class="loading loading-spinner" role="status" aria-label="Loading"></span> }
-                .into_any(),
-        ),
+        "loading" => Some(Status::Loading),
         "failed" => {
             // The detail is the newest failure of its operation; `error` can't hide it.
             let failed = format!("{call}.failed");
             let message = host
                 .get("sys.errors")
                 .and_then(|errors| {
-                    errors.as_array()?.iter().find(|e| e["name"] == failed.as_str()).cloned()
+                    errors
+                        .as_array()?
+                        .iter()
+                        .find(|e| e["name"] == failed.as_str())
+                        .cloned()
                 })
                 .and_then(|e| e["message"].as_str().map(String::from));
-            let detail = match message {
+            Some(Status::Failed(match message {
                 Some(message) => format!("{call} failed: {message}"),
                 None => format!("{call} failed"),
-            };
-            Some(failed_face(error, &detail))
+            }))
         }
         _ => None,
     }
+}
+
+/// Where a source a list shows stands, when it isn't simply there.
+#[derive(Clone, PartialEq)]
+enum Status {
+    Loading,
+    /// Its detail: the operation, and its newest failure.
+    Failed(String),
+}
+
+/// What a cell with `each` shows: a face, or its rows.
+#[derive(Clone, PartialEq)]
+enum Face {
+    Loading,
+    Failed(String),
+    Empty,
+    /// Not a list: what it is.
+    NotList(&'static str),
+    Rows,
+}
+
+/// The face for a list that's loading.
+fn loading_face() -> AnyView {
+    view! { <span class="loading loading-spinner" role="status" aria-label="Loading"></span> }
+        .into_any()
 }
 
 /// The loud face: an error alert with the cell's own line, if it has one, above the detail.
@@ -821,7 +913,7 @@ fn draw(
     node: &Node,
     place: String,
     host: &Host,
-    item: Option<Value>,
+    item: Option<Item>,
     row: Option<String>,
     form: Option<FormAt>,
     scope: Option<Arc<Scope>>,
@@ -892,10 +984,14 @@ pub fn app_view(host: Host) -> AnyView {
         move || {
             host.config.track();
             let body = host.machine().app().body.clone();
-            body.iter()
-                .enumerate()
-                .map(|(i, node)| draw(node, body_place(i), &host, None, None, None, None))
-                .collect_view()
+            // Nothing read while drawing makes the whole screen draw again; each node redraws
+            // only what changed in it.
+            untrack(|| {
+                body.iter()
+                    .enumerate()
+                    .map(|(i, node)| draw(node, body_place(i), &host, None, None, None, None))
+                    .collect_view()
+            })
         }
     };
     let theme = {
@@ -929,7 +1025,7 @@ pub fn app_view(host: Host) -> AnyView {
 
 /// `sys.toasts`, in the corner, each in its variant's color; a tap takes one away.
 fn toasts(host: Host) -> AnyView {
-    // Memoized, so the clock's ticks (which notify every reader) redraw them only when they change.
+    // Keyed by id, so a toast coming or going leaves the others' elements alone.
     let shown = Memo::new({
         let host = host.clone();
         move |_| {
@@ -940,7 +1036,7 @@ fn toasts(host: Host) -> AnyView {
     });
     view! {
         <div class="toast toast-end">
-            {move || shown.get().into_iter().map(|toast| {
+            <For each=move || shown.get() key=|toast| toast["id"].as_u64() children=move |toast| {
                 let id = toast["id"].as_u64().unwrap_or_default();
                 let text = toast["text"].as_str().unwrap_or_default().to_string();
                 let class = match toast["variant"].as_str() {
@@ -951,7 +1047,7 @@ fn toasts(host: Host) -> AnyView {
                 };
                 let host = host.clone();
                 view! { <div role="status" class=class on:click=move |_| host.dismiss(id)>{text}</div> }
-            }).collect_view()}
+            } />
         </div>
     }
     .into_any()
@@ -960,7 +1056,7 @@ fn toasts(host: Host) -> AnyView {
 /// The first question in `sys.asking`, in a modal dialog with its yes and no buttons. Closing it
 /// any other way (Escape, a click outside it) answers no.
 fn asking(host: Host) -> AnyView {
-    // Memoized, so the dialog is drawn once per question, not again on every tick of the clock.
+    // Memoized, so the dialog is drawn once per question, not again on every change elsewhere.
     let first = Memo::new({
         let host = host.clone();
         move |_| host.get("sys.asking.0")
