@@ -5,7 +5,8 @@
 // - agents edit the app through /fs/ only, with the token; what they write there is live at once
 // - the mirror is readable at /fs/.state/ and not writable through it
 // - the guide an agent puts at the top of the configs folder is served, open, at /agents
-// - a bad load lands in the log, in a logs folder only serve mounts, never behind /fs/
+// - a bad load lands in the log, in a logs folder only serve mounts, never behind /fs/, and an
+//   agent with the token reads it at /api/log
 // - serve can't write the configs folder, and the files service holds no credentials
 // - dufs isn't published on any host port
 //
@@ -84,6 +85,9 @@ try {
   await until("/status to say the fixed app loaded", async () => (await status()) === "loaded", 10_000);
   await until("the log to say load ok", async () => logged().trimEnd().endsWith(" load ok"), 10_000);
   expect("the log is reachable through /fs/", (await fetch(`${base}/fs/genesis.log`, { headers: agent })).status === 404);
+  expect("/api/log without the token isn't 401", (await fetch(`${base}/api/log`)).status === 401);
+  const tail = await (await fetch(`${base}/api/log?tail=2`, { headers: agent })).text();
+  expect(`/api/log?tail=2 isn't the bad load and load ok: ${tail}`, / load app\.toml:3:1: /.test(tail) && tail.trimEnd().endsWith(" load ok"));
   expect("the app's page isn't served", (await fetch(`${base}/`)).ok);
 
   // The guide: open at /agents once AGENTS.md is in the configs folder, with BASE filled in.
@@ -129,7 +133,7 @@ try {
   }
   expect(`dufs is published on the host at ${published}`, published === "");
 
-  console.log("ok: /fs/ needs the token; what an agent wrote there went live; /agents serves the guide; a bad load is logged, outside /fs/; the mirror reads but doesn't write; serve can't write configs; files holds no credentials and isn't published");
+  console.log("ok: /fs/ needs the token; what an agent wrote there went live; /agents serves the guide; a bad load is logged, outside /fs/, and read at /api/log; the mirror reads but doesn't write; serve can't write configs; files holds no credentials and isn't published");
 } catch (error) {
   console.error(`FAIL: ${error.message}${error.stderr ? `\n${error.stderr}` : ""}`);
   process.exitCode = 1;
