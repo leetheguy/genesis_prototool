@@ -96,3 +96,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - 2026-11-25: both gaps the CRM found are fixed (Lee: "Fix both"): a form's draft starts over when its `data`
   changes ([040](040_catalog.md)), and the message for two files with one name gives both paths
   ([120](120_one_app.md)).
+- 2026-11-26: the screen draws only what changed ([010](010_architecture.md#drawing-only-what-changed)). The CRM's
+  deployed check once failed because a list's Delete button was swapped out while it was being clicked: every
+  50ms tick of the clock drew lists and pages again. Lee: "Definitely dig into it."

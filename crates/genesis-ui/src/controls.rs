@@ -59,8 +59,10 @@ fn unlabelled(
 /// What's wrong with a control's value, under it, while there's something to say.
 fn note(complaint: &Option<Complaint>) -> impl IntoView + use<> {
     let complaint = complaint.clone();
+    // Drawn again only when the message itself changes.
+    let message = Memo::new(move |_| complaint.as_ref()?.message());
     move || {
-        let message = complaint.as_ref()?.message()?;
+        let message = message.get()?;
         Some(view! { <p class="text-error text-sm" role="alert">{message}</p> })
     }
 }
@@ -385,12 +387,16 @@ impl Component for Select {
             labelled(&wired, &label, "select", &complaint, |class| {
                 let (read, choices, pick) = (read.clone(), choices.clone(), pick.clone());
                 let (placeholder, off) = (placeholder.clone(), off.clone());
+                // The options are drawn again only when the list, the value or the placeholder's
+                // text changes, not on every change elsewhere on the page.
+                let drawn = Memo::new(move |_| {
+                    let text = placeholder.as_ref().map(|p| p());
+                    (choices().unwrap_or_default(), read(), text)
+                });
                 let options = move || {
-                    let now = read();
-                    let list = choices().unwrap_or_default();
+                    let (list, now, text) = drawn.get();
                     let matched = list.iter().any(|(_, v)| Some(v) == now.as_ref());
-                    let first = placeholder.as_ref().map(|p| {
-                        let text = p();
+                    let first = text.map(|text| {
                         view! { <option value="" disabled selected=!matched>{text}</option> }
                     });
                     let rest = list
@@ -485,10 +491,9 @@ impl Component for File {
             }
         });
         // A refused pick says why; otherwise, what's wrong with what's picked, if anything.
+        let why = Memo::new(move |_| refused.get().or_else(|| complaint.as_ref()?.message()));
         let note = move || {
-            refused
-                .get()
-                .or_else(|| complaint.as_ref()?.message())
+            why.get()
                 .map(|why| view! { <p class="text-error text-sm" role="alert">{why}</p> })
         };
         let input = view! {

@@ -163,3 +163,28 @@ fn item_paths_reach_into_tables_and_lists() {
     let out = html(&toml);
     assert!(out.contains("first tag [vip], none [], app [Bob]"), "{out}");
 }
+
+#[test]
+fn a_list_loading_again_keeps_its_rows_until_the_new_ones_come() {
+    Owner::new().with(|| {
+        let host = Host::new(App::from_toml(SOURCED).unwrap());
+        let calls: Arc<Mutex<Vec<Call>>> = Arc::default();
+        let into = calls.clone();
+        host.set_caller(move |call| into.lock().unwrap().push(call));
+        host.open();
+        let id = calls.lock().unwrap()[0].id;
+        host.reply(
+            id,
+            Reply::Response {
+                status: 200,
+                body: json!([{ "name": "Ada" }]),
+            },
+        );
+
+        host.fire("app.contacts.reload", json!({}));
+        assert_eq!(host.get("sys.sources.contacts"), Some(json!("loading")));
+        let out = draw(&host);
+        assert!(out.contains(">Ada<"), "the rows it had: {out}");
+        assert!(!out.contains("loading-spinner"), "{out}");
+    });
+}

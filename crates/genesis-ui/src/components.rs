@@ -310,7 +310,8 @@ impl Component for Markdown {
         let text = wired.text(&self.text);
         // Safe to hand the browser as HTML: genesis-core's reader shows raw HTML as text and keeps
         // only safe links. The `markdown` class styles what Markdown makes (in apps/web's CSS).
-        let html = move || genesis_core::markdown::html(&text());
+        // Set again only when the HTML changes, so the browser doesn't rebuild what it shows.
+        let html = Memo::new(move |_| genesis_core::markdown::html(&text()));
         let class = wired.class(
             ClassList::default()
                 .raw("markdown")
@@ -348,27 +349,39 @@ impl Component for Outlet {
 
     fn view(&self, wired: Wired) -> AnyView {
         // Drawn as a `use` node named after the component, with no props, redrawn as `go` swaps it.
-        let current = wired.read("sys.outlet");
+        // The page is drawn again only when `go` swaps it, never because something on it changed:
+        // what changed redraws itself.
+        let current = {
+            let read = wired.read("sys.outlet");
+            Memo::new(move |_| {
+                read()
+                    .and_then(|v| v.as_str().map(String::from))
+                    .unwrap_or_default()
+            })
+        };
         let mut own = ClassList::default();
         if !wired.is_placed() {
             own.raw("contents");
         }
         let class = wired.class(&mut own);
         let body = move || {
-            let name = current()
-                .and_then(|v| v.as_str().map(String::from))
-                .unwrap_or_default();
-            let Some(component) = wired.find_component(&name) else {
-                return crate::failed_face(None, &format!("there's no component named {name}"));
-            };
-            let used = Wired {
-                name,
-                ..wired.clone()
-            };
-            used.component(&component, &serde_json::Map::new())
-                .collect_view()
-                .into_any()
+            let name = current.get();
+            untrack(|| page(&wired, name))
         };
         view! { <div class=class>{body}</div> }.into_any()
     }
+}
+
+/// The page named `name`, drawn in the outlet as a `use` node named after it, with no props.
+fn page(wired: &Wired, name: String) -> AnyView {
+    let Some(component) = wired.find_component(&name) else {
+        return crate::failed_face(None, &format!("there's no component named {name}"));
+    };
+    let used = Wired {
+        name,
+        ..wired.clone()
+    };
+    used.component(&component, &serde_json::Map::new())
+        .collect_view()
+        .into_any()
 }

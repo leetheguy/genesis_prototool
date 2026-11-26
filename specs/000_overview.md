@@ -47,7 +47,7 @@ AI to interact by more than language.
 
 The screen is one app: a folder of TOML holding the variables, the APIs it talks to, and a tree of
 atoms from a fixed catalog. Genesis reads it at runtime, draws it, redraws it live whenever a file
-changes, and wires every read and write to an API. An agent rebuilds, rearranges, and redesigns it
+changes (touching only the parts that changed, as its data does too), and wires every read and write to an API. An agent rebuilds, rearranges, and redesigns it
 by writing files. The TOML *is* the app; there's no generated code to own.
 
 It's the sister product of PurpleFlow and follows the same philosophy, but it's fully decoupled

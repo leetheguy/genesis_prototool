@@ -228,14 +228,20 @@ async fn fetch(url: &str, init: web_sys::RequestInit) -> Result<(u16, Value), St
     Ok((response.status(), answer))
 }
 
-/// Moves the machine's clock on with real time.
+/// Moves the machine's clock on with real time. A tick that runs no timer and ends no toast
+/// changes nothing, so nothing redraws for it; about once a second, text that says how long ago a
+/// time was works itself out again ([`Host::tick`]).
 fn clock(host: Host) {
     let started = now();
     let advanced = Cell::new(0u64);
+    let seconds = Cell::new(0u64);
     set_interval(
         move || {
             let elapsed = (now() - started) as u64;
             host.advance(elapsed - advanced.replace(elapsed));
+            if seconds.replace(elapsed / 1000) != elapsed / 1000 {
+                host.tick();
+            }
         },
         TICK,
     );

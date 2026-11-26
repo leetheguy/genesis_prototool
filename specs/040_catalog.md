@@ -112,11 +112,17 @@ text = "{{ item.name }} at {{ item.company }}"
 
 It follows the variable:
 
-- While its source is `loading`, the cell shows daisyUI's loading state in its own place.
+- While its source is `loading` with nothing to show yet, the cell shows daisyUI's loading state in its own place.
+  A list that's loading again keeps showing its rows until the new ones come.
 - When it's `failed`, the cell shows a loud error in its place: the operation, the status, and the message.
   `error = "..."` adds a line of its own on top; it can't hide the detail.
 - When the list is `null` or `[]`, the cell shows `empty = "..."` (default "Nothing here.").
 - When the variable holds something that isn't a list, the cell shows a loud error saying so.
+
+Each row is kept by its place in the list. When the list changes, a row whose values changed has them
+changed in place, so its elements (and anything typed or focused in them) stay; new rows are added at the
+end, and rows past the new end are taken away. Taking a row out of the middle moves the values after it up
+one place.
 
 The `Wired` wrapper draws these faces, so they look the same everywhere. `each` is a variable's path:
 `app.*`, or `item` and `item.*` inside another `each` (the inner element shadows the outer). Anything
@@ -308,6 +314,8 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a cell with `each` draws its children once per element, each seeing its own element as `item.*`; a nested `each` over `item.*` sees its own
 - a click inside an `each` carries its element as `event.item` (in a real browser: `tests/deployed/each.mjs`)
 - a value that isn't a list shows a loud failure; a bad `each` path, or `empty` or `error` without `each`, is a config error
+- a list loading again keeps its rows until the new ones come (`genesis-ui/tests/each.rs`)
+- an `each` row keeps its element when its values change, and a new row is added after the others (in a real browser: `tests/deployed/each.mjs`)
 - a cell with `each` shows loading, the loud failure (with detail even when `error` is set), `empty`, and its children, as its source moves through each status
 - value display with no `format`: string, number, boolean, `null`, array, object
 - `dialog` opens with its variable, as a modal; the person closing it fires `.close`, which sets the variable false and runs `on_close`; setting the variable false closes it without `.close` (in a real browser: `tests/deployed/dialog.mjs`); an `open` that isn't an app variable is a config error
@@ -377,3 +385,6 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - 2026-11-25: `text` takes `format` ([080](080_display_logic.md)).
 - 2026-11-25: a form's draft starts over when its `data` changes. Building the CRM ([130](130_crm_sample.md))
   found that editing one contact, closing, and editing another showed the first one's typing. Lee: "Fix both".
+- 2026-11-26: `each` keeps its rows. A changed row has its values changed in place, and a list loading
+  again keeps its rows until the new ones come ([010](010_architecture.md#drawing-only-what-changed)).
+  Lee: "If you can just update the data without updating the page, that would be best."

@@ -230,8 +230,10 @@ type = "text"
 text = "{{ item.name }} at {{ item.company }}"
 ```
 
-The cell looks after the list's other states on its own: a loading state while it's being fetched, a
-loud error in its place if the fetch failed, and `empty` when there's nothing.
+The cell looks after the list's other states on its own: a loading state while it's first fetched, a
+loud error in its place if the fetch failed, and `empty` when there's nothing. When the list loads again,
+its rows stay on screen until the new ones come, and a row whose values changed is updated in place, so
+what's typed or focused in it stays put.
 
 ### Controls
 
