@@ -33,7 +33,7 @@ An event is a dotted name, plus a payload that handlers read as `{{ event.* }}`.
 | a call to an operation | `auth.logout.ok` or `.failed`, plus `.200`, `.404`, … | `status`, `body` (selected) |
 | a call with `event = "/outcome"` | `score_job.needs_review` (the reply's value at that pointer) | as above |
 | a custom action | `sign_out.done`, or `sign_out.failed` if a step failed | the failure, if any |
-| a variable changing | `app.page.changed`, `sys.theme.changed` | `value`, `was` |
+| a variable changing | `app.page.changed`, `sys.theme.changed`, `sys.outlet.changed` | `value`, `was` |
 | a `fire` step | any name | its `with` table |
 | an agent or workflow, through `POST /api/push/{name}` ([110](110_agents.md)) | `push.review_ready` | the JSON body it sent |
 | Genesis | `app.opened`, `server.connected`, `server.disconnected`, `config.loaded`, `config.failed`, `auth.in`, `auth.out`, `state.wiped` | as fits |
@@ -61,7 +61,7 @@ actually changes.
   alone as well as a list: `on_click = "sign_out"`.
 - Inside a component, the step `"{{ props.NAME }}"` runs the steps its caller passed in as that prop
   ([090](090_components.md)). A component's own steps fire events and reach nothing else: no custom action,
-  `call`, or `reload`. The app's handlers for its events can do anything.
+  `call`, `reload`, or `go`. The app's handlers for its events can do anything.
 
 Handlers never test anything. To branch, fire different events. A call's status already does that
 (`.ok` and `.failed`), and so does `event = "/outcome"` when the API should pick the branch.
@@ -80,6 +80,7 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 | `{ call = "crm.contacts.update", params = {...}, into = {...}, event = "/ptr" }` | calls an operation ([030](030_connections.md)); waits for the reply | `crm.contacts.update.ok` / `.failed` / `.{status}` |
 | `{ reload = ["app.contacts"] }` | calls those sources again ([050](050_state.md)) | their calls' events |
 | `{ fire = "ticker.tick", with = {...} }` | fires an event | that event |
+| `{ go = "contacts" }` | puts the component `contacts` in the outlet, swapping out what was there ([Going](#going)) | `sys.outlet.changed` |
 | `{ start = "poll" }` | starts the timer `poll`, or starts it over ([Timers](#timers)) | `poll.start`, then `poll.complete` when its time is up |
 | `{ stop = "poll" }` | stops the timer `poll`, if it's running | `poll.stop` |
 | `{ confirm = "Delete this contact?" }` | asks; "no" stops the list quietly | — |
@@ -91,6 +92,35 @@ steps: `[actions.NAME] do = [...]`. A list runs in order and stops at the first 
 A custom action fires `NAME.done` when its list finishes, or `NAME.failed` (with `error`) when a step fails, and
 its failure stops the list that ran it. Actions can run actions, up to `max_chain` deep; deeper is a failure, so an
 action that runs itself stops instead of running forever.
+
+## Going
+
+`app.toml` is the top-level page, by convention, and its body may hold one `outlet` node
+([040](040_catalog.md)). The outlet draws one component: its `default` when the app opens, and after
+that whichever one `go` last named. Every other component is a partial, drawn by a `use` node.
+
+```toml
+# app.toml: the nav stays on screen, and the outlet below it swaps.
+[[body]]
+type = "button"
+label = "Contacts"
+on_click = { go = "contacts" }
+
+[[body]]
+type = "outlet"
+default = "home"
+```
+
+- `go` takes a component's name, written out, not a template: the app's wiring for each component it
+  can go to is made at load. Going to the component already there changes nothing and fires nothing.
+- The component is drawn with no props, so one that needs props can't go in the outlet. Its nodes fire
+  under the component's own name: `contacts.save_btn.click`, `contacts.local.query.changed`.
+- `sys.outlet` holds the name of the component in the outlet, and changes only by `go`, which fires
+  `sys.outlet.changed` with `value` and `was`. It isn't kept: a reload opens on the `default`.
+- A component's local state stays while the app runs, so going back to one finds it as it was left.
+- `go` naming no component, or one that needs props, fails, like a step naming no action. So does `go`
+  in an app with no outlet. A component's own steps can't `go` ([090](090_components.md)): it fires an
+  event, and the app's handler goes.
 
 ## The bus
 
@@ -184,6 +214,10 @@ makes is printed as `{"call": ...}`; with `--mock mocks.toml` (`[[mock]]` tables
   outside `timers.toml` are config errors; a `delay`, `every`, or `cancel` step is a config error that
   points to `timers.toml`
 - over a reload a running timer keeps running while it's still declared
+- `go` puts its component in the outlet and fires `sys.outlet.changed`; going where it already is fires
+  nothing; `go` naming no component, one that needs props, or with no outlet fails; a template in `go` is
+  a config error; a component's own `go` is a config error
+- the component in the outlet is wired under its own name, and keeps its local state while away
 - every `*.failed` lands in `sys.errors` and the trail; with no matching handler it also toasts
 - a step failing in a handler's own list is logged under the event's name and toasted
 - `sys.bus` lists every pattern with its handlers and every event the config can fire
@@ -208,6 +242,7 @@ Milestone three ([999](999_todo.md)):
 
 - [x] core: named timers in one registry, the app's from `timers.toml`, with `start` and `stop`, and
   `.start`, `.stop`, and `.complete` events; `delay`, `every`, and `cancel` are gone
+- [x] core: `go`, `sys.outlet`, and the outlet's components wired under their own names
 
 - [ ] `confirm`: asks in a dialog; "no" stops the list quietly
 - [ ] `toast`: a short message, with its variant
@@ -224,3 +259,10 @@ Milestone three ([999](999_todo.md)):
   would be kind of noisy." And: "a timer that runs in the background after the view has changed is an architecture
   problem, not one of ours." A
   `log` stays an action, and fires no event: "log is yet another system tool, and that's all there is to it."
+- 2026-11-25: `go` is back, as the one way to fill the `outlet` in `app.toml`'s body. It isn't a page
+  system: there's no list of pages, only the top-level page and the component in its outlet. Lee: "We don't
+  need a list of pages. We need a top-level page and a partial." "Then go would swap out the contents of
+  that component." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."
+  Built minimally, and open in [999](999_todo.md): `sys.outlet` isn't kept on the device, `go` takes no
+  template, and a name `go` can't use fails when the step runs. The timer details built one way are now
+  decided. Lee: "Everything with timers sounds good."

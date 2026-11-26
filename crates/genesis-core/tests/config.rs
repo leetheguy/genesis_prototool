@@ -284,13 +284,11 @@ fn a_node_without_an_id_is_named_by_its_place() {
 }
 
 #[test]
-fn there_is_no_go_step_and_no_start_view() {
-    let errors =
-        App::from_toml("[app]\nname = \"x\"\n[on]\n\"a.b\" = [{ go = \"home\" }]\n").unwrap_err();
-    assert!(
-        errors[0].message.contains("unknown step with keys `go`"),
-        "{:?}",
-        errors
+fn there_is_no_start_view_and_go_is_a_step() {
+    let app = App::from_toml("[app]\nname = \"x\"\n[on]\n\"a.b\" = [{ go = \"home\" }]\n").unwrap();
+    assert_eq!(
+        serde_json::to_value(&app.on[0].steps).unwrap(),
+        serde_json::json!([{ "go": "home" }])
     );
     let errors = App::from_toml("[app]\nname = \"x\"\nstart = \"home\"\n").unwrap_err();
     assert!(errors[0].message.contains("start"), "{:?}", errors);

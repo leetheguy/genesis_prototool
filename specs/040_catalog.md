@@ -50,9 +50,17 @@ never a composite.
 | `dialog` | `dialog` | `children`, `open` (a variable), `title`, `on_close` |
 | `markdown` | Markdown, drawn safely (no raw HTML) | `text` |
 | `use` | a component ([090](090_components.md)) | `component`, `props` |
+| `outlet` | the component `go` last named, only in `app.toml`'s body ([090](090_components.md)) | `default` |
 
 A `text` with `level` is a heading (`h1`–`h3`) for screen readers, with a heading's size and weight
 unless its own keys say otherwise. `markdown` is for longer prose, and for streamed AI answers later.
+
+An `outlet` is where the app swaps whole screens. There's at most one, in `app.toml`'s body, and
+`app.toml` is the top-level page by convention: everything outside the outlet stays on screen. The
+outlet draws one component, `default` at first, and `{ go = "NAME" }` swaps in another
+([100](100_events.md)). Every other component is a partial, drawn by a `use` node. The component in the
+outlet is drawn as if by `use` with no props, named by the component: its nodes fire as
+`contacts.save_btn.click`. `sys.outlet` says which one it is ([050](050_state.md)).
 
 A `dialog` is daisyUI's modal, open while its `open` variable (`app.NAME`) holds anything but `false` or
 `null`. When the person closes it (Escape, or a click outside its box), it fires `.close`, which sets the
@@ -324,6 +332,7 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a number box keeps what's typed on the way to a number (`-`, `2.`) while it still means the variable's value (in a real browser: `tests/deployed/controls.mjs`)
 - a wired cell fires `.click`, and can be reached and pressed with the keyboard
 - each type fires its events with its payload; one without an `id` (and no `on_*`) fires nothing
+- an `outlet` draws its `default` component, and `go` swaps in another; one inside a component, inside a `form` or an `each`, a second one, or one whose `default` isn't a component that needs no props is a config error
 - the wrapper handles `show`, locals, placement, and the `each` faces the same way for every type
 
 ## Tasks
@@ -348,7 +357,12 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - [x] `file`, and calls that send files as multipart through `serve` (`disabled`, and a check that a file was picked, come with display logic, [080](080_display_logic.md))
 - [x] `dialog`
 - [x] `markdown`
+- [x] `outlet`, filled by `go`
 
 ## Log
 
 - 2026-11-25: a control's `var` can't be `sys.view`, which is gone, with the `go` step ([100](100_events.md)).
+- 2026-11-25: a new atom, `outlet`: the one place in `app.toml`'s body that `go` fills with a component.
+  Lee: "We don't need a list of pages. We need a top-level page and a partial." "Let's just make it a special
+  component that's only available in that top-level page." "Then go would swap out the contents of that
+  component." And: "Yes to app.toml and outlet." "Yes to a default component named on the outlet."

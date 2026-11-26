@@ -177,3 +177,60 @@ text = "<{{ item }}>"
     );
     assert!(out.contains("No one."), "{out}");
 }
+
+const HOME: &str = r#"
+[component]
+
+[[body]]
+type = "text"
+text = "Welcome home"
+"#;
+
+const CONTACTS: &str = r#"
+[component]
+
+[state]
+title = "All contacts"
+
+[[body]]
+type = "text"
+text = "{{ local.title }}"
+"#;
+
+const PAGES: &str = r#"
+[[body]]
+type = "button"
+id = "to_contacts"
+label = "Contacts"
+on_click = { go = "contacts" }
+
+[[body]]
+type = "outlet"
+default = "home"
+"#;
+
+fn outlet_host() -> Host {
+    let app = format!("[app]\nname = \"x\"\n{PAGES}");
+    let app = App::from_files([
+        ("app.toml", app.as_str()),
+        ("home.toml", HOME),
+        ("contacts.toml", CONTACTS),
+    ])
+    .unwrap();
+    Host::new(app)
+}
+
+#[test]
+fn the_outlet_draws_its_default_and_then_the_component_go_names() {
+    Owner::new().with(|| {
+        let host = outlet_host();
+        let out = app_view(host.clone()).to_html();
+        assert!(out.contains("Welcome home"), "{out}");
+        assert!(!out.contains("All contacts"), "{out}");
+
+        host.fire("to_contacts.click", serde_json::json!({}));
+        let out = app_view(host).to_html();
+        assert!(out.contains("All contacts"), "{out}");
+        assert!(!out.contains("Welcome home"), "{out}");
+    });
+}

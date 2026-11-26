@@ -63,7 +63,8 @@ reload, connections and sources with server-held credentials, sessions kept on t
 Compose with dufs for agents. **Milestone three is under way:** `serve` runs one app, the configs
 folder, at `/`, and most of the atoms are built (cells with style keys and `each`, text, images, links,
 buttons, dividers, svg, audio, video, iframes, the controls (inputs, textareas, selects, checkboxes,
-toggles, and radios), forms, file pickers, whose files go out with a call as multipart, dialogs, and Markdown).
+toggles, and radios), forms, file pickers, whose files go out with a call as multipart, dialogs, Markdown, and
+the outlet, where `go` swaps in a component).
 Components are built too: TOML files of atoms, used by name with their props, each instance with its own
 local state. A component's own steps fire events, and the app's handlers for them can do anything. Next come display logic and what
 agents need to build a screen on their own. The design is in

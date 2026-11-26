@@ -701,6 +701,7 @@ fn draw(
         Node::Dialog(n) => n.view(wired),
         Node::Markdown(n) => n.view(wired),
         Node::Use(n) => n.view(wired),
+        Node::Outlet(n) => n.view(wired),
     }
 }
 

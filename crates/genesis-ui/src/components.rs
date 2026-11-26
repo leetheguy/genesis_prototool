@@ -6,7 +6,8 @@
 use crate::style::ClassList;
 use crate::{Component, Wired, nothing};
 use genesis_core::config::{
-    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Markdown, Svg, Text, Use, Video,
+    Audio, Button, Cell, Dialog, Divider, Iframe, Image, Link, Markdown, Outlet, Svg, Text, Use,
+    Video,
 };
 use genesis_core::style::{BySize, Color, Height, TextSize, Variant, Weight, keys};
 use leptos::prelude::*;
@@ -332,6 +333,36 @@ impl Component for Use {
             own.raw("contents");
         }
         let class = wired.class(&mut own);
+        view! { <div class=class>{body}</div> }.into_any()
+    }
+}
+
+impl Component for Outlet {
+    const EVENTS: &'static [&'static str] = &[];
+
+    fn view(&self, wired: Wired) -> AnyView {
+        // Drawn as a `use` node named after the component, with no props, redrawn as `go` swaps it.
+        let current = wired.read("sys.outlet");
+        let mut own = ClassList::default();
+        if !wired.is_placed() {
+            own.raw("contents");
+        }
+        let class = wired.class(&mut own);
+        let body = move || {
+            let name = current()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_default();
+            let Some(component) = wired.find_component(&name) else {
+                return crate::failed_face(None, &format!("there's no component named {name}"));
+            };
+            let used = Wired {
+                name,
+                ..wired.clone()
+            };
+            used.component(&component, &serde_json::Map::new())
+                .collect_view()
+                .into_any()
+        };
         view! { <div class=class>{body}</div> }.into_any()
     }
 }
