@@ -10,6 +10,7 @@ name = "Contacts"
 
 [state]
 contacts = [{ name = "Ada", email = "ada@example.com" }]
+user = "ada"
 
 [[body]]
 type = "cell"

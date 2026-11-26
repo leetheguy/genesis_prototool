@@ -324,13 +324,15 @@ fn components_inside_components_have_their_own_instances() {
 
 #[test]
 fn local_outside_a_component_cant_be_written() {
-    let mut m = Machine::new(
-        load(&[(
-            "app.toml",
-            "[app]\nname = \"x\"\n[on]\n\"go\" = [{ set = \"local.x\", to = 1 }]\n",
-        )])
-        .unwrap(),
+    let text = "[app]\nname = \"x\"\n[on]\n\"go\" = [{ set = \"local.x\", to = 1 }]\n";
+    // Caught at load...
+    let problems = format!("{:?}", load(&[("app.toml", text)]).unwrap_err());
+    assert!(
+        problems.contains("`local.x` is a component's own variable"),
+        "{problems}"
     );
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(text).unwrap());
     m.fire("go", json!({}));
     let errors = m.get("sys.errors").unwrap();
     assert!(

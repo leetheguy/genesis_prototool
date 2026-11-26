@@ -24,7 +24,7 @@ do = [
 [on]
 "delete" = ["remove"]
 "ask" = [{ confirm = "Sure?" }, { toast = "Sure, then.", ms = 3000 }]
-"say" = [{ toast = "Hi {{ app.nobody }}." }]
+"say" = [{ toast = "Hi {{ event.nobody }}." }]
 "other" = [{ step = "app.other" }]
 "broken" = [{ toggle = "app.deleted" }]
 "#;

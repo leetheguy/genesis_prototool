@@ -105,9 +105,19 @@ fn toggle_on_something_that_isnt_a_boolean_stops_the_list() {
 
 #[test]
 fn writing_a_variable_that_cant_be_written_stops_the_list() {
-    let mut m = machine(
-        "[state]\nn = 0\n[on]\n\"a\" = [{ set = \"sys.events\", to = 1 }, { set = \"app.n\", to = 1 }]\n\"b\" = [{ set = \"app.undeclared\", to = 1 }, { set = \"app.n\", to = 2 }]\n",
+    let text = "[app]\nname = \"t\"\n[state]\nn = 0\n[on]\n\"a\" = [{ set = \"sys.events\", to = 1 }, { set = \"app.n\", to = 1 }]\n\"b\" = [{ set = \"app.undeclared\", to = 1 }, { set = \"app.n\", to = 2 }]\n";
+    // Caught at load...
+    let problems = format!("{:?}", App::from_toml(text).unwrap_err());
+    assert!(
+        problems.contains("`sys.events` can't be written"),
+        "{problems}"
     );
+    assert!(
+        problems.contains("`app.undeclared` isn't declared"),
+        "{problems}"
+    );
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(text).unwrap());
     m.fire("a", json!({}));
     m.fire("b", json!({}));
     assert_eq!(m.get("app.n"), Some(json!(0)));

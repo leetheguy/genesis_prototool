@@ -1155,7 +1155,7 @@ pub(crate) fn as_steps(value: &Value) -> Result<Vec<Step>, String> {
 
 /// The props a component runs as steps: in its own nodes' `on_*` shortcuts, or passed on to a
 /// component it uses that runs them, each component looked at once (`seen`).
-fn step_props(
+pub(crate) fn step_props(
     nodes: &[Node],
     components: &BTreeMap<String, Component>,
     seen: &mut BTreeSet<String>,
@@ -1740,7 +1740,17 @@ impl App {
                     app.sources.extend(part.sources);
                     app.connections.extend(part.connections);
                 }
-                Ok(app)
+                // Wiring is checked once every file reads, against the whole app.
+                let texts: Vec<(String, String)> = files
+                    .iter()
+                    .map(|(p, t)| (p.as_ref().to_string(), t.as_ref().to_string()))
+                    .collect();
+                let wiring = crate::wiring::check(&app, &texts, &component_files);
+                if wiring.is_empty() {
+                    Ok(app)
+                } else {
+                    Err(wiring)
+                }
             }
             _ => Err(problems),
         }
@@ -2566,7 +2576,7 @@ fn crud_op(resource: &str, crud: &Crud, action: &str) -> Option<OpConfig> {
 }
 
 /// Turns a byte offset into a 1-based line and column.
-fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
+pub(crate) fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
     let before = &text[..offset.min(text.len())];
     let line = before.matches('\n').count() + 1;
     let column = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;

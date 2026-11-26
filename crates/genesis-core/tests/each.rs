@@ -4,7 +4,7 @@ use genesis_core::config::{App, Node};
 
 fn app(body: &str) -> Result<App, Vec<genesis_core::config::ConfigError>> {
     App::from_toml(&format!(
-        "[app]\nname = \"x\"\n\n[state]\nrows = []\n\n{body}"
+        "[app]\nname = \"x\"\n\n[state]\nrows = []\npage = {{ rows = [] }}\nmy_rows = []\n\n{body}"
     ))
 }
 
@@ -39,7 +39,8 @@ fn each_takes_an_app_or_item_path_and_nothing_else() {
         "app.my_rows",
         "item.tag-list.0",
     ] {
-        app(&format!("[[body]]\ntype = \"cell\"\neach = \"{path}\"\n"))
+        // Inside a row, so `item` has one to read.
+        app(&format!("[[body]]\ntype = \"cell\"\neach = \"app.rows\"\n[[body.children]]\ntype = \"cell\"\neach = \"{path}\"\n"))
             .unwrap_or_else(|e| panic!("{path}: {e:?}"));
     }
     for path in [

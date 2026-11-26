@@ -185,7 +185,7 @@ props = { on_pick = [{ step = "app.picked" }] }
 fn a_failing_passed_step_stops_the_list_and_is_logged() {
     let app = APP.replace(
         "{ set = \"app.view\", to = \"contact\" }",
-        "\"no_such_action\"",
+        "{ toggle = \"app.opened\" }",
     );
     let mut m = Machine::new(load(&[("app.toml", &app), ("contact_card.toml", CARD)]).unwrap());
     m.fire_within(
@@ -201,7 +201,7 @@ fn a_failing_passed_step_stops_the_list_and_is_logged() {
     assert!(
         errors
             .to_string()
-            .contains("there's no action named no_such_action"),
+            .contains("app.opened isn't true or false"),
         "{errors}"
     );
 }
@@ -332,10 +332,14 @@ fn a_component_fires_any_event_and_the_apps_handlers_do_the_rest() {
     let app = APP.replace(
         "view = \"main\"",
         "view = \"main\"\n\n[on]\n\"contact.picked\" = [{ set = \"app.opened\", to = \"{{ event.who }}\" }, { set = \"app.view\", to = \"contact\" }]",
+    )
+    .replace(
+        ", on_open = [{ set = \"app.opened\", to = \"{{ event.item.name }}\" }, { set = \"app.view\", to = \"contact\" }]",
+        "",
     );
     let card = r#"
 [component]
-props = ["contact", "on_open"]
+props = ["contact"]
 
 [[body]]
 type = "button"

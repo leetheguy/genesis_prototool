@@ -66,7 +66,7 @@ fn an_empty_or_missing_list_shows_empty_or_its_default() {
         "each = \"app.rows\"\nempty = \"No contacts yet.\"",
     );
     assert!(html(&custom).contains("No contacts yet."));
-    let missing = "[app]\nname = \"x\"\n[[body]]\ntype = \"cell\"\neach = \"app.nothing\"\n";
+    let missing = "[app]\nname = \"x\"\n[state]\nbox = {}\n[[body]]\ntype = \"cell\"\neach = \"app.box.nothing\"\n";
     assert!(html(missing).contains("Nothing here."));
 }
 

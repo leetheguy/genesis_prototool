@@ -162,8 +162,18 @@ fn timers_due_at_the_same_moment_complete_in_the_order_they_were_started() {
 
 #[test]
 fn starting_or_stopping_a_timer_nobody_declared_is_a_failure() {
-    let mut m =
-        machine("[on]\n\"go\" = [{ start = \"nope\" }]\n\"halt\" = [{ stop = \"nope\" }]\n");
+    let app = "[on]\n\"go\" = [{ start = \"nope\" }]\n\"halt\" = [{ stop = \"nope\" }]\n";
+    // Caught at load, both...
+    let problems = load(app, TIMERS).unwrap_err();
+    let lines: Vec<_> = problems
+        .iter()
+        .map(|p| (p.line, p.message.as_str()))
+        .collect();
+    let message =
+        "there's no timer named `nope`; a timer is a table in timers.toml, like [nope] with `ms`";
+    assert_eq!(lines, [(Some(5), message), (Some(6), message)]);
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(&format!("[app]\nname = \"t\"\n{app}")).unwrap());
     m.fire("go", json!({}));
     m.fire("halt", json!({}));
     assert_eq!(

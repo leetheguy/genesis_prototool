@@ -126,10 +126,14 @@ The whole app is checked each time any file in it changes, every file together. 
 version running ([060](060_hot_reload.md)), and every problem is reported with its file, line, and column:
 
 - unknown keys anywhere, and unknown node `type`s, condition operators, steps, or formats
-- a `call` naming an operation no connection declares
-- a variable that isn't declared where it's used (`local.x` outside the node that declares it,
-  `item` outside an `each`, `form` outside a `form`)
-- an action writing a read-only variable (`props`, `item`, `event`, a read-only `sys.*`)
+- a `call` naming an operation no connection declares, a `start` or `stop` naming a timer `timers.toml`
+  doesn't have, or a `reload` of something that isn't a source
+- a variable that isn't declared where it's used: `app.x` with no starting value in `[state]` and no source,
+  `local.*` and `props.*` outside a component, `item` outside an `each`, `form` outside a `form`, `event`
+  outside a step, or a `sys.*` Genesis doesn't have. A step reads the row it fired in as `event.item`, and a
+  submitted form as `event.form`
+- an action writing what it can't: an undeclared `app.*`, `event`, `item`, a read-only `sys.*`, or `local.*`
+  outside a component
 - a step naming a custom action that doesn't exist, or a pattern using anything but `*` and `?`
 - `{{ creds.* }}` or `{{ session.* }}` outside `[connections.*]`, or `session.*` without `[app.auth]`
 - a `select` or `field` that isn't a JSON Pointer, or a template that isn't a plain lookup
@@ -140,6 +144,9 @@ version running ([060](060_hot_reload.md)), and every problem is reported with i
 - no `app.toml` at the top, `[app]` anywhere else, or a table in a file that can't hold it
 
 Each problem is also written to the log ([110](110_agents.md)).
+
+These are checks on wiring only. What can be right later is left to fail when it runs: a `go` to a page that
+isn't there ([100](100_events.md)), and a value missing inside a variable that is declared (`app.contact.name`).
 
 ## Tests
 
@@ -153,6 +160,9 @@ Each problem is also written to the log ([110](110_agents.md)).
 - `children` nest to any depth
 - an unknown key is an error naming the key, file, line, and column
 - every check above fails with its own message, and all problems are reported at once
+- a step or a template that would only fail when it runs is refused at load, pointing at its own text; the
+  steps a `use` node passes into a component are checked where they're written; a `go` to a page that
+  isn't there still loads
 - a whole-string template keeps its type; a template inside text becomes text
 - a missing value in params is an error and no call is made; in text it shows empty
 - `local.*` resolves to the nearest node that declares it
@@ -161,3 +171,10 @@ Each problem is also written to the log ([110](110_agents.md)).
 
 - 2026-11-25: `[app] start` is gone, with `sys.view` and the `go` step ([100](100_events.md)). Lee: "Yeah, there is no go. It doesn't exist. Not yet anyway. We may create it as a convenience down the road, but for now it's not necessary." There are no pages: "It's all show and hide everywhere. If you want to navigate from one page to another, you just hide one stack of components and show another one."
 - 2026-11-25: `timers.toml` holds the app's timers, each a table named by the timer ([100](100_events.md)).
+- 2026-11-25: the load checks for wiring are built: a step naming an action, timer, operation, or source that
+  isn't there, a step writing what it can't, and a template that isn't a plain lookup or reads a variable that
+  isn't there where it's written. A `go` to a page that isn't there is left out, as Lee decided ("When it
+  runs"), and so is anything else that could be right later. The bus still fails each of them on its own,
+  for an app that reached it some other way.
+- 2026-11-25: a template may read `sys.auth` before signing in is built; it shows nothing until then. Lee:
+  "Allow sys.auth".

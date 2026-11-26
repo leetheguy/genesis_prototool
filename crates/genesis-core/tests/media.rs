@@ -4,7 +4,9 @@ use genesis_core::bus::Machine;
 use genesis_core::config::{App, ConfigError, Node};
 
 fn app(node: &str) -> Result<App, Vec<ConfigError>> {
-    App::from_toml(&format!("[app]\nname = \"x\"\n\n[[body]]\n{node}\n"))
+    App::from_toml(&format!(
+        "[app]\nname = \"x\"\n\n[[body]]\n{node}\n\n[state]\ntrack = \"\"\nid = 0\n"
+    ))
 }
 
 fn problem(node: &str) -> String {

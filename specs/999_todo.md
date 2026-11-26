@@ -20,9 +20,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **Components** ([090](090_components.md)): TOML files of atoms with props and local state, used by name.
 - **For agents** ([110](110_agents.md)): the guide at `GET /agents`; one log of every failure, read at
   `GET /api/log`; and `POST /api/push/{name}`, which fires `push.{name}` in every open client.
-- **Load checks for wiring** ([020](020_config.md), "Checks"): a `set` on an undeclared variable, a step naming
-  no action, a bad template, all caught at load with a line number, and logged. The bus already fails them
-  loudly at runtime ([100](100_events.md)).
 - **The CRM**, as a sample with its own API: two tables, companies and contacts (each contact at one company),
   each with full CRUD. Lists you can search (the API filters), a company's page with its contacts, forms to add
   and edit with checks, deletes that ask first, toasts when things save, and loud failures. Built only from
@@ -92,3 +89,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
   ([090](090_components.md), Log).
 - 2026-11-25: display logic ([080](080_display_logic.md)) and `confirm` and `toast` ([100](100_events.md)) are built, so
   they're off milestone three's list.
+- 2026-11-25: the load checks for wiring ([020](020_config.md), "Checks") are built, so they're off milestone
+  three's list. A `go` to a page that isn't there isn't one of them: it fails when it runs, as Lee decided
+  ([100](100_events.md), Log).

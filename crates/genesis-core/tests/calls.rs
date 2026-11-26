@@ -212,7 +212,17 @@ fn a_failed_call_inside_an_action_fails_the_action_without_logging_twice() {
 
 #[test]
 fn a_call_to_an_operation_nobody_declared_fails_and_calls_nothing() {
-    let mut m = machine("[on]\n\"go\" = [{ call = \"crm.nowhere\" }]\n");
+    let text = format!("[app]\nname = \"t\"\n{API}[on]\n\"go\" = [{{ call = \"crm.nowhere\" }}]\n");
+    // Caught at load...
+    let problems = format!("{:?}", App::from_toml(&text).unwrap_err());
+    assert!(
+        problems.contains(
+            "there's no operation named `crm.nowhere`; the connections declare `crm.contacts.list`"
+        ),
+        "{problems}"
+    );
+    // ...and by the bus, for an app read without the load checks.
+    let mut m = Machine::new(toml::from_str(&text).unwrap());
     let effects = m.fire("go", json!({}));
     assert!(calls(&effects).is_empty());
     assert_eq!(

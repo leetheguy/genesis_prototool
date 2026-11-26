@@ -68,7 +68,12 @@ fn moving_a_file_to_another_folder_changes_nothing() {
 
 #[test]
 fn handlers_for_one_event_in_two_files_both_run_app_tomls_first() {
-    let app = App::from_files([("views/deep/more.toml", MORE), ("app.toml", APP)]).unwrap();
+    let app = App::from_files([
+        ("views/deep/more.toml", MORE),
+        ("app.toml", APP),
+        ("crm/api.toml", API),
+    ])
+    .unwrap();
     let patterns: Vec<&str> = app.on.iter().map(|h| h.pattern.as_str()).collect();
     assert_eq!(patterns, ["app.opened", "app.opened"]);
     assert_eq!(
