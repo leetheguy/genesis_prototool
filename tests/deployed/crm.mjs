@@ -1,14 +1,15 @@
 // The CRM deployed check (spec 130): the CRM sample, driven in a real browser against its own API.
 // It searches, adds a company (the form's check first), opens one and adds a contact there, edits a
-// contact, fails loudly deleting a company that has contacts, deletes a contact after asking, and
-// checks the API's data file holds it all, even after a restart.
+// contact (what was typed in another, unsaved, doesn't follow), fails loudly deleting a company
+// that has contacts, deletes a contact after asking, and checks the API's data file holds it all,
+// even after a restart.
 //
 // It runs samples/crm/api.mjs on a temporary data file, and serve on a temporary copy of
 // samples/crm/configs pointed at it, with the token in serve's environment only. Run it with
 // scripts/check-hello.sh.
 
 import { spawn } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -47,10 +48,11 @@ const serve = spawn(
   { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, GENESIS_CREDS_CRM_TOKEN: token } },
 );
 let browser;
+let page;
 try {
   await until("serve's /health", async () => (await fetch(`${base}/health`)).ok);
   browser = await chromium.launch({ executablePath: chrome });
-  const page = await browser.newPage();
+  page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(`${base}/`);
@@ -110,9 +112,18 @@ try {
   await toast("Added Katherine Johnson.", "success");
   await named("Katherine Johnson").waitFor();
 
+  // What's typed in one contact's edit form, closed unsaved, doesn't show up in the next one's.
+  await button("Edit", row("Ada Lovelace")).click();
+  const editingAda = dialog("Edit Ada Lovelace");
+  await editingAda.getByLabel("Phone").fill("000-0000");
+  await page.keyboard.press("Escape");
+  await gone("Ada's edit dialog to close", editingAda);
+
   // Editing a contact saves it, and the list shows the change.
   await button("Edit", row("Grace Hopper")).click();
   const editing = dialog("Edit Grace Hopper");
+  await until("Grace's form to start from Grace", async () => (await editing.getByLabel("Name").inputValue()) === "Grace Hopper");
+  if ((await editing.getByLabel("Phone").inputValue()) !== "") throw new Error("Ada's typing showed up in Grace's form");
   await editing.getByLabel("Phone").fill("555-0199");
   await button("Save", editing).click();
   await toast("Saved Grace Hopper.", "success");
@@ -157,6 +168,15 @@ try {
   console.log("ok: the CRM searched, added, checked, edited, asked before deleting, failed loudly, and kept its data");
 } catch (error) {
   console.error(`FAIL: ${error.message}`);
+  // What the screen showed when it failed: its text, toasts and all.
+  const shown = await page?.locator("body").innerText().catch(() => "");
+  if (shown) console.error(`the screen showed:\n${shown}`);
+  // And the screen's last events, from the mirror.
+  const state = join(work, "state");
+  for (const file of existsSync(state) ? readdirSync(state).filter((f) => f.endsWith(".events.ndjson")) : []) {
+    const lines = readFileSync(join(state, file), "utf8").trim().split("\n").slice(-40);
+    console.error(`its last events:\n${lines.map((l) => l.slice(0, 160)).join("\n")}`);
+  }
   process.exitCode = 1;
 } finally {
   await browser?.close();

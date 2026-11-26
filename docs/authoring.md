@@ -240,7 +240,9 @@ A control works one of two ways.
 - **With `var`, anywhere:** it reads and writes that variable as the person types or clicks. Use it for
   a search box, a filter, a switch.
 - **With `name`, inside a `form`:** it fills the form's draft, and nothing changes until the form is
-  submitted. The `submit` event's payload holds every named control's value as `event.form`.
+  submitted. The `submit` event's payload holds every named control's value as `event.form`. A form with
+  `data` starts from that record, and when the `app.*` or `local.*` variable its `data` reads changes, the
+  draft starts over: open the edit form on another row and it shows that row, not what was typed before.
 
 ```toml
 [[body]]

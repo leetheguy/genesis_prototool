@@ -23,10 +23,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - **A fresh agent builds the CRM.** The CRM itself is built as a sample, by hand ([130](130_crm_sample.md)),
   with its API and a deployed check. Left: a fresh agent, given only the guide and the token, builds one like it
   on its own, and the same check drives it.
-- **A form's draft doesn't start over when its `data` changes.** Editing one row, closing the dialog, then
-  editing another shows what was typed for the first. Found building the CRM ([130](130_crm_sample.md)).
-- **The message for two files with one name** names the file twice (`the file name companies.toml is also
-  companies.toml`); it should give both paths ([120](120_one_app.md)).
 
 ## Planned
 
@@ -97,3 +93,6 @@ with no human help, and it works. A deployed check drives the finished CRM in a 
 - 2026-11-25: the CRM is built as a sample ([130](130_crm_sample.md)): `samples/crm/`, with its API and a deployed
   check in a real browser. What's left of the CRM item is a fresh agent building it. Building it found two gaps,
   now listed above: a form's draft that doesn't start over, and the message for two files with one name.
+- 2026-11-25: both gaps the CRM found are fixed (Lee: "Fix both"): a form's draft starts over when its `data`
+  changes ([040](040_catalog.md)), and the message for two files with one name gives both paths
+  ([120](120_one_app.md)).

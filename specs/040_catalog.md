@@ -133,7 +133,12 @@ A control (`input`, `textarea`, `select`, `checkbox`, `toggle`, `radio`, `file`)
   and `item.*` inside an `each`. A `name` is a plain name, like `email`. A `password` input's value is
   never kept, mirrored, or shown on the trail (`sys.events` shows `"(hidden)"`). A form an `each`
   repeats keeps a draft for each row, by the row's place in the list, so typing in one row's form
-  leaves the others alone and each submits on its own.
+  leaves the others alone and each submits on its own. **A draft starts over when its `data` changes:** when
+  the `app.*` or `local.*` variable a form's `data` reads gets a new value, its draft and its failed try are
+  dropped, so the form shows the new record (edit one contact, close the dialog, edit another: the second
+  form shows the second contact). The same value again keeps the draft. `local.*` is one instance's, so
+  only that instance's form starts over. A form whose `data` is `item` or `props` keeps its drafts: a list
+  reloading after one row saves shouldn't wipe what's typed in the others.
 - **Anywhere, with `var`:** it reads and writes that variable directly, with no submit: a search box, a filter,
   a theme picker on `sys.theme`. `var` is a variable a `set` can write: `app.NAME` or `sys.theme`.
   A control with `var` is a shortcut for a handler, as `on_click` is: its `NAME.change` runs
@@ -319,6 +324,7 @@ So a new atom is a small, regular piece of Rust: its props, its events, its `vie
 - a call whose params hold a file reference reaches the API as `multipart/form-data`, the file as a part with its name and type and the other params as fields; a reference that's gone fails the call (in a real browser: `tests/deployed/file.mjs`)
 - a `form` starts its controls from `data` (an `item` inside an `each`), shows what's typed over it, and changes no state until `.submit`
 - a `submit` button, or Enter in a box, fires `.submit` with each named control in `form` (typed, else from `data`, else `null`), and the draft starts over; another button in a form doesn't submit (in a real browser: `tests/deployed/form.mjs`)
+- a form's draft and failed try start over when the `app.*` or `local.*` variable its `data` reads changes, and only that instance's for `local.*`; the same value again, or another variable, keeps it (in a real browser: `tests/deployed/crm.mjs`)
 - a form an `each` repeats keeps a draft per row: each row fills, keeps, and submits its own (in a real browser: `tests/deployed/form.mjs`)
 - a draft is kept and comes back after a reload, and stays across a config reload while its form and control do; a `password` input's value is never kept, mirrored, or on the trail
 - a `submit` button outside a `form`, a form inside a form, a `name` that isn't a plain name, and `data` that isn't a variable's path are config errors
@@ -369,3 +375,5 @@ Milestone three ([999](999_todo.md)), each with its tests:
 - 2026-11-25: `show` on every node and `disabled` on buttons and controls are built ([080](080_display_logic.md)).
 - 2026-11-25: checks on every control, and `.invalid` with each failing field's message ([080](080_display_logic.md)). Forms are drawn `novalidate`.
 - 2026-11-25: `text` takes `format` ([080](080_display_logic.md)).
+- 2026-11-25: a form's draft starts over when its `data` changes. Building the CRM ([130](130_crm_sample.md))
+  found that editing one contact, closing, and editing another showed the first one's typing. Lee: "Fix both".

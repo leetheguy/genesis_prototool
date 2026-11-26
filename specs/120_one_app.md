@@ -32,7 +32,8 @@ So:
   Every other `.toml` file, in any folder, is a component ([090](090_components.md)) or adds to the app
   (state, connections, sources, actions, handlers) ([020](020_config.md)).
 - **Every file name is unique across the whole app.** Folders don't make a name unique:
-  `views/review.toml` and `old/review.toml` clash, and a clash is a load problem naming both paths. A file
+  `views/review.toml` and `old/review.toml` clash, and a clash is a load problem naming both paths
+  (`views/review.toml: this file and old/review.toml share the name review.toml`); a file at the top says so. A file
   name then always points at exactly one file, for an agent, a log line, and a person reading the files,
   and a component's name, which is its file name, means one component.
 - **Names inside files may repeat.** Two nodes may share an `id`, and two files may handle the same event
@@ -68,3 +69,6 @@ style keys, and [090](090_components.md) for components.
   ([040](040_catalog.md), [100](100_events.md)). Lee: "We don't need a list of pages. We need a top-level page
   and a partial. The top level page should have a special name. Convention over configuration, 'cause this app
   already has enough configuration." And: "Yes to app.toml and outlet."
+- 2026-11-25: the clash message names both paths plainly. It read "the file name companies.toml is also
+  companies.toml" when one of the two was at the top; now it's "this file and companies.toml (at the top of the
+  configs folder) share the name companies.toml". Lee: "Fix both".

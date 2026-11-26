@@ -112,7 +112,23 @@ fn two_files_with_one_name_in_different_folders_are_a_problem_naming_both_paths(
     assert_eq!(
         messages(&problems),
         [
-            "views/review.toml: the file name review.toml is also old/review.toml; give one of them another name"
+            "views/review.toml: this file and old/review.toml share the name review.toml; give one of them another name"
+        ]
+    );
+}
+
+#[test]
+fn a_file_at_the_top_says_so_when_another_shares_its_name() {
+    let problems = App::from_files([
+        ("app.toml", APP),
+        ("companies.toml", "[state]\na = 1\n"),
+        ("pages/companies.toml", "[state]\nb = 1\n"),
+    ])
+    .unwrap_err();
+    assert_eq!(
+        messages(&problems),
+        [
+            "pages/companies.toml: this file and companies.toml (at the top of the configs folder) share the name companies.toml; give one of them another name"
         ]
     );
 }
