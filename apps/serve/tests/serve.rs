@@ -29,6 +29,7 @@ impl Folders {
         Settings {
             configs: self.0.join("configs"),
             state: self.0.join("state"),
+            logs: self.0.join("logs"),
             dist: self.0.join("dist"),
             ..Settings::default()
         }
@@ -248,14 +249,23 @@ fn settings_listen_on_localhost_unless_told_otherwise() {
             "/s",
             "--dist",
             "/d",
+            "--logs",
+            "/l",
         ]
         .map(String::from),
     )
     .unwrap();
     assert_eq!(
-        (s.listen.as_str(), s.configs, s.state, s.dist),
-        ("0.0.0.0:9000", "/c".into(), "/s".into(), "/d".into())
+        (s.listen.as_str(), s.configs, s.state, s.dist, s.logs),
+        (
+            "0.0.0.0:9000",
+            "/c".into(),
+            "/s".into(),
+            "/d".into(),
+            "/l".into()
+        )
     );
+    assert_eq!(Settings::default().logs, std::path::PathBuf::from("logs"));
     assert!(Settings::from_args(["--bogus".to_string()]).is_err());
 }
 

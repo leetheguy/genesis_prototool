@@ -22,4 +22,4 @@ COPY --from=build /src/apps/web/dist /app/dist
 WORKDIR /app
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s CMD curl -fsS http://127.0.0.1:8080/health || exit 1
-CMD ["genesis-serve", "--configs", "/app/configs", "--state", "/app/state", "--dist", "/app/dist", "--listen", "0.0.0.0:8080"]
+CMD ["genesis-serve", "--configs", "/app/configs", "--state", "/app/state", "--logs", "/app/logs", "--dist", "/app/dist", "--listen", "0.0.0.0:8080"]

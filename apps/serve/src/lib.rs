@@ -16,6 +16,10 @@
 //! | `/fs/*` | the files service (dufs), for agents with `Authorization: Bearer GENESIS_AGENT_TOKEN` |
 //! | `GET /health` | `200` when the server is up |
 //!
+//! Every failure goes into one log, `genesis.log` in the logs folder ([spec 110](../../../specs/110_agents.md)):
+//! each load's problems (and `load ok` once it loads clean again) and each failed call, one line each,
+//! with the time. It keeps the app's last `[app] log_lines` lines.
+//!
 //! The mirror ([spec 050](../../../specs/050_state.md), "The mirror") turns names from the outside
 //! world into file paths, so client names must be plain (letters, digits, `_`, `-`), or the
 //! request is refused before anything touches the disk. Each client's state is written whole
@@ -41,6 +45,9 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::ServeDir;
 
+mod log;
+pub use log::FILE as LOG_FILE;
+
 /// How many events a client's `.events.ndjson` keeps, newest last.
 pub const EVENTS_KEPT: usize = 10_000;
 
@@ -51,6 +58,8 @@ pub struct Settings {
     pub configs: PathBuf,
     /// The state folder, where the mirror is written.
     pub state: PathBuf,
+    /// The logs folder, where `genesis.log` is written ([spec 110](../../../specs/110_agents.md)).
+    pub logs: PathBuf,
     /// The renderer's bundle.
     pub dist: PathBuf,
     /// The address to listen on.
@@ -71,6 +80,7 @@ impl std::fmt::Debug for Settings {
         f.debug_struct("Settings")
             .field("configs", &self.configs)
             .field("state", &self.state)
+            .field("logs", &self.logs)
             .field("dist", &self.dist)
             .field("listen", &self.listen)
             .field("debounce", &self.debounce)
@@ -129,6 +139,7 @@ impl Default for Settings {
         Settings {
             configs: "configs".into(),
             state: "state".into(),
+            logs: "logs".into(),
             dist: "apps/web/dist".into(),
             listen: "127.0.0.1:8080".into(),
             debounce: Duration::from_millis(150),
@@ -158,7 +169,7 @@ impl Settings {
         }
     }
 
-    /// Reads `--configs DIR`, `--state DIR`, `--dist DIR`, `--listen ADDRESS`, and `--debounce MS`,
+    /// Reads `--configs DIR`, `--state DIR`, `--logs DIR`, `--dist DIR`, `--listen ADDRESS`, and `--debounce MS`,
     /// each optional.
     /// It listens on `127.0.0.1:8080` unless told otherwise.
     pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Settings, String> {
@@ -169,6 +180,7 @@ impl Settings {
             match flag.as_str() {
                 "--configs" => settings.configs = value()?.into(),
                 "--state" => settings.state = value()?.into(),
+                "--logs" => settings.logs = value()?.into(),
                 "--dist" => settings.dist = value()?.into(),
                 "--listen" => settings.listen = value()?,
                 "--debounce" => {
@@ -180,7 +192,7 @@ impl Settings {
                 }
                 _ => {
                     return Err(format!(
-                        "unknown option {flag}; serve takes --configs, --state, --dist, and --listen"
+                        "unknown option {flag}; serve takes --configs, --state, --logs, --dist, --listen, and --debounce"
                     ));
                 }
             }
@@ -196,6 +208,37 @@ struct Server {
     http: reqwest::Client,
     /// Sent once each time the configs folder changes and goes quiet again.
     changes: broadcast::Sender<()>,
+    /// Every failure, one line each.
+    log: log::Log,
+}
+
+impl Server {
+    fn new(settings: Settings, changes: usize) -> Server {
+        Server {
+            log: log::Log::new(&settings.logs),
+            settings,
+            http: reqwest::Client::new(),
+            changes: broadcast::channel(changes).0,
+        }
+    }
+
+    /// Logs a failed call, with every credential's value redacted.
+    async fn log_call(&self, line: &str) {
+        self.log
+            .write("call", &self.settings.creds.redact(line))
+            .await;
+    }
+
+    /// Loads the app and logs how it went.
+    async fn load_and_log(&self) {
+        match load(&self.settings.configs).await {
+            Ok(app) => {
+                self.log.keep(app.app.log_lines);
+                self.log.load(None).await;
+            }
+            Err(problems) => self.log.load(Some(&problems)).await,
+        }
+    }
 }
 
 /// Keeps the configs folder watched for as long as it's held. Dropping it stops hot reload.
@@ -212,11 +255,7 @@ pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String>
         .canonicalize()
         .map_err(|e| format!("configs folder {}: {e}", settings.configs.display()))?;
     let (configs, debounce) = (settings.configs.clone(), settings.debounce);
-    let server = Arc::new(Server {
-        settings,
-        http: reqwest::Client::new(),
-        changes: broadcast::channel(64).0,
-    });
+    let server = Arc::new(Server::new(settings, 64));
     let (paths, mut changed) = tokio::sync::mpsc::unbounded_channel::<PathBuf>();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         // Reading a file to reload it is an access, not a change; counting it would reload forever.
@@ -229,8 +268,10 @@ pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String>
     .map_err(|e| format!("can't watch the configs folder: {e}"))?;
     notify::Watcher::watch(&mut watcher, &configs, notify::RecursiveMode::Recursive)
         .map_err(|e| format!("can't watch {}: {e}", configs.display()))?;
-    let changes = server.changes.clone();
+    let loader = server.clone();
     tokio::spawn(async move {
+        // The log says how the app loaded at start, and after each change.
+        loader.load_and_log().await;
         while changed.recv().await.is_some() {
             // Editors and file servers save in bursts: wait for the folder to go quiet.
             loop {
@@ -240,7 +281,8 @@ pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String>
                     Err(_quiet) => break,
                 }
             }
-            let _ = changes.send(());
+            loader.load_and_log().await;
+            let _ = loader.changes.send(());
         }
     });
     Ok((routes(server), Watching(watcher)))
@@ -248,11 +290,7 @@ pub fn live_router(mut settings: Settings) -> Result<(Router, Watching), String>
 
 /// serve's routes, without hot reload: each config stream sends the app once.
 pub fn router(settings: Settings) -> Router {
-    routes(Arc::new(Server {
-        settings,
-        http: reqwest::Client::new(),
-        changes: broadcast::channel(1).0,
-    }))
+    routes(Arc::new(Server::new(settings, 1)))
 }
 
 fn routes(server: Arc<Server>) -> Router {
@@ -563,19 +601,38 @@ async fn run_call(server: &Server, body: Value, files: &BTreeMap<String, Upload>
         }
     };
     let op_name = body["op"].as_str().unwrap_or_default();
+    // Who made the call, and from what, for the log.
+    let whose = [("client", &body["client"]), ("from", &body["from"])]
+        .iter()
+        .filter_map(|(what, v)| v.as_str().map(|v| format!("{what} {v}")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let whose = match whose.is_empty() {
+        true => String::new(),
+        false => format!(" ({whose})"),
+    };
     // Only an operation the app's own config declares can be called: the client names it, and
     // serve decides where it goes.
     let Some(op) = app.operation(op_name) else {
-        return refuse(
-            StatusCode::NOT_FOUND,
-            format!("the app declares no operation named {op_name:?}"),
-        );
+        let why = format!("the app declares no operation named {op_name:?}");
+        server.log_call(&format!("{op_name}: {why}{whose}")).await;
+        return refuse(StatusCode::NOT_FOUND, why);
     };
     let params = body["params"].as_object().cloned().unwrap_or_default();
     let sent = body["headers"].as_object().cloned().unwrap_or_default();
     let reply = match make_call(server, op_name, &op, params, &sent, files).await {
-        Ok((status, body)) => serde_json::json!({ "status": status, "body": body }),
-        Err(why) => serde_json::json!({ "error": server.settings.creds.redact(&why) }),
+        Ok((status, answer)) => {
+            if status >= 400 {
+                server
+                    .log_call(&format!("{op_name} {status} {answer}{whose}"))
+                    .await;
+            }
+            serde_json::json!({ "status": status, "body": answer })
+        }
+        Err(why) => {
+            server.log_call(&format!("{op_name}: {why}{whose}")).await;
+            serde_json::json!({ "error": server.settings.creds.redact(&why) })
+        }
     };
     Json(reply).into_response()
 }

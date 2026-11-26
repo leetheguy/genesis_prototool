@@ -57,6 +57,8 @@ pub struct Call {
     /// Its headers, with `app.*` and `sys.*` templates filled in and `{{ creds.NAME }}` left for
     /// the host to fill.
     pub headers: BTreeMap<String, String>,
+    /// The event that started the chain that made the call, for serve's log ([spec 110](../../../specs/110_agents.md)).
+    pub from: String,
 }
 
 /// Where an event fired from inside a component: which instance, and its props as filled where
@@ -1000,6 +1002,7 @@ impl Machine {
             op: op.to_string(),
             params,
             headers,
+            from: event.chain.first().unwrap_or(&event.name).clone(),
         })
     }
 
